@@ -1,0 +1,35 @@
+# Runtime / temporary
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+
+# Generated packages / build output
+*.zip
+*.7z
+*.rar
+dist/
+build/
+out/
+
+# Local environment / secrets
+.env
+.env.*
+*.local.ps1
+*.secret.ps1
+secrets.*
+
+# Windows / macOS noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Test output
+TestResults/
+coverage/
