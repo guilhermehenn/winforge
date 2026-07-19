@@ -1,65 +1,81 @@
-﻿function Invoke-NetworkRepair {
+﻿function Invoke-WinForgeNetworkCommand {
+    param (
+        [Parameter(Mandatory)]
+        [string]$Title,
+
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [string[]]$Arguments = @()
+    )
+
+    Write-WinForgeStatus -Type Running -Message $Title
+    & $FilePath @Arguments | Out-Host
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-WinForgeStatus -Type Success -Message "$Title concluído."
+        return $true
+    }
+
+    Write-WinForgeStatus -Type Warning -Message "$Title finalizou com código $exitCode."
+    return $false
+}
+
+
+function Invoke-NetworkRepair {
     Show-Header "Reparo Rápido de Rede e DNS"
 
     if (-not (Test-IsAdministrator)) {
-        Write-Host "Privilégios de Administrador são necessários para reparar rede e DNS." -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Privilégios de Administrador são necessários."
         Write-Host ""
         Pause
         return
     }
 
-    Write-Host "Esta opção executa um reparo rápido para problemas comuns de rede, DNS e pilha TCP/IP." -ForegroundColor Yellow
+    Write-Host "Executa correções comuns de DNS, endereço IP, Winsock e TCP/IP." -ForegroundColor Yellow
+    Write-WinForgeSection -Title "Comandos"
+    Write-WinForgeCommand -Command "ipconfig /flushdns"
+    Write-WinForgeCommand -Command "ipconfig /release"
+    Write-WinForgeCommand -Command "ipconfig /renew"
+    Write-WinForgeCommand -Command "netsh winsock reset"
+    Write-WinForgeCommand -Command "netsh int ip reset"
     Write-Host ""
-    Write-Host "Comandos executados:" -ForegroundColor Cyan
-    Write-Host "ipconfig /flushdns"
-    Write-Host "ipconfig /release"
-    Write-Host "ipconfig /renew"
-    Write-Host "netsh winsock reset"
-    Write-Host "netsh int ip reset"
-    Write-Host ""
-    Write-Host "A conexão pode cair temporariamente durante o processo." -ForegroundColor Yellow
-    Write-Host "Reiniciar o Windows é recomendado após o reparo." -ForegroundColor Yellow
+    Write-WinForgeWarn "A conexão pode cair temporariamente. Reinicie o Windows ao final."
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja executar o reparo rápido de rede e DNS?"
-
-    if ($confirmed -eq $false) {
+    if (-not (Confirm-Action "Deseja executar o reparo rápido de rede e DNS?")) {
         Write-Host ""
-        Write-Host "Operação cancelada." -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
         Write-Host ""
         Pause
         return
     }
 
     try {
-        Write-Host ""
-        Write-Host "Limpando cache DNS..." -ForegroundColor Green
-        ipconfig.exe /flushdns
+        $results = @(
+            Invoke-WinForgeNetworkCommand -Title "Limpar cache DNS" -FilePath "ipconfig.exe" -Arguments @("/flushdns")
+            Invoke-WinForgeNetworkCommand -Title "Liberar endereço IP" -FilePath "ipconfig.exe" -Arguments @("/release")
+            Invoke-WinForgeNetworkCommand -Title "Renovar endereço IP" -FilePath "ipconfig.exe" -Arguments @("/renew")
+            Invoke-WinForgeNetworkCommand -Title "Redefinir Winsock" -FilePath "netsh.exe" -Arguments @("winsock", "reset")
+            Invoke-WinForgeNetworkCommand -Title "Redefinir TCP/IP" -FilePath "netsh.exe" -Arguments @("int", "ip", "reset")
+        )
 
         Write-Host ""
-        Write-Host "Liberando endereço IP..." -ForegroundColor Green
-        ipconfig.exe /release
 
-        Write-Host ""
-        Write-Host "Renovando endereço IP..." -ForegroundColor Green
-        ipconfig.exe /renew
+        if ($results -notcontains $false) {
+            Write-WinForgeStatus -Type Success -Message "Reparo de rede e DNS concluído."
+        }
+        else {
+            Write-WinForgeStatus -Type Warning -Message "Reparo concluído com alertas. Revise os resultados acima."
+        }
 
-        Write-Host ""
-        Write-Host "Resetando Winsock..." -ForegroundColor Green
-        netsh.exe winsock reset
-
-        Write-Host ""
-        Write-Host "Resetando pilha TCP/IP..." -ForegroundColor Green
-        netsh.exe int ip reset
-
-        Write-Host ""
-        Write-Host "Reparo rápido de rede e DNS concluído." -ForegroundColor Green
-        Write-Host "Reinicie o Windows para aplicar completamente os resets de rede." -ForegroundColor Yellow
+        Write-WinForgeWarn "Reinicie o Windows para concluir os resets de rede."
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro durante o reparo de rede:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Falha durante o reparo de rede."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -132,8 +148,17 @@ function Test-NetworkPingTargets {
         }
     }
 
-    Write-Host ""
-    $results | Format-Table -AutoSize
+    Write-WinForgeSection -Title "Resultado"
+    $results |
+        Select-Object `
+            @{ Name = "Alvo"; Expression = { $_.Alvo } },
+            @{ Name = "Host"; Expression = { $_.Host } },
+            @{ Name = "Status"; Expression = { $_.Status } },
+            @{ Name = "Média (ms)"; Expression = { $_.MediaMs } },
+            @{ Name = "Mín. (ms)"; Expression = { $_.MinMs } },
+            @{ Name = "Máx. (ms)"; Expression = { $_.MaxMs } } |
+        Format-Table -AutoSize |
+        Out-Host
     Write-Host ""
     Write-Host "Observação: alguns servidores podem bloquear ICMP/ping. Falha em um alvo isolado nem sempre indica problema local." -ForegroundColor Yellow
     Write-Host ""
@@ -153,6 +178,8 @@ function Test-NetworkSpeed {
 
     $client = [System.Net.Http.HttpClient]::new()
     $client.Timeout = [TimeSpan]::FromSeconds(60)
+    $uploadContent = $null
+    $uploadResponse = $null
 
     try {
         $downloadBytes = 25000000
@@ -168,7 +195,7 @@ function Test-NetworkSpeed {
 
         $downloadMbps = [Math]::Round((($downloadData.Length * 8) / 1000000) / $downloadStopwatch.Elapsed.TotalSeconds, 2)
 
-        Write-Host "Download aproximado: $downloadMbps Mbps" -ForegroundColor Cyan
+        Write-WinForgeStatus -Type Success -Message "Download medido: $downloadMbps Mbps"
 
         Write-Host ""
         Write-Host "Testando upload..." -ForegroundColor Green
@@ -187,12 +214,11 @@ function Test-NetworkSpeed {
 
         $uploadMbps = [Math]::Round((($uploadBytesLength * 8) / 1000000) / $uploadStopwatch.Elapsed.TotalSeconds, 2)
 
-        Write-Host "Upload aproximado:   $uploadMbps Mbps" -ForegroundColor Cyan
+        Write-WinForgeStatus -Type Success -Message "Upload medido: $uploadMbps Mbps"
 
-        Write-Host ""
-        Write-Host "Resultado" -ForegroundColor Cyan
-        Write-Host "Download: $downloadMbps Mbps"
-        Write-Host "Upload:   $uploadMbps Mbps"
+        Write-WinForgeSection -Title "Resultado"
+        Write-WinForgeKeyValue -Label "Download" -Value "$downloadMbps Mbps"
+        Write-WinForgeKeyValue -Label "Upload" -Value "$uploadMbps Mbps"
     }
     catch {
         Write-Host ""
@@ -222,8 +248,7 @@ function Show-NetworkInformation {
     Show-Header "Informações de Rede"
 
     try {
-        Write-Host "Adaptadores ativos" -ForegroundColor Cyan
-        Write-Host ""
+        Write-WinForgeSection -Title "Adaptadores ativos"
 
         $activeAdapters = @(
             Get-NetAdapter |
@@ -238,9 +263,7 @@ function Show-NetworkInformation {
             Write-Host "Nenhum adaptador ativo encontrado." -ForegroundColor Yellow
         }
 
-        Write-Host ""
-        Write-Host "Configuração IP" -ForegroundColor Cyan
-        Write-Host ""
+        Write-WinForgeSection -Title "Configuração IP"
 
         $ipConfigurations = @(
             Get-NetIPConfiguration |
@@ -248,19 +271,20 @@ function Show-NetworkInformation {
         )
 
         foreach ($config in $ipConfigurations) {
-            Write-Host "Interface: $($config.InterfaceAlias)" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  $($config.InterfaceAlias)" -ForegroundColor Yellow
 
             if ($config.IPv4Address) {
-                Write-Host "IPv4:      $($config.IPv4Address.IPAddress)"
+                Write-WinForgeKeyValue -Label "IPv4" -Value $config.IPv4Address.IPAddress -LabelWidth 14
             }
 
             if ($config.IPv6Address) {
                 $ipv6List = ($config.IPv6Address | Select-Object -ExpandProperty IPAddress) -join ", "
-                Write-Host "IPv6:      $ipv6List"
+                Write-WinForgeKeyValue -Label "IPv6" -Value $ipv6List -LabelWidth 14
             }
 
             if ($config.IPv4DefaultGateway) {
-                Write-Host "Gateway:   $($config.IPv4DefaultGateway.NextHop)"
+                Write-WinForgeKeyValue -Label "Gateway" -Value $config.IPv4DefaultGateway.NextHop -LabelWidth 14
             }
 
             $dnsServers = @(
@@ -269,18 +293,17 @@ function Show-NetworkInformation {
             )
 
             if ($dnsServers.Count -gt 0) {
-                Write-Host "DNS IPv4:  $($dnsServers -join ', ')"
+                Write-WinForgeKeyValue -Label "DNS IPv4" -Value ($dnsServers -join ', ') -LabelWidth 14
             }
 
             Write-Host ""
         }
 
-        Write-Host "IP público" -ForegroundColor Cyan
-        Write-Host ""
+        Write-WinForgeSection -Title "IP público"
 
         try {
             $publicIp = Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 8
-            Write-Host "IP público: $publicIp"
+            Write-WinForgeKeyValue -Label "Endereço" -Value $publicIp
         }
         catch {
             Write-Host "Não foi possível consultar o IP público." -ForegroundColor Yellow

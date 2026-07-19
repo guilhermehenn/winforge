@@ -95,38 +95,33 @@ function Disable-Hibernation {
     Show-Header "Desativar Hibernação"
 
     if (-not (Test-IsAdministrator)) {
-        Write-Host "Privilégios de Administrador são necessários para desativar a hibernação." -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Privilégios de Administrador são necessários."
         Write-Host ""
         Pause
         return
     }
 
-    Write-Host "Esta opção desativa a hibernação do Windows." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Também remove o arquivo hiberfil.sys e, na prática, desativa a Inicialização Rápida dependente de hibernação." -ForegroundColor Cyan
-    Write-Host "Recomendado principalmente para desktops e PCs gamer que não usam hibernação." -ForegroundColor Cyan
+    Write-Host "Esta opção desativa a hibernação e remove o arquivo hiberfil.sys." -ForegroundColor Yellow
+    Write-Host "A Inicialização Rápida dependente de hibernação também será desativada." -ForegroundColor Cyan
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja desativar a hibernação?"
-
-    if ($confirmed -eq $false) {
+    if (-not (Confirm-Action "Deseja desativar a hibernação?")) {
         Write-Host ""
-        Write-Host "Operação cancelada." -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
         Write-Host ""
         Pause
         return
     }
 
     try {
-        powercfg.exe /hibernate off
-
+        Invoke-NativeCommandDirect -FilePath "powercfg.exe" -Arguments @("/hibernate", "off")
         Write-Host ""
-        Write-Host "Hibernação desativada." -ForegroundColor Green
+        Write-WinForgeStatus -Type Success -Message "Hibernação desativada."
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro ao desativar a hibernação:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Falha ao desativar a hibernação."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -137,42 +132,39 @@ function Disable-Hibernation {
 function Disable-AutomaticDisplayAndSleepTimeout {
     Show-Header "Desativar Desligamento de Tela e Suspensão"
 
-    Write-Host "Esta opção evita que o Windows desligue a tela ou entre em suspensão automaticamente." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Configurações aplicadas:" -ForegroundColor Cyan
-    Write-Host "Tela na tomada: Nunca"
-    Write-Host "Tela na bateria: Nunca"
-    Write-Host "Suspensão na tomada: Nunca"
-    Write-Host "Suspensão na bateria: Nunca"
-    Write-Host "Hibernação na tomada: Nunca"
-    Write-Host "Hibernação na bateria: Nunca"
+    Write-Host "Esta opção configura tela, suspensão e hibernação automática como Nunca." -ForegroundColor Yellow
+    Write-Host "A configuração será aplicada tanto na tomada quanto na bateria." -ForegroundColor Cyan
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja aplicar estas configurações de energia?"
-
-    if ($confirmed -eq $false) {
+    if (-not (Confirm-Action "Deseja aplicar estas configurações de energia?")) {
         Write-Host ""
-        Write-Host "Operação cancelada." -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
         Write-Host ""
         Pause
         return
     }
 
     try {
-        powercfg.exe /change monitor-timeout-ac 0
-        powercfg.exe /change monitor-timeout-dc 0
-        powercfg.exe /change standby-timeout-ac 0
-        powercfg.exe /change standby-timeout-dc 0
-        powercfg.exe /change hibernate-timeout-ac 0
-        powercfg.exe /change hibernate-timeout-dc 0
+        $commands = @(
+            @("/change", "monitor-timeout-ac", "0"),
+            @("/change", "monitor-timeout-dc", "0"),
+            @("/change", "standby-timeout-ac", "0"),
+            @("/change", "standby-timeout-dc", "0"),
+            @("/change", "hibernate-timeout-ac", "0"),
+            @("/change", "hibernate-timeout-dc", "0")
+        )
+
+        foreach ($arguments in $commands) {
+            Invoke-NativeCommandDirect -FilePath "powercfg.exe" -Arguments $arguments
+        }
 
         Write-Host ""
-        Write-Host "Desligamento automático de tela, suspensão e hibernação foram desativados." -ForegroundColor Green
+        Write-WinForgeStatus -Type Success -Message "Timeouts automáticos de energia desativados."
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro ao alterar configurações de energia:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Falha ao alterar as configurações de energia."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -183,33 +175,30 @@ function Disable-AutomaticDisplayAndSleepTimeout {
 function Disable-PciExpressLinkStatePowerManagement {
     Show-Header "Desativar Economia de Energia PCI Express"
 
-    Write-Host "Esta opção desativa o Link State Power Management do PCI Express no plano de energia atual." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Pode ajudar em troubleshooting de GPU, PCIe, idle, tela, suspensão e instabilidade de vídeo." -ForegroundColor Cyan
+    Write-Host "Esta opção desativa o Link State Power Management do PCI Express no plano atual." -ForegroundColor Yellow
+    Write-Host "Pode ser útil em diagnósticos de instabilidade de GPU ou dispositivos PCIe." -ForegroundColor Cyan
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja aplicar esta configuração?"
-
-    if ($confirmed -eq $false) {
+    if (-not (Confirm-Action "Deseja aplicar esta configuração?")) {
         Write-Host ""
-        Write-Host "Operação cancelada." -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
         Write-Host ""
         Pause
         return
     }
 
     try {
-        powercfg.exe /setacvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0
-        powercfg.exe /setdcvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0
-        powercfg.exe /setactive SCHEME_CURRENT
+        Invoke-NativeCommandDirect -FilePath "powercfg.exe" -Arguments @("/setacvalueindex", "SCHEME_CURRENT", "SUB_PCIEXPRESS", "ASPM", "0")
+        Invoke-NativeCommandDirect -FilePath "powercfg.exe" -Arguments @("/setdcvalueindex", "SCHEME_CURRENT", "SUB_PCIEXPRESS", "ASPM", "0")
+        Invoke-NativeCommandDirect -FilePath "powercfg.exe" -Arguments @("/setactive", "SCHEME_CURRENT")
 
         Write-Host ""
-        Write-Host "Economia de energia PCI Express desativada." -ForegroundColor Green
+        Write-WinForgeStatus -Type Success -Message "Economia de energia PCI Express desativada."
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro ao alterar configurações PCI Express:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Falha ao alterar a configuração PCI Express."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -328,9 +317,7 @@ function Enable-FileExtensions {
         $restartExplorer = Confirm-Action "Deseja reiniciar o Explorador de Arquivos agora para aplicar?"
 
         if ($restartExplorer) {
-            Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-            Start-Process "explorer.exe"
+            Restart-WinForgeExplorerShell
         }
     }
     catch {
@@ -344,30 +331,95 @@ function Enable-FileExtensions {
 }
 
 
-function Open-InstalledAppsManagement {
+function Enable-HiddenFiles {
+    Show-Header "Mostrar Arquivos e Pastas Ocultos"
+
+    Write-Host "Esta opção exibe itens ocultos no Explorador de Arquivos." -ForegroundColor Yellow
+    Write-Host "Arquivos protegidos do sistema continuam ocultos." -ForegroundColor DarkGray
+    Write-Host ""
+
+    if (-not (Confirm-Action "Deseja mostrar arquivos e pastas ocultos?")) {
+        Write-Host ""
+        Write-WinForgeStatus -Type "Warning" -Message "Operação cancelada."
+        Write-Host ""
+        Pause
+        return
+    }
+
+    try {
+        Set-RegistryDWordValue `
+            -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+            -Name "Hidden" `
+            -Value 1
+
+        Write-Host ""
+        Write-WinForgeStatus -Type "Success" -Message "Arquivos e pastas ocultos foram habilitados."
+        Write-Host ""
+
+        if (Confirm-Action "Deseja reiniciar o Explorador de Arquivos agora para aplicar?") {
+            Restart-WinForgeExplorerShell
+        }
+    }
+    catch {
+        Write-Host ""
+        Write-WinForgeStatus -Type "Error" -Message "Falha ao alterar a exibição: $($_.Exception.Message)"
+    }
+
+    Write-Host ""
+    Pause
+}
+
+
+function Open-ProgramsAndFeatures {
     param (
         [switch]$SkipHeader,
         [switch]$SkipPause
     )
 
     if (-not $SkipHeader) {
-        Show-Header "Aplicativos Instalados"
+        Show-Header "Programas e Recursos"
+    }
+
+    try {
+        Write-Host "Abrindo Programas e Recursos pelo Painel de Controle..." -ForegroundColor Green
+        Start-Process -FilePath "control.exe" -ArgumentList "appwiz.cpl"
+
+        Write-Host ""
+        Write-Host "Remova somente programas que você reconhece e não utiliza." -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host ""
+        Write-Host "Ocorreu um erro ao abrir Programas e Recursos:" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+    }
+
+    if (-not $SkipPause) {
+        Write-Host ""
+        Pause
+    }
+}
+
+
+function Open-WindowsInstalledApps {
+    param (
+        [switch]$SkipHeader,
+        [switch]$SkipPause
+    )
+
+    if (-not $SkipHeader) {
+        Show-Header "Aplicativos Instalados do Windows"
     }
 
     try {
         Write-Host "Abrindo Aplicativos instalados do Windows..." -ForegroundColor Green
         Start-Process "ms-settings:appsfeatures"
 
-        Write-Host "Abrindo Programas e Recursos clássico..." -ForegroundColor Green
-        Start-Process -FilePath "control.exe" -ArgumentList "appwiz.cpl"
-
         Write-Host ""
-        Write-Host "Revise os programas instalados e remova apenas o que você reconhece e não usa." -ForegroundColor Yellow
-        Write-Host "Não remova drivers, runtimes, Visual C++, .NET, chipset, GPU ou componentes do sistema sem certeza." -ForegroundColor Yellow
+        Write-Host "Remova somente aplicativos que você reconhece e não utiliza." -ForegroundColor Yellow
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro ao abrir a tela de aplicativos instalados:" -ForegroundColor Red
+        Write-Host "Ocorreu um erro ao abrir Aplicativos instalados:" -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 

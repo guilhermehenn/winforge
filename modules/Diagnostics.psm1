@@ -142,28 +142,10 @@ function Get-WinForgeDiskSummary {
                 }
             }
             catch {
-                try {
-                    $physicalDisk = Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object -First 1
-
-                    if ($null -ne $physicalDisk) {
-                        if (-not [string]::IsNullOrWhiteSpace($physicalDisk.Model)) {
-                            $diskModel = $physicalDisk.Model
-                        }
-
-                        if (-not [string]::IsNullOrWhiteSpace($physicalDisk.MediaType)) {
-                            if ($physicalDisk.MediaType -match "SSD") { $diskType = "SSD" }
-                            elseif ($physicalDisk.MediaType -match "HDD|Fixed") { $diskType = "HDD" }
-                            else { $diskType = $physicalDisk.MediaType }
-                        }
-                        elseif (-not [string]::IsNullOrWhiteSpace($physicalDisk.InterfaceType)) {
-                            $diskType = $physicalDisk.InterfaceType
-                        }
-                    }
-                }
-                catch {
-                    $diskModel = "Não disponível"
-                    $diskType = "Não disponível"
-                }
+                # Não associa o primeiro disco físico a todas as unidades. Em sistemas
+                # com múltiplos discos, essa inferência produziria dados incorretos.
+                $diskModel = "Não disponível"
+                $diskType = "Não disponível"
             }
 
             $totalBytes = $logicalDisk.Size
@@ -196,10 +178,6 @@ function Get-WinForgeDiskSummary {
 
 
 function Show-WinForgeDiskSummary {
-    param (
-        [switch]$IncludeSpeedTable
-    )
-
     $disks = @(Get-WinForgeDiskSummary)
 
     if ($disks.Count -eq 0) {
@@ -208,27 +186,11 @@ function Show-WinForgeDiskSummary {
     }
 
     $disks | Format-Table Unidade, Tipo, Modelo, Total, Livre, Usado, Uso -AutoSize | Out-Host
-
-    if ($IncludeSpeedTable) {
-        Write-Host ""
-        Write-Host "Velocidade dos discos, se disponível:" -ForegroundColor Cyan
-        Write-Host ""
-
-        $disks |
-            Select-Object `
-                @{ Name = "Disco"; Expression = { $_.Modelo } },
-                @{ Name = "Leitura"; Expression = { "Não disponível" } },
-                @{ Name = "Escrita"; Expression = { "Não disponível" } } |
-            Format-Table -AutoSize |
-            Out-Host
-
-        Write-Host "Observação: o WinForge não inventa velocidades. Leitura/escrita só serão exibidas quando houver fonte confiável." -ForegroundColor Yellow
-    }
 }
 
 
 function Show-AboutThisPC {
-    Show-Header "Sobre Este PC"
+    Show-Header "Sobre este PC"
 
     try {
         $baseBoard = Get-CimInstance Win32_BaseBoard
@@ -304,48 +266,44 @@ function Show-AboutThisPC {
             $lastBootText = $lastBootTime.ToString("dd/MM/yyyy HH:mm")
         }
 
-        Write-Host "Sistema" -ForegroundColor Cyan
-        Write-Host "Computador:          $computerName"
-        Write-Host "Usuário:             $userName"
-        Write-Host "Sistema Operacional: $windowsName"
-        Write-Host "Versão:              $windowsVersion"
-        Write-Host "Build:               $windowsBuild"
-        Write-Host "Ligado há: $pcUptimeText | Inicializado em: $lastBootText"
-        Write-Host ""
+        Write-WinForgeSection -Title "Sistema"
+        Write-WinForgeKeyValue -Label "Computador" -Value $computerName
+        Write-WinForgeKeyValue -Label "Usuário" -Value $userName
+        Write-WinForgeKeyValue -Label "Sistema operacional" -Value $windowsName
+        Write-WinForgeKeyValue -Label "Versão" -Value $windowsVersion
+        Write-WinForgeKeyValue -Label "Build" -Value $windowsBuild
+        Write-WinForgeKeyValue -Label "Tempo ligado" -Value $pcUptimeText
+        Write-WinForgeKeyValue -Label "Última inicialização" -Value $lastBootText
 
-        Write-Host "Placa-mãe" -ForegroundColor Cyan
-        Write-Host "Fabricante: $motherboardManufacturer"
-        Write-Host "Modelo:     $motherboardModel"
-        Write-Host ""
+        Write-WinForgeSection -Title "Placa-mãe"
+        Write-WinForgeKeyValue -Label "Fabricante" -Value $motherboardManufacturer
+        Write-WinForgeKeyValue -Label "Modelo" -Value $motherboardModel
 
-        Write-Host "BIOS / Secure Boot" -ForegroundColor Cyan
-        Write-Host "Versão da BIOS: $biosVersion"
-        Write-Host "Secure Boot:    $secureBootStatus"
-        Write-Host ""
+        Write-WinForgeSection -Title "BIOS e segurança"
+        Write-WinForgeKeyValue -Label "Versão da BIOS" -Value $biosVersion
+        Write-WinForgeKeyValue -Label "Secure Boot" -Value $secureBootStatus
 
-        Write-Host "Processador" -ForegroundColor Cyan
-        Write-Host "CPU:          $cpuName"
-        Write-Host "Clock atual:  $cpuCurrentClockGHz GHz"
-        Write-Host "Clock máximo: $cpuMaxClockGHz GHz"
-        Write-Host ""
+        Write-WinForgeSection -Title "Processador"
+        Write-WinForgeKeyValue -Label "CPU" -Value $cpuName
+        Write-WinForgeKeyValue -Label "Clock atual" -Value "$cpuCurrentClockGHz GHz"
+        Write-WinForgeKeyValue -Label "Clock máximo" -Value "$cpuMaxClockGHz GHz"
 
-        Write-Host "Memória" -ForegroundColor Cyan
-        Write-Host "RAM total:              $totalRamGB GB"
-        Write-Host "Módulos:                $moduleCount"
-        Write-Host "Tipo:                   $memoryType"
-        Write-Host "Velocidade configurada: $ramClockText"
-        Write-Host "Status XMP/EXPO:        $expoXmpStatus"
-        Write-Host ""
+        Write-WinForgeSection -Title "Memória"
+        Write-WinForgeKeyValue -Label "RAM total" -Value "$totalRamGB GB"
+        Write-WinForgeKeyValue -Label "Módulos" -Value $moduleCount
+        Write-WinForgeKeyValue -Label "Tipo" -Value $memoryType
+        Write-WinForgeKeyValue -Label "Velocidade configurada" -Value $ramClockText
+        Write-WinForgeKeyValue -Label "Status XMP/EXPO" -Value $expoXmpStatus
 
-        Write-Host "Vídeo" -ForegroundColor Cyan
+        Write-WinForgeSection -Title "Vídeo"
 
         foreach ($gpu in $validGpus) {
             $gpuName = $gpu.Name.Trim()
             $isIntegratedGpu = Test-IsIntegratedGpu -GpuName $gpuName
 
             if ($isIntegratedGpu) {
-                Write-Host "GPU:  $gpuName"
-                Write-Host "VRAM: Memória compartilhada / GPU integrada"
+                Write-WinForgeKeyValue -Label "GPU" -Value $gpuName
+                Write-WinForgeKeyValue -Label "VRAM" -Value "Memória compartilhada / GPU integrada"
                 Write-Host ""
                 continue
             }
@@ -362,18 +320,16 @@ function Show-AboutThisPC {
                 $vramText = "Desconhecido"
             }
 
-            Write-Host "GPU:  $gpuName"
-            Write-Host "VRAM: $vramText"
+            Write-WinForgeKeyValue -Label "GPU" -Value $gpuName
+            Write-WinForgeKeyValue -Label "VRAM" -Value $vramText
             Write-Host ""
         }
 
-        Write-Host "Discos" -ForegroundColor Cyan
-        Write-Host ""
-        Show-WinForgeDiskSummary -IncludeSpeedTable
+        Write-WinForgeSection -Title "Discos"
+        Show-WinForgeDiskSummary
         Write-Host ""
 
-        Write-Host "Nota: o status XMP/EXPO é inferido pela velocidade configurada da RAM." -ForegroundColor Yellow
-        Write-Host "O Windows não expõe diretamente o estado do perfil de memória da BIOS." -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Info -Message "XMP/EXPO é inferido pela velocidade configurada; o Windows não expõe o perfil da BIOS diretamente."
     }
     catch {
         Write-Host "Ocorreu um erro ao ler as informações do sistema:" -ForegroundColor Red
@@ -419,8 +375,7 @@ function Show-ProblemDevices {
             }
         )
 
-        Write-Host "Dispositivos presentes com driver ausente, falha ou problema ativo:" -ForegroundColor Cyan
-        Write-Host ""
+        Write-WinForgeSection -Title "Problemas ativos"
 
         if ($realProblems.Count -eq 0) {
             Write-Host "Nenhum dispositivo presente com problema real foi encontrado." -ForegroundColor Green
@@ -434,8 +389,7 @@ function Show-ProblemDevices {
         Write-Host ""
 
         if ($disabledDevices.Count -gt 0) {
-            Write-Host "Dispositivos desativados detectados:" -ForegroundColor Yellow
-            Write-Host ""
+            Write-WinForgeSection -Title "Dispositivos desativados"
 
             $disabledDevices |
                 Select-Object Status, Class, FriendlyName, Problem, InstanceId |
@@ -446,8 +400,7 @@ function Show-ProblemDevices {
         }
 
         Write-Host ""
-        Write-Host "Observação:" -ForegroundColor Yellow
-        Write-Host "Esta verificação mostra erros ativos de dispositivo/driver, mas não garante que todos os drivers estejam na versão mais recente." -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Info -Message "A verificação mostra falhas ativas; não compara versões de drivers."
     }
     catch {
         Write-Host "Ocorreu um erro ao consultar dispositivos PnP:" -ForegroundColor Red
@@ -461,17 +414,11 @@ function Show-ProblemDevices {
 
 function Invoke-DISMRestoreHealth {
     Invoke-DiagnosticCommand `
-        -Title "Reparar Imagem do Windows" `
+        -Title "Reparar Imagem e Componentes do Windows" `
         -FilePath "dism.exe" `
         -Arguments @("/Online", "/Cleanup-Image", "/RestoreHealth") `
-        -Description @(
-            "Verifica e repara a imagem/componentes do Windows.",
-            "Útil quando atualizações, componentes ou arquivos do sistema podem estar corrompidos."
-        ) `
-        -Warnings @(
-            "Esta operação pode levar vários minutos.",
-            "Arquivos pessoais não serão removidos."
-        )
+        -Description @("Repara a imagem de componentes usada pelo Windows.") `
+        -Warnings @("Pode levar vários minutos. Arquivos pessoais não serão removidos.")
 }
 
 
@@ -480,166 +427,324 @@ function Invoke-SFCScannow {
         -Title "Verificar e Reparar Arquivos do Sistema" `
         -FilePath "sfc.exe" `
         -Arguments @("/scannow") `
-        -Description @(
-            "Verifica arquivos protegidos do sistema Windows.",
-            "Se arquivos corrompidos forem encontrados, o Windows tentará repará-los."
-        ) `
-        -Warnings @(
-            "Esta operação pode levar vários minutos.",
-            "Arquivos pessoais não serão removidos."
-        )
+        -Description @("Verifica arquivos protegidos do Windows e tenta reparar inconsistências.") `
+        -Warnings @("Pode levar vários minutos. Arquivos pessoais não serão removidos.")
 }
 
 
 function Invoke-DISMAndSFC {
     Show-Header "Reparar Windows"
 
-    Write-Host "O WinForge executará a sequência recomendada de reparo:" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "1. Reparar imagem do Windows" -ForegroundColor Cyan
-    Write-Host "2. Verificar e reparar arquivos do sistema" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "Arquivos pessoais não serão removidos." -ForegroundColor Yellow
+    Write-Host "Serão executados DISM e SFC, nesta ordem." -ForegroundColor Yellow
+    Write-Host "Arquivos pessoais não serão removidos." -ForegroundColor Cyan
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja iniciar o reparo do Windows?"
-
-    if ($confirmed -eq $false) {
-        Write-Host ""
-        Write-Host "Operação cancelada." -ForegroundColor Yellow
-        Write-Host ""
+    if (-not (Confirm-Action "Deseja iniciar o reparo?")) {
+        Write-Host "`nOperação cancelada.`n" -ForegroundColor Yellow
         Pause
         return
     }
 
     $dismSuccess = Invoke-DiagnosticCommand `
-        -Title "Etapa 1 - Reparar Imagem do Windows" `
+        -Title "Etapa 1 - Reparar Imagem e Componentes do Windows" `
         -FilePath "dism.exe" `
         -Arguments @("/Online", "/Cleanup-Image", "/RestoreHealth") `
-        -Description @("Reparando a imagem/componentes do Windows.") `
-        -Warnings @("Isto pode levar vários minutos.") `
+        -Description @("Executando DISM /RestoreHealth.") `
         -SkipConfirmation `
         -NoClear `
         -NoPause
 
-    if ($dismSuccess -eq $false) {
-        Write-Host ""
-        Write-Host "A primeira etapa não foi concluída com sucesso." -ForegroundColor Yellow
-        Write-Host "A verificação de arquivos do sistema ainda será executada." -ForegroundColor Yellow
-        Write-Host ""
+    if (-not $dismSuccess) {
+        Write-Host "`nDISM finalizou com alertas. O SFC será executado mesmo assim.`n" -ForegroundColor Yellow
     }
 
     $sfcSuccess = Invoke-DiagnosticCommand `
         -Title "Etapa 2 - Verificar e Reparar Arquivos do Sistema" `
         -FilePath "sfc.exe" `
         -Arguments @("/scannow") `
-        -Description @("Verificando arquivos protegidos do sistema.") `
-        -Warnings @("Isto pode levar vários minutos.") `
+        -Description @("Executando SFC /scannow.") `
         -SkipConfirmation `
         -NoClear `
         -NoPause
 
     Write-Host ""
-    Write-Host "Resumo do reparo" -ForegroundColor Cyan
-    Write-Host ""
+    Write-Host "Resumo" -ForegroundColor Cyan
 
-    if ($dismSuccess) { Write-Host "Imagem do Windows: concluída com sucesso" -ForegroundColor Green } else { Write-Host "Imagem do Windows: finalizada com alertas ou erros" -ForegroundColor Yellow }
-    if ($sfcSuccess) { Write-Host "Arquivos do sistema: concluído com sucesso" -ForegroundColor Green } else { Write-Host "Arquivos do sistema: finalizado com alertas ou erros" -ForegroundColor Yellow }
+    if ($dismSuccess) {
+        Write-Host "DISM: OK" -ForegroundColor Green
+    }
+    else {
+        Write-Host "DISM: verificar saída" -ForegroundColor Yellow
+    }
+
+    if ($sfcSuccess) {
+        Write-Host "SFC:  OK" -ForegroundColor Green
+    }
+    else {
+        Write-Host "SFC:  verificar saída" -ForegroundColor Yellow
+    }
 
     Write-Host ""
     Pause
 }
 
 
+function Test-WinForgeChkdskRepairRequired {
+    param (
+        [int]$ExitCode,
+        [string]$OutputText
+    )
 
-function Invoke-CHKDSKScan {
-    Show-Header "Verificar Disco com CHKDSK"
+    # CHKDSK usa códigos de saída independentes do idioma do Windows.
+    if ($ExitCode -ge 2) {
+        return $true
+    }
+
+    return (
+        $OutputText -match "spotfix" -or
+        $OutputText -match "offline repair" -or
+        $OutputText -match "reparo offline" -or
+        $OutputText -match "next restart" -or
+        $OutputText -match "próxima reinicialização" -or
+        $OutputText -match "proxima reinicializacao"
+    )
+}
+
+
+function Set-WinForgeChkdskStartupRepair {
+    param (
+        [string]$Drive,
+        [switch]$ThrowOnFailure
+    )
+
+    try {
+        foreach ($command in @("fsutil.exe", "chkntfs.exe")) {
+            if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+                throw "Comando não encontrado: $command"
+            }
+        }
+
+        # Marca o volume como pendente e agenda o Autochk no próximo boot.
+        & fsutil.exe dirty set $Drive
+        if ($LASTEXITCODE -ne 0) {
+            throw "Não foi possível marcar a unidade para reparo. Código: $LASTEXITCODE."
+        }
+
+        & chkntfs.exe /C $Drive
+        if ($LASTEXITCODE -ne 0) {
+            throw "Não foi possível agendar o CHKDSK. Código: $LASTEXITCODE."
+        }
+
+        Write-Host "Reparo agendado para a próxima reinicialização." -ForegroundColor Green
+        return $true
+    }
+    catch {
+        if ($ThrowOnFailure) {
+            throw
+        }
+
+        Write-Host "Falha ao agendar o reparo: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
+
+function Invoke-WinForgeChkdskScan {
+    param (
+        [switch]$SkipConfirmation,
+        [switch]$NoClear,
+        [switch]$NoPause,
+        [switch]$ScheduleRepairAutomatically,
+        [switch]$ThrowOnFailure
+    )
+
+    if (-not $NoClear) {
+        Show-Header "Verificar Sistema de Arquivos da Unidade"
+    }
+    else {
+        Write-WinForgeSubStep "CHKDSK" "Verificando o sistema de arquivos da unidade do Windows."
+    }
+
+    if (-not (Test-IsAdministrator)) {
+        $message = "Privilégios de Administrador são necessários para executar o CHKDSK."
+        if ($ThrowOnFailure) { throw $message }
+        Write-Host $message -ForegroundColor Red
+        if (-not $NoPause) { Write-Host ""; Pause }
+        return $false
+    }
+
+    if (-not (Get-Command "chkdsk.exe" -ErrorAction SilentlyContinue)) {
+        $message = "Comando não encontrado: chkdsk.exe"
+        if ($ThrowOnFailure) { throw $message }
+        Write-Host $message -ForegroundColor Red
+        if (-not $NoPause) { Write-Host ""; Pause }
+        return $false
+    }
 
     $drive = $env:SystemDrive
+    $arguments = @($drive, "/scan")
 
-    Write-Host "Esta opção verifica erros no sistema de arquivos e no disco do sistema." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Comando inicial:" -ForegroundColor Cyan
-    Write-Host "chkdsk.exe $drive /scan"
-    Write-Host ""
-    Write-Host "A verificação online mantém a saída visível e não usa /R." -ForegroundColor Yellow
-    Write-Host "Se o Windows indicar reparo pendente, o WinForge perguntará antes de agendar verificação no próximo reinício." -ForegroundColor Yellow
+    Write-WinForgeKeyValue -Label "Unidade" -Value $drive
+    Write-WinForgeKeyValue -Label "Modo" -Value "Verificação online"
+    Write-WinForgeCommand -Command "chkdsk.exe $($arguments -join ' ')"
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja verificar o disco com CHKDSK?"
-
-    if ($confirmed -eq $false) {
-        Write-Host ""
-        Write-Host "Operação cancelada." -ForegroundColor Yellow
-        Write-Host ""
-        Pause
-        return
+    if (-not $SkipConfirmation -and -not (Confirm-Action "Deseja iniciar a verificação?")) {
+        Write-Host "`nOperação cancelada." -ForegroundColor Yellow
+        if (-not $NoPause) { Write-Host ""; Pause }
+        return $false
     }
 
     try {
-        Write-Host ""
-        $chkdskOutput = chkdsk.exe $drive /scan 2>&1
-        $chkdskOutput | ForEach-Object { Write-Host $_ }
+        $output = chkdsk.exe @arguments 2>&1
+        $output | ForEach-Object { Write-Host $_ }
         $exitCode = $LASTEXITCODE
-        $outputText = $chkdskOutput -join "`n"
+        $outputText = $output -join "`n"
 
+        Write-Host ""
+        switch ($exitCode) {
+            0 { Write-Host "Nenhum erro foi encontrado." -ForegroundColor Green }
+            1 { Write-Host "Erros foram encontrados e corrigidos." -ForegroundColor Green }
+            2 { Write-Host "Foram encontrados itens que exigem reparo adicional." -ForegroundColor Yellow }
+            3 { Write-Host "A unidade não pôde ser verificada ou reparada completamente." -ForegroundColor Yellow }
+            default { Write-Host "CHKDSK finalizou com código $exitCode." -ForegroundColor Yellow }
+        }
+
+        $repairRequired = Test-WinForgeChkdskRepairRequired -ExitCode $exitCode -OutputText $outputText
+
+        if ($repairRequired) {
+            Write-Host ""
+            Write-Host "O Windows precisa concluir o reparo durante a inicialização." -ForegroundColor Yellow
+
+            $scheduleRepair = $ScheduleRepairAutomatically
+            if (-not $ScheduleRepairAutomatically) {
+                $scheduleRepair = Confirm-Action "Deseja agendar o reparo para a próxima reinicialização?"
+            }
+
+            if ($scheduleRepair) {
+                Set-WinForgeChkdskStartupRepair -Drive $drive -ThrowOnFailure:$ThrowOnFailure | Out-Null
+            }
+            else {
+                Write-Host "Reparo não agendado." -ForegroundColor Yellow
+            }
+        }
+
+        if ($ThrowOnFailure -and $exitCode -gt 1 -and -not $repairRequired) {
+            throw "CHKDSK finalizou com código $exitCode."
+        }
+
+        return ($exitCode -le 1 -or $repairRequired)
+    }
+    catch {
+        if ($ThrowOnFailure) {
+            throw
+        }
+
+        Write-Host "`nErro ao executar CHKDSK: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+    finally {
+        if (-not $NoPause) {
+            Write-Host ""
+            Pause
+        }
+    }
+}
+
+
+function Invoke-CHKDSKScan {
+    Invoke-WinForgeChkdskScan | Out-Null
+}
+
+
+function Invoke-WinForgeDriveOptimization {
+    param (
+        [switch]$SkipConfirmation,
+        [switch]$NoClear,
+        [switch]$NoPause,
+        [switch]$ThrowOnFailure
+    )
+
+    if (-not $NoClear) {
+        Show-Header "Otimizar Unidade do Sistema"
+    }
+    else {
+        Write-WinForgeSubStep "Otimização" "Aplicando a operação adequada ao tipo de mídia."
+    }
+
+    if (-not (Test-IsAdministrator)) {
+        $message = "Privilégios de Administrador são necessários para otimizar a unidade."
+        if ($ThrowOnFailure) { throw $message }
+        Write-Host $message -ForegroundColor Red
+        if (-not $NoPause) { Write-Host ""; Pause }
+        return $false
+    }
+
+    if (-not (Get-Command "defrag.exe" -ErrorAction SilentlyContinue)) {
+        $message = "Comando não encontrado: defrag.exe"
+        if ($ThrowOnFailure) { throw $message }
+        Write-Host $message -ForegroundColor Red
+        if (-not $NoPause) { Write-Host ""; Pause }
+        return $false
+    }
+
+    $drive = $env:SystemDrive
+    $arguments = @($drive, "/O", "/U", "/V")
+
+    # /O delega ao Windows a escolha correta: retrim/otimização para SSD e desfragmentação para HDD.
+    Write-WinForgeKeyValue -Label "Unidade" -Value $drive
+    Write-WinForgeKeyValue -Label "Modo" -Value "Automático para SSD/HDD"
+    Write-WinForgeCommand -Command "defrag.exe $($arguments -join ' ')"
+    Write-Host ""
+
+    if (-not $SkipConfirmation -and -not (Confirm-Action "Deseja iniciar a otimização?")) {
+        Write-Host "`nOperação cancelada." -ForegroundColor Yellow
+        if (-not $NoPause) { Write-Host ""; Pause }
+        return $false
+    }
+
+    try {
+        & defrag.exe @arguments
+        $exitCode = $LASTEXITCODE
         Write-Host ""
 
         if ($exitCode -eq 0) {
-            Write-Host "CHKDSK finalizado sem erros críticos reportados." -ForegroundColor Green
-        }
-        else {
-            Write-Host "CHKDSK finalizou com código de saída: $exitCode" -ForegroundColor Yellow
-            Write-Host "Revise a saída acima." -ForegroundColor Yellow
+            Write-Host "Otimização concluída." -ForegroundColor Green
+            return $true
         }
 
-        $needsScheduledCheck = (
-            $outputText -match "spotfix" -or
-            $outputText -match "offline" -or
-            $outputText -match "next restart" -or
-            $outputText -match "next time" -or
-            $outputText -match "próxima reinicialização" -or
-            $outputText -match "proxima reinicializacao" -or
-            $outputText -match "reinicie"
-        )
-
-        if ($needsScheduledCheck) {
-            Write-Host ""
-            Write-Host "O CHKDSK indicou que pode haver verificação ou reparo pendente para o próximo reinício." -ForegroundColor Yellow
-            Write-Host ""
-
-            $scheduleConfirmed = Confirm-Action "Deseja agendar a verificação do disco para a próxima reinicialização?"
-
-            if ($scheduleConfirmed) {
-                Write-Host ""
-                Write-Host "Comando: chkntfs.exe /C $drive" -ForegroundColor DarkCyan
-                chkntfs.exe /C $drive
-                Write-Host "Verificação agendada. Reinicie o Windows para executar." -ForegroundColor Green
-            }
-            else {
-                Write-Host ""
-                Write-Host "Agendamento não realizado." -ForegroundColor Yellow
-            }
-        }
+        $message = "A otimização finalizou com código $exitCode."
+        if ($ThrowOnFailure) { throw $message }
+        Write-Host $message -ForegroundColor Yellow
+        return $false
     }
     catch {
-        Write-Host ""
-        Write-Host "Ocorreu um erro ao executar CHKDSK:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-    }
+        if ($ThrowOnFailure) {
+            throw
+        }
 
-    Write-Host ""
-    Pause
+        Write-Host "`nErro ao otimizar a unidade: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+    finally {
+        if (-not $NoPause) {
+            Write-Host ""
+            Pause
+        }
+    }
 }
 
+
+function Invoke-DriveOptimization {
+    Invoke-WinForgeDriveOptimization | Out-Null
+}
 
 function Show-DiskInformation {
     Show-Header "Informações de Disco"
 
     try {
-        Write-Host "Volumes e discos" -ForegroundColor Cyan
-        Write-Host ""
-        Show-WinForgeDiskSummary -IncludeSpeedTable
+        Write-WinForgeSection -Title "Volumes e discos"
+        Show-WinForgeDiskSummary
     }
     catch {
         Write-Host "Ocorreu um erro ao consultar informações de disco:" -ForegroundColor Red
@@ -658,14 +763,15 @@ function Show-StartupInformation {
         $lastBootTime = $os.LastBootUpTime
 
         if ($null -ne $lastBootTime) {
-            Write-Host "Ligado há: $(Get-WinForgeUptimeText -LastBootTime $lastBootTime) | Inicializado em: $($lastBootTime.ToString('dd/MM/yyyy HH:mm'))" -ForegroundColor Cyan
+            Write-WinForgeSection -Title "Inicialização"
+            Write-WinForgeKeyValue -Label "Tempo ligado" -Value (Get-WinForgeUptimeText -LastBootTime $lastBootTime)
+            Write-WinForgeKeyValue -Label "Última inicialização" -Value ($lastBootTime.ToString('dd/MM/yyyy HH:mm'))
         }
         else {
             Write-Host "Inicialização: Desconhecida" -ForegroundColor Yellow
         }
 
-        Write-Host ""
-        Write-Host "Inicialização Rápida" -ForegroundColor Cyan
+        Write-WinForgeSection -Title "Inicialização Rápida"
 
         $fastStartupPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
         $fastStartupValue = $null
@@ -677,17 +783,44 @@ function Show-StartupInformation {
             $fastStartupValue = $null
         }
 
-        if ($fastStartupValue -eq 1) { Write-Host "Status: Ativada" }
-        elseif ($fastStartupValue -eq 0) { Write-Host "Status: Desativada" }
-        else { Write-Host "Status: Desconhecido" }
+        if ($fastStartupValue -eq 1) { Write-WinForgeKeyValue -Label "Status" -Value "Ativada" }
+        elseif ($fastStartupValue -eq 0) { Write-WinForgeKeyValue -Label "Status" -Value "Desativada" }
+        else { Write-WinForgeKeyValue -Label "Status" -Value "Desconhecido" }
 
-        Write-Host ""
-        Write-Host "Hibernação / modos de energia" -ForegroundColor Cyan
-        powercfg.exe /a
+        Write-WinForgeSection -Title "Hibernação e modos de energia"
+
+        if (Get-Command "powercfg.exe" -ErrorAction SilentlyContinue) {
+            & powercfg.exe /a
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-WinForgeStatus -Type Warning -Message "powercfg finalizou com código $LASTEXITCODE."
+            }
+        }
+        else {
+            Write-WinForgeStatus -Type Warning -Message "powercfg.exe não foi encontrado."
+        }
     }
     catch {
         Write-Host "Ocorreu um erro ao consultar informações de inicialização:" -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
+    }
+
+    Write-Host ""
+    Pause
+}
+
+
+function Open-DeviceManager {
+    Show-Header "Gerenciador de Dispositivos"
+
+    try {
+        Write-WinForgeStatus -Type Running -Message "Abrindo Gerenciador de Dispositivos..."
+        Start-Process -FilePath "mmc.exe" -ArgumentList "devmgmt.msc"
+        Write-WinForgeOk "Gerenciador de Dispositivos aberto."
+    }
+    catch {
+        Write-WinForgeStatus -Type Error -Message "Não foi possível abrir o Gerenciador de Dispositivos."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""

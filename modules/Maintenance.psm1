@@ -6,9 +6,7 @@
         [scriptblock]$Action
     )
 
-    Write-Host ""
-    Write-Host "Etapa manual $StepNumber - $Title" -ForegroundColor Cyan
-    Write-Host "------------------------------------" -ForegroundColor DarkGray
+    Write-WinForgeSection -Title "Etapa manual $StepNumber de 8 - $Title"
 
     foreach ($line in $Description) {
         Write-Host $line -ForegroundColor Yellow
@@ -18,7 +16,7 @@
 
     try {
         & $Action
-        Write-Host "Janela aberta." -ForegroundColor Green
+        Write-WinForgeStatus -Type Success -Message "Janela aberta."
     }
     catch {
         Write-Host "Falha ao abrir esta etapa:" -ForegroundColor Red
@@ -32,19 +30,13 @@
 
 function Confirm-RecommendedAutomaticActions {
     Write-Host ""
-    Write-Host "A próxima fase executará ações automáticas no sistema." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Serão executados limpeza, reparos do Windows, CHKDSK, winget, PnP, rede e ajustes do sistema." -ForegroundColor Cyan
-    Write-Host "A conexão de rede pode cair temporariamente." -ForegroundColor Yellow
-    Write-Host "O processo pode demorar bastante." -ForegroundColor Yellow
+    Write-Host "A próxima fase altera o sistema e pode interromper a rede temporariamente." -ForegroundColor Yellow
     Write-Host ""
 
-    $typedText = Read-Host "Digite WINFORGE para iniciar as ações automáticas"
+    $typedText = Read-Host "Digite WINFORGE para iniciar"
 
     if ($typedText.Trim().ToUpperInvariant() -ne "WINFORGE") {
-        Write-Host ""
-        Write-Host "Texto inválido. Ações automáticas canceladas." -ForegroundColor Yellow
-        Write-Host ""
+        Write-Host "`nAções automáticas canceladas.`n" -ForegroundColor Yellow
         Pause
         return $false
     }
@@ -59,16 +51,15 @@ function Invoke-RecommendedMaintenanceStep {
         [scriptblock]$Action
     )
 
-    Write-Host ""
-    Write-Host "==================================================" -ForegroundColor DarkCyan
-    Write-Host " $Title" -ForegroundColor Cyan
-    Write-Host "==================================================" -ForegroundColor DarkCyan
+    Write-WinForgeSection -Title $Title
 
     try {
-        & $Action
+        # Mantém a saída operacional visível, mas impede que textos ou objetos
+        # emitidos pela etapa contaminem a coleção usada no resumo final.
+        & $Action | Out-Host
 
         Write-Host ""
-        Write-Host "Concluído com sucesso: $Title" -ForegroundColor Green
+        Write-WinForgeStatus -Type Success -Message "$Title concluído."
 
         return [PSCustomObject]@{
             Etapa  = $Title
@@ -120,9 +111,9 @@ function Clear-FolderContentsForMaintenance {
         }
     }
 
-    Write-Host "Pasta: $Path"
-    Write-Host "Itens removidos: $deletedItems" -ForegroundColor Green
-    Write-Host "Itens ignorados: $skippedItems" -ForegroundColor Yellow
+    Write-WinForgeKeyValue -Label "Pasta" -Value $Path
+    Write-WinForgeKeyValue -Label "Itens removidos" -Value $deletedItems
+    Write-WinForgeKeyValue -Label "Itens ignorados" -Value $skippedItems
 }
 
 
@@ -188,65 +179,11 @@ function Invoke-RecommendedTweaks {
 
 
 function Invoke-RecommendedWingetUpdate {
-    $wingetExists = Get-Command winget -ErrorAction SilentlyContinue
+    Write-WinForgeSubStep "winget" "Verificando atualizações e aguardando S, N ou um ou mais IDs."
 
-    if (-not $wingetExists) {
-        throw "winget não foi encontrado. Atualização de softwares ignorada."
-    }
-
-    Write-WinForgeSubStep "winget" "Atualizando fontes."
-    winget source update --accept-source-agreements
-
-    $sourceExitCode = $LASTEXITCODE
-
-    if ($sourceExitCode -ne 0) {
-        Write-WinForgeWarn "Atualização de fontes do winget finalizou com código $sourceExitCode."
-    }
-    else {
-        Write-WinForgeOk "Fontes do winget atualizadas."
-    }
-
-    Write-WinForgeSubStep "Softwares" "Verificando atualizações disponíveis via winget."
-    Write-Host ""
-
-    $upgradeOutput = winget upgrade --accept-source-agreements 2>&1
-    $upgradeOutput | ForEach-Object { Write-Host $_ }
-
-    $outputText = $upgradeOutput -join "`n"
-
-    if (
-        $outputText -match "No installed package found matching input criteria" -or
-        $outputText -match "No available upgrade found" -or
-        $outputText -match "Nenhuma atualização"
-    ) {
-        Write-Host ""
-        Write-WinForgeOk "Nenhuma atualização via winget foi encontrada."
-        return
-    }
-
-    Write-Host ""
-    $confirmed = Confirm-Action "Deseja atualizar todos os softwares disponíveis via winget?"
-
-    if ($confirmed -eq $false) {
-        Write-Host ""
-        Write-WinForgeWarn "Atualização via winget ignorada pelo usuário."
-        return
-    }
-
-    Write-Host ""
-    Write-Host "Atualizando softwares via winget..." -ForegroundColor Green
-    Write-Host ""
-
-    winget upgrade --all --accept-source-agreements --accept-package-agreements --disable-interactivity
-
-    $upgradeExitCode = $LASTEXITCODE
-
-    if ($upgradeExitCode -ne 0) {
-        throw "winget upgrade finalizou com código $upgradeExitCode. Revise a saída acima para identificar qual software falhou."
-    }
-
-    Write-WinForgeOk "Softwares via winget atualizados."
+    Invoke-WinForgeWingetUpgradeSelection -NoHeader -NoPause -ThrowOnFailure | Out-Null
 }
+
 
 
 function Invoke-RecommendedPnpScan {
@@ -277,7 +214,8 @@ function Invoke-RecommendedCleanup {
         if (
             $message -match "cannot find the file specified" -or
             $message -match "cannot find the path specified" -or
-            $message -match "The system cannot find the file specified"
+            $message -match "não pode encontrar o arquivo especificado" -or
+            $message -match "não foi possível localizar (o arquivo|o caminho) especificado"
         ) {
             Write-WinForgeOk "Lixeira já estava vazia ou sem dados encontrados."
         }
@@ -311,10 +249,10 @@ function Invoke-RecommendedNetworkRepair {
 
 function Invoke-RecommendedDismAndSfc {
     $dismSuccess = Invoke-DiagnosticCommand `
-        -Title "Reparar Imagem do Windows" `
+        -Title "Reparar Imagem e Componentes do Windows" `
         -FilePath "dism.exe" `
         -Arguments @("/Online", "/Cleanup-Image", "/RestoreHealth") `
-        -Description @("Reparando a imagem/componentes do Windows.") `
+        -Description @("Executando DISM /RestoreHealth.") `
         -SkipConfirmation `
         -NoClear `
         -NoPause
@@ -323,79 +261,38 @@ function Invoke-RecommendedDismAndSfc {
         -Title "Verificar e Reparar Arquivos do Sistema" `
         -FilePath "sfc.exe" `
         -Arguments @("/scannow") `
-        -Description @("Verificando arquivos protegidos do sistema.") `
+        -Description @("Executando SFC /scannow.") `
         -SkipConfirmation `
         -NoClear `
         -NoPause
 
     if (-not $dismSuccess -or -not $sfcSuccess) {
-        throw "Reparo do Windows finalizou com alertas ou erros. Revise a saída acima."
+        throw "DISM ou SFC finalizou com alertas. Revise a saída acima."
     }
-
-    Write-WinForgeOk "Reparo do Windows concluído."
 }
 
 
 function Invoke-RecommendedChkdskScan {
-    $drive = $env:SystemDrive
+    Invoke-WinForgeChkdskScan `
+        -SkipConfirmation `
+        -NoClear `
+        -NoPause `
+        -ScheduleRepairAutomatically `
+        -ThrowOnFailure | Out-Null
+}
 
-    Write-WinForgeSubStep "CHKDSK" "Verifica erros no sistema de arquivos e no disco do sistema."
-    Write-Host "Comando: chkdsk.exe $drive /scan" -ForegroundColor DarkCyan
-    Write-Host "Esta etapa não usa /R e não agenda reparos sem confirmação explícita." -ForegroundColor Yellow
-    Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja verificar o disco com CHKDSK agora?"
-
-    if ($confirmed -eq $false) {
-        Write-WinForgeWarn "CHKDSK ignorado pelo usuário."
-        return
-    }
-
-    $chkdskOutput = chkdsk.exe $drive /scan 2>&1
-    $chkdskOutput | ForEach-Object { Write-Host $_ }
-    $exitCode = $LASTEXITCODE
-    $outputText = $chkdskOutput -join "`n"
-
-    if ($exitCode -eq 0) {
-        Write-WinForgeOk "CHKDSK finalizado sem erros críticos reportados."
-    }
-    else {
-        Write-WinForgeWarn "CHKDSK finalizou com código $exitCode. Revise a saída acima."
-    }
-
-    $needsScheduledCheck = (
-        $outputText -match "spotfix" -or
-        $outputText -match "offline" -or
-        $outputText -match "next restart" -or
-        $outputText -match "next time" -or
-        $outputText -match "próxima reinicialização" -or
-        $outputText -match "proxima reinicializacao" -or
-        $outputText -match "reinicie"
-    )
-
-    if ($needsScheduledCheck) {
-        Write-Host ""
-        Write-WinForgeWarn "O CHKDSK indicou que pode haver verificação ou reparo pendente para o próximo reinício."
-        Write-Host ""
-
-        $scheduleConfirmed = Confirm-Action "Deseja agendar a verificação do disco para a próxima reinicialização?"
-
-        if ($scheduleConfirmed) {
-            Write-Host "Comando: chkntfs.exe /C $drive" -ForegroundColor DarkCyan
-            chkntfs.exe /C $drive
-            Write-WinForgeOk "Verificação de disco agendada. Reinicie o Windows para executar."
-        }
-        else {
-            Write-WinForgeWarn "Agendamento de CHKDSK não realizado."
-        }
-    }
+function Invoke-RecommendedDriveOptimization {
+    Invoke-WinForgeDriveOptimization `
+        -SkipConfirmation `
+        -NoClear `
+        -NoPause `
+        -ThrowOnFailure | Out-Null
 }
 
 
 function Request-RestartAfterMaintenance {
-    Write-Host ""
-    Write-Host "Reinicialização" -ForegroundColor Cyan
-    Write-Host ""
+    Write-WinForgeSection -Title "Reinicialização"
     Write-Host "Para aplicar completamente os ajustes, é recomendado reiniciar o Windows agora." -ForegroundColor Yellow
     Write-Host "Antes de confirmar, salve seus arquivos, feche os demais softwares abertos e deixe somente o WinForge aberto." -ForegroundColor Yellow
     Write-Host ""
@@ -426,44 +323,21 @@ function Run-RecommendedMaintenance {
     Show-Header "Manutenção Recomendada"
 
     if (-not (Test-IsAdministrator)) {
-        Write-Host "Privilégios de Administrador são necessários para a manutenção recomendada." -ForegroundColor Red
+        Write-Host "Execute o WinForge como Administrador." -ForegroundColor Red
         Write-Host ""
         Pause
         return
     }
 
-    Write-Host "A manutenção recomendada será dividida em duas fases." -ForegroundColor Yellow
+    Write-Host "Etapas manuais: inicialização, desinstalação, Downloads e atualizações." -ForegroundColor Yellow
+    Write-Host "Etapas automáticas: limpeza, reparos, CHKDSK, otimização, winget, drivers, rede e ajustes." -ForegroundColor Cyan
+    Write-Host "O processo pode demorar e a rede pode cair temporariamente." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Fase 1 - Etapas manuais assistidas:" -ForegroundColor Cyan
-    Write-Host "- Abrir aplicativos que iniciam com o Windows"
-    Write-Host "- Abrir Aplicativos instalados e Programas e Recursos"
-    Write-Host "- Abrir Downloads para limpeza manual"
-    Write-Host "- Abrir Windows Update"
-    Write-Host "- Abrir atualizações opcionais"
-    Write-Host "- Abrir atualizações da Microsoft Store"
-    Write-Host "- Abrir configurações de armazenamento"
-    Write-Host ""
-    Write-Host "Fase 2 - Ações automáticas:" -ForegroundColor Cyan
-    Write-Host "- Limpar temporários do usuário, temporários do Windows e Lixeira"
-    Write-Host "- Reparar Windows com DISM + SFC"
-    Write-Host "- Verificar disco com CHKDSK"
-    Write-Host "- Atualizar softwares via winget"
-    Write-Host "- Detectar dispositivos e drivers"
-    Write-Host "- Executar reparo rápido de rede e DNS"
-    Write-Host "- Aplicar ajustes de energia, estabilidade, Explorer e Xbox Game Bar"
-    Write-Host ""
-    Write-Host "Importante:" -ForegroundColor Yellow
-    Write-Host "As etapas automáticas podem demorar bastante."
-    Write-Host "A conexão de rede pode cair temporariamente durante o reparo de rede."
-    Write-Host "Uma reinicialização do Windows é recomendada ao final."
+    Write-WinForgeWarn "Salve seu trabalho e feche os demais aplicativos, deixando somente o WinForge aberto."
     Write-Host ""
 
-    $confirmed = Confirm-Action "Deseja iniciar a manutenção recomendada?"
-
-    if ($confirmed -eq $false) {
-        Write-Host ""
-        Write-Host "Manutenção recomendada cancelada." -ForegroundColor Yellow
-        Write-Host ""
+    if (-not (Confirm-Action "Você fechou os demais aplicativos e deseja continuar?")) {
+        Write-Host "`nManutenção cancelada.`n" -ForegroundColor Yellow
         Pause
         return
     }
@@ -472,105 +346,87 @@ function Run-RecommendedMaintenance {
 
     Wait-RecommendedManualStep `
         -StepNumber 1 `
-        -Title "Aplicativos que iniciam com o Windows" `
-        -Description @(
-            "A tela de aplicativos de inicialização será aberta.",
-            "Desative apenas softwares que você reconhece e não precisa iniciar junto com o Windows.",
-            "Não desative itens de segurança, drivers, sincronização ou ferramentas essenciais sem certeza."
-        ) `
+        -Title "Aplicativos de inicialização" `
+        -Description @("Desative apenas aplicativos que você reconhece e não precisa iniciar com o Windows.") `
         -Action { Open-StartupAppsSettings -SkipHeader -SkipPause }
 
     Wait-RecommendedManualStep `
         -StepNumber 2 `
-        -Title "Aplicativos instalados" `
-        -Description @(
-            "Serão abertas a tela moderna de Aplicativos instalados e o painel clássico de Programas e Recursos.",
-            "Revise a lista e desinstale apenas o que você realmente reconhece e não usa.",
-            "Não remova drivers, runtimes, Visual C++, .NET, chipset, GPU ou componentes do sistema sem certeza."
-        ) `
-        -Action { Open-InstalledAppsManagement -SkipHeader -SkipPause }
+        -Title "Programas e Recursos" `
+        -Description @("Revise os programas clássicos e remova somente o que você reconhece.") `
+        -Action { Open-ProgramsAndFeatures -SkipHeader -SkipPause }
 
     Wait-RecommendedManualStep `
         -StepNumber 3 `
-        -Title "Downloads" `
-        -Description @(
-            "A pasta Downloads será aberta.",
-            "Revise manualmente arquivos antigos, duplicados ou desnecessários.",
-            "O WinForge não apagará automaticamente nenhum arquivo dessa pasta."
-        ) `
-        -Action { Open-DownloadsForManualCleanup -SkipHeader -SkipPause }
+        -Title "Aplicativos instalados" `
+        -Description @("Revise os aplicativos do Windows e remova somente o que você reconhece.") `
+        -Action { Open-WindowsInstalledApps -SkipHeader -SkipPause }
 
     Wait-RecommendedManualStep `
         -StepNumber 4 `
-        -Title "Windows Update" `
-        -Description @(
-            "O Windows Update será aberto.",
-            "Procure atualizações disponíveis e instale o que fizer sentido."
-        ) `
-        -Action { Start-Process "ms-settings:windowsupdate" }
+        -Title "Downloads" `
+        -Description @("Remova manualmente arquivos antigos ou desnecessários.") `
+        -Action { Open-DownloadsForManualCleanup -SkipHeader -SkipPause }
 
     Wait-RecommendedManualStep `
         -StepNumber 5 `
-        -Title "Atualizações opcionais e drivers" `
-        -Description @(
-            "A tela de atualizações opcionais será aberta.",
-            "Drivers opcionais podem aparecer aqui.",
-            "Instale apenas drivers que façam sentido para o seu hardware ou que estejam corrigindo um problema real."
-        ) `
-        -Action { Start-Process "ms-settings:windowsupdate-optionalupdates" }
+        -Title "Windows Update" `
+        -Description @("Instale as atualizações disponíveis.") `
+        -Action { Start-Process "ms-settings:windowsupdate" }
 
     Wait-RecommendedManualStep `
         -StepNumber 6 `
-        -Title "Atualizações da Microsoft Store" `
-        -Description @(
-            "A Microsoft Store será aberta na tela de downloads e atualizações.",
-            "Atualize aplicativos instalados pela Store."
-        ) `
-        -Action { Start-Process "ms-windows-store://downloadsandupdates" }
+        -Title "Atualizações opcionais" `
+        -Description @("Instale drivers opcionais somente quando forem pertinentes ao hardware ou a uma correção.") `
+        -Action { Start-Process "ms-settings:windowsupdate-optionalupdates" }
 
     Wait-RecommendedManualStep `
         -StepNumber 7 `
-        -Title "Configurações de armazenamento" `
-        -Description @(
-            "As configurações de armazenamento do Windows serão abertas.",
-            "Revise arquivos temporários, recomendações de limpeza e uso de disco."
-        ) `
+        -Title "Microsoft Store" `
+        -Description @("Atualize os aplicativos instalados pela Microsoft Store.") `
+        -Action { Start-Process "ms-windows-store://downloadsandupdates" }
+
+    Wait-RecommendedManualStep `
+        -StepNumber 8 `
+        -Title "Armazenamento" `
+        -Description @("Revise arquivos temporários e recomendações de limpeza do Windows.") `
         -Action { Start-Process "ms-settings:storagesense" }
 
     Show-Header "Manutenção Recomendada - Ações Automáticas"
 
-    Write-Host "As etapas manuais foram concluídas." -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Agora o WinForge executará as ações automáticas da manutenção recomendada." -ForegroundColor Yellow
-    Write-Host ""
-
-    $confirmedAutomaticActions = Confirm-RecommendedAutomaticActions
-
-    if ($confirmedAutomaticActions -eq $false) {
+    if (-not (Confirm-RecommendedAutomaticActions)) {
         return
     }
 
     $maintenanceResults = @()
-
     $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Limpar temporários e Lixeira" -Action { Invoke-RecommendedCleanup }
     $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Reparar Windows (DISM + SFC)" -Action { Invoke-RecommendedDismAndSfc }
-    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Verificar disco com CHKDSK" -Action { Invoke-RecommendedChkdskScan }
-    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Atualizar softwares via winget" -Action { Invoke-RecommendedWingetUpdate }
+    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Verificar sistema de arquivos (CHKDSK)" -Action { Invoke-RecommendedChkdskScan }
+    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Otimizar unidade do sistema" -Action { Invoke-RecommendedDriveOptimization }
+    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Atualizar softwares (winget)" -Action { Invoke-RecommendedWingetUpdate }
     $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Detectar dispositivos e drivers" -Action { Invoke-RecommendedPnpScan }
-    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Reparo rápido de rede e DNS" -Action { Invoke-RecommendedNetworkRepair }
+    $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Reparar rede e DNS" -Action { Invoke-RecommendedNetworkRepair }
     $maintenanceResults += Invoke-RecommendedMaintenanceStep -Title "Aplicar ajustes recomendados" -Action { Invoke-RecommendedTweaks }
 
-    Write-Host ""
-    Write-Host "Resumo da manutenção recomendada" -ForegroundColor Cyan
-    Write-Host ""
+    Write-WinForgeSection -Title "Resumo"
 
-    $maintenanceResults | Format-Table -AutoSize
+    # Proteção adicional: somente resultados formais de etapa podem compor a tabela.
+    $summaryResults = @(
+        $maintenanceResults |
+            Where-Object {
+                $null -ne $_ -and
+                $null -ne $_.PSObject.Properties["Etapa"] -and
+                $null -ne $_.PSObject.Properties["Status"]
+            }
+    )
+
+    $summaryResults |
+        Select-Object Etapa, Status |
+        Format-Table -AutoSize |
+        Out-Host
 
     Write-Host ""
-    Write-Host "Manutenção recomendada finalizada." -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Recomendação final:" -ForegroundColor Yellow
-    Write-Host "Reinicie o Windows para aplicar completamente ajustes de energia, rede, hibernação, Explorer e reparos do sistema." -ForegroundColor Yellow
+    Write-Host "Manutenção concluída. Reinicie o Windows para aplicar todas as alterações." -ForegroundColor Green
 
     Request-RestartAfterMaintenance
 
