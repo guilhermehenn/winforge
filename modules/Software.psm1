@@ -12,94 +12,35 @@
 }
 
 
-function Get-WinForgeObjectPropertyValue {
-    param (
-        [object]$Object,
-        [string[]]$Names
-    )
+function Get-WinForgeInteractiveUserName {
+    try {
+        $interactiveUser = (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).UserName
 
-    if ($null -eq $Object) {
-        return ""
-    }
-
-    foreach ($name in $Names) {
-        if ($Object.PSObject.Properties.Name -contains $name) {
-            $value = $Object.$name
-
-            if ($null -ne $value -and -not [string]::IsNullOrWhiteSpace($value.ToString())) {
-                return $value.ToString().Trim()
-            }
+        if (-not [string]::IsNullOrWhiteSpace($interactiveUser)) {
+            return $interactiveUser.Trim()
         }
+    }
+    catch {
+        # A identificação do usuário interativo é auxiliar e não deve bloquear o winget.
     }
 
     return ""
 }
 
 
-function Get-WinForgeWingetJsonItems {
-    param (
-        [object]$JsonObject
-    )
+function Test-WinForgeWingetUserContextMismatch {
+    $interactiveUser = Get-WinForgeInteractiveUserName
 
-    if ($null -eq $JsonObject) {
-        return @()
+    if ([string]::IsNullOrWhiteSpace($interactiveUser)) {
+        return $false
     }
 
-    if ($JsonObject -is [array]) {
-        return @($JsonObject)
+    try {
+        $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        return -not $currentUser.Equals($interactiveUser, [System.StringComparison]::OrdinalIgnoreCase)
     }
-
-    if ($JsonObject.PSObject.Properties.Name -contains "Data") {
-        return @($JsonObject.Data)
-    }
-
-    if ($JsonObject.PSObject.Properties.Name -contains "Sources") {
-        $items = @()
-
-        foreach ($source in @($JsonObject.Sources)) {
-            if ($source.PSObject.Properties.Name -contains "Packages") {
-                $items += @($source.Packages)
-            }
-            elseif ($source.PSObject.Properties.Name -contains "Data") {
-                $items += @($source.Data)
-            }
-        }
-
-        return @($items)
-    }
-
-    if ($JsonObject.PSObject.Properties.Name -contains "Packages") {
-        return @($JsonObject.Packages)
-    }
-
-    return @()
-}
-
-
-function ConvertFrom-WinForgeWingetJsonPackage {
-    param (
-        [object]$Item
-    )
-
-    $name = Get-WinForgeObjectPropertyValue -Object $Item -Names @("Name", "PackageName", "DisplayName", "Moniker")
-    $id = Get-WinForgeObjectPropertyValue -Object $Item -Names @("Id", "PackageIdentifier", "Identifier")
-    $version = Get-WinForgeObjectPropertyValue -Object $Item -Names @("Version", "InstalledVersion")
-    $source = Get-WinForgeObjectPropertyValue -Object $Item -Names @("Source", "SourceName")
-
-    if ([string]::IsNullOrWhiteSpace($name) -and [string]::IsNullOrWhiteSpace($id)) {
-        return $null
-    }
-
-    if ([string]::IsNullOrWhiteSpace($name)) { $name = "Não disponível" }
-    if ([string]::IsNullOrWhiteSpace($id)) { $id = "Não disponível" }
-    if ([string]::IsNullOrWhiteSpace($version)) { $version = "Não disponível" }
-    if ([string]::IsNullOrWhiteSpace($source)) { $source = "Não disponível" }
-
-    return [PSCustomObject]@{
-        Nome   = $name
-        Id     = $id
-        Versao = $version
-        Fonte  = $source
+    catch {
+        return $false
     }
 }
 
@@ -228,142 +169,8 @@ function ConvertFrom-WinForgeWingetListText {
 }
 
 
-function Get-WinForgeInstalledSoftwareList {
-    $wingetExists = Get-Command winget -ErrorAction SilentlyContinue
-
-    if (-not $wingetExists) {
-        return @()
-    }
-
-    try {
-        $jsonOutput = winget list --accept-source-agreements --output json 2>$null
-        $jsonText = ($jsonOutput | Out-String).Trim()
-
-        if (-not [string]::IsNullOrWhiteSpace($jsonText) -and $LASTEXITCODE -eq 0) {
-            $jsonObject = $jsonText | ConvertFrom-Json
-            $items = Get-WinForgeWingetJsonItems -JsonObject $jsonObject
-            $packages = @()
-
-            foreach ($item in $items) {
-                $package = ConvertFrom-WinForgeWingetJsonPackage -Item $item
-
-                if ($null -ne $package) {
-                    $packages += $package
-                }
-            }
-
-            if ($packages.Count -gt 0) {
-                return @($packages | Sort-Object Nome, Id)
-            }
-        }
-    }
-    catch {
-        # Alguns wingets antigos não suportam JSON para listagem. Usa fallback por texto abaixo.
-    }
-
-    try {
-        $textOutput = winget list --accept-source-agreements 2>&1
-        $packages = ConvertFrom-WinForgeWingetListText -Lines $textOutput
-        return @($packages | Sort-Object Nome, Id)
-    }
-    catch {
-        Write-Host "Ocorreu um erro ao executar winget list:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        return @()
-    }
-}
-
-
-function Show-WinForgeSoftwareTable {
-    param (
-        [array]$Packages,
-        [switch]$IncludeSource
-    )
-
-    $packageList = @($Packages)
-
-    if ($packageList.Count -eq 0) {
-        Write-Host "Nenhum software foi encontrado para exibição." -ForegroundColor Yellow
-        return
-    }
-
-    if ($IncludeSource) {
-        $packageList |
-            Select-Object `
-                @{ Name = "Nome"; Expression = { $_.Nome } },
-                @{ Name = "Id"; Expression = { $_.Id } },
-                @{ Name = "Versão"; Expression = { $_.Versao } },
-                @{ Name = "Fonte"; Expression = { $_.Fonte } } |
-            Format-Table -AutoSize |
-            Out-Host
-    }
-    else {
-        $packageList |
-            Select-Object `
-                @{ Name = "Nome"; Expression = { $_.Nome } },
-                @{ Name = "Id"; Expression = { $_.Id } },
-                @{ Name = "Versão"; Expression = { $_.Versao } } |
-            Format-Table -AutoSize |
-            Out-Host
-    }
-}
-
-
-function Resolve-WinForgeInstalledPackage {
-    param (
-        [array]$Packages,
-        [string]$Query
-    )
-
-    $cleanQuery = $Query.Trim()
-
-    if ([string]::IsNullOrWhiteSpace($cleanQuery)) {
-        return $null
-    }
-
-    $exactMatches = @(
-        $Packages | Where-Object {
-            $_.Id -ieq $cleanQuery -or $_.Nome -ieq $cleanQuery
-        }
-    )
-
-    if ($exactMatches.Count -eq 1) {
-        return $exactMatches[0]
-    }
-
-    if ($exactMatches.Count -gt 1) {
-        Write-Host "Mais de um software corresponde exatamente ao texto informado." -ForegroundColor Yellow
-        Write-Host "Refine usando o Id do pacote." -ForegroundColor Yellow
-        Write-Host ""
-        Show-WinForgeSoftwareTable -Packages $exactMatches
-        return $null
-    }
-
-    $partialMatches = @(
-        $Packages | Where-Object {
-            $_.Id.IndexOf($cleanQuery, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-            $_.Nome.IndexOf($cleanQuery, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
-        }
-    )
-
-    if ($partialMatches.Count -eq 1) {
-        return $partialMatches[0]
-    }
-
-    if ($partialMatches.Count -gt 1) {
-        Write-Host "Mais de um software foi encontrado com esse texto." -ForegroundColor Yellow
-        Write-Host "Digite o Nome completo ou, preferencialmente, o Id exato." -ForegroundColor Yellow
-        Write-Host ""
-        Show-WinForgeSoftwareTable -Packages $partialMatches
-        return $null
-    }
-
-    return $null
-}
-
-
 function Get-InstalledSoftware {
-    Show-Header "Softwares Instalados"
+    Show-Header "Softwares Instalados (winget)"
 
     try {
         if (-not (Test-WinForgeWingetAvailable)) {
@@ -371,16 +178,31 @@ function Get-InstalledSoftware {
             return
         }
 
-        $packages = Get-WinForgeInstalledSoftwareList
-        Show-WinForgeSoftwareTable -Packages $packages -IncludeSource
+        if (Test-WinForgeWingetUserContextMismatch) {
+            $interactiveUser = Get-WinForgeInteractiveUserName
+            $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+            Write-WinForgeWarn "O WinForge está elevado como $currentUser."
+            Write-WinForgeStatus -Type Info -Message "Pacotes exclusivos de $interactiveUser podem não aparecer neste contexto."
+            Write-Host ""
+        }
+
+        # Exibe a saída nativa. Isso evita falhas de parser causadas por versões, idiomas
+        # ou políticas corporativas que alteram o formato da tabela do winget.
+        & winget list --accept-source-agreements
+        $exitCode = $LASTEXITCODE
 
         Write-Host ""
-        Write-Host "Observação:" -ForegroundColor Yellow
-        Write-Host "Para remover algum software, use a opção 'Desinstalar software' no menu de Softwares." -ForegroundColor Yellow
+
+        if ($exitCode -ne 0) {
+            Write-WinForgeWarn "winget list finalizou com código de saída: $exitCode."
+        }
+
+        Write-WinForgeStatus -Type Info -Message "Para remover pacotes, use 'Desinstalar software (winget)'."
     }
     catch {
-        Write-Host "Ocorreu um erro ao listar softwares instalados:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao listar softwares instalados."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -388,82 +210,371 @@ function Get-InstalledSoftware {
 }
 
 
-function Update-AllSoftware {
-    Show-Header "Atualizar Softwares via winget"
+function Test-WinForgeWingetNoUpgradeOutput {
+    param (
+        [string]$OutputText
+    )
 
-    try {
-        if (-not (Test-WinForgeWingetAvailable)) {
-            Pause
-            return
+    return (
+        $OutputText -match "No installed package found matching input criteria" -or
+        $OutputText -match "No available upgrade found" -or
+        $OutputText -match "Nenhuma atualização" -or
+        $OutputText -match "Nenhuma atualizacao"
+    )
+}
+
+
+function ConvertTo-WinForgeWingetPackageIdList {
+    param (
+        [string]$InputText
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InputText)) {
+        return @()
+    }
+
+    $segments = @($InputText -split ",")
+    $packageIds = @()
+
+    foreach ($segment in $segments) {
+        $packageId = $segment.Trim()
+
+        if ([string]::IsNullOrWhiteSpace($packageId)) {
+            throw "Há uma vírgula sem um ID antes ou depois dela. Revise a lista informada."
         }
 
-        Write-Host "Esta opção atualiza apenas softwares gerenciados pelo winget." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Softwares fora do winget, drivers, BIOS, Windows Update e Microsoft Store não entram nesta rotina." -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host "Verificando atualizações disponíveis via winget..." -ForegroundColor Yellow
-        Write-Host ""
-
-        $upgradeOutput = winget upgrade --accept-source-agreements 2>&1
-        $upgradeOutput | ForEach-Object { Write-Host $_ }
-
-        $outputText = $upgradeOutput -join "`n"
-
-        if (
-            $outputText -match "No installed package found matching input criteria" -or
-            $outputText -match "No available upgrade found" -or
-            $outputText -match "Nenhuma atualização"
-        ) {
-            Write-Host ""
-            Write-Host "Nenhuma atualização via winget foi encontrada." -ForegroundColor Green
-            Write-Host ""
-            Pause
-            return
+        if ($packageId.ToUpperInvariant() -in @("S", "N", "ID")) {
+            throw "A lista contém '$packageId', que é uma opção do menu e não um ID de pacote."
         }
 
-        Write-Host ""
+        # Evita executar duas vezes o mesmo pacote sem alterar a grafia do primeiro ID informado.
+        if ($packageIds -notcontains $packageId) {
+            $packageIds += $packageId
+        }
+    }
 
-        $confirmed = Confirm-Action "Deseja atualizar todos os softwares disponíveis via winget?"
+    return @($packageIds)
+}
 
-        if ($confirmed -eq $false) {
-            Write-Host ""
-            Write-Host "Atualização cancelada." -ForegroundColor Yellow
-            Pause
-            return
+
+function Resolve-WinForgeWingetUpgradePackageIds {
+    param (
+        [string[]]$PackageIds,
+        [array]$AvailablePackages
+    )
+
+    $resolvedIds = @()
+
+    foreach ($packageId in @($PackageIds)) {
+        $resolvedId = $packageId
+
+        if (@($AvailablePackages).Count -gt 0) {
+            $matchingPackage = @($AvailablePackages) |
+                Where-Object { $_.Id -ieq $packageId } |
+                Select-Object -First 1
+
+            if ($null -ne $matchingPackage) {
+                # Usa a grafia retornada pelo winget quando o pacote é localizado na tabela.
+                $resolvedId = $matchingPackage.Id
+            }
+            else {
+                Write-WinForgeWarn "O ID '$packageId' não foi reconhecido na tabela. O winget fará a validação."
+            }
         }
 
-        Write-Host ""
-        Write-Host "Atualizando softwares via winget..." -ForegroundColor Green
+        if ($resolvedIds -notcontains $resolvedId) {
+            $resolvedIds += $resolvedId
+        }
+    }
+
+    return @($resolvedIds)
+}
+
+
+function Show-WinForgeWingetPackageSelection {
+    param (
+        [string[]]$PackageIds
+    )
+
+    $packageList = @($PackageIds)
+
+    Write-WinForgeSection -Title "Pacotes selecionados"
+
+    for ($index = 0; $index -lt $packageList.Count; $index++) {
+        Write-Host "  " -NoNewline
+        Write-Host ("[{0}]" -f ($index + 1)) -ForegroundColor Cyan -NoNewline
+        Write-Host " $($packageList[$index])" -ForegroundColor Gray
+    }
+
+    Write-Host ""
+    Write-WinForgeStatus -Type "Info" -Message ("{0} pacotes serão atualizados em sequência." -f $packageList.Count)
+}
+
+
+function Invoke-WinForgeWingetPackageUpgrades {
+    param (
+        [string[]]$PackageIds,
+        [switch]$ThrowOnFailure
+    )
+
+    $packageList = @($PackageIds)
+    $results = @()
+
+    if ($packageList.Count -gt 1) {
+        Show-WinForgeWingetPackageSelection -PackageIds $packageList
+    }
+
+    for ($index = 0; $index -lt $packageList.Count; $index++) {
+        $packageId = $packageList[$index]
+        $arguments = @(
+            "upgrade",
+            "--id", $packageId,
+            "-e",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+            "--disable-interactivity"
+        )
+
+        if ($packageList.Count -gt 1) {
+            Write-WinForgeSection -Title ("Pacote {0} de {1}" -f ($index + 1), $packageList.Count)
+        }
+        else {
+            Write-Host ""
+        }
+
+        Write-WinForgeStatus -Type "Running" -Message "Atualizando $packageId..."
+        Write-WinForgeCommand -Command "winget upgrade --id $packageId -e --accept-source-agreements --accept-package-agreements --disable-interactivity"
         Write-Host ""
 
-        winget upgrade --all --accept-source-agreements --accept-package-agreements --disable-interactivity
-
+        & winget @arguments
         $exitCode = $LASTEXITCODE
 
         Write-Host ""
 
         if ($exitCode -eq 0) {
-            Write-Host "Processo de atualização via winget finalizado com sucesso." -ForegroundColor Green
+            Write-WinForgeOk "$packageId atualizado com sucesso."
+            $status = "OK"
         }
         else {
-            Write-Host "winget finalizou com código de saída: $exitCode" -ForegroundColor Yellow
-            Write-Host "Revise a saída acima para identificar o pacote que falhou." -ForegroundColor Yellow
+            Write-WinForgeWarn "$packageId não foi atualizado. Código de saída: $exitCode."
+            $status = "Falhou"
         }
 
-        Write-Host "Alguns aplicativos podem exigir atualização manual, interação do usuário ou reinicialização." -ForegroundColor Yellow
+        $results += [PSCustomObject]@{
+            Id          = $packageId
+            Status      = $status
+            CodigoSaida = $exitCode
+        }
     }
-    catch {
-        Write-Host "Ocorreu um erro ao atualizar softwares via winget:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+
+    $failures = @($results | Where-Object { $_.Status -ne "OK" })
+
+    if ($packageList.Count -gt 1) {
+        Write-WinForgeSection -Title "Resumo"
+        $results |
+            Select-Object `
+                @{ Name = "ID"; Expression = { $_.Id } },
+                @{ Name = "Status"; Expression = { $_.Status } } |
+            Format-Table -AutoSize |
+            Out-Host
+    }
+
+    if ($failures.Count -gt 0) {
+        $failedIds = ($failures | ForEach-Object { $_.Id }) -join ", "
+
+        if ($packageList.Count -eq 1) {
+            $failureMessage = "O pacote $failedIds não foi atualizado."
+        }
+        else {
+            $failureMessage = "{0} de {1} pacotes não foram atualizados: {2}." -f $failures.Count, $packageList.Count, $failedIds
+        }
+
+        if ($ThrowOnFailure) {
+            throw $failureMessage
+        }
+
+        Write-WinForgeWarn $failureMessage
+        return $false
     }
 
     Write-Host ""
-    Pause
+    Write-WinForgeOk "Atualização via winget finalizada com sucesso."
+    Write-WinForgeWarn "Alguns aplicativos podem exigir reinicialização ou uma etapa manual posterior."
+    return $true
+}
+
+
+function Invoke-WinForgeWingetUpgradeSelection {
+    param (
+        [switch]$NoHeader,
+        [switch]$NoPause,
+        [switch]$ThrowOnFailure
+    )
+
+    if (-not $NoHeader) {
+        Show-Header "Atualizar Softwares (winget)"
+    }
+
+    try {
+        if (-not (Test-WinForgeWingetAvailable)) {
+            if ($ThrowOnFailure) {
+                throw "winget não foi encontrado neste sistema."
+            }
+
+            return $false
+        }
+
+        Write-Host "Esta opção atualiza apenas softwares gerenciados pelo winget." -ForegroundColor Yellow
+        Write-Host "Drivers, BIOS, Windows Update e Microsoft Store não entram nesta rotina." -ForegroundColor Cyan
+        Write-Host ""
+
+        Write-WinForgeStatus -Type "Running" -Message "Atualizando a fonte principal do winget..."
+        winget source update --name winget --disable-interactivity
+        $sourceExitCode = $LASTEXITCODE
+
+        if ($sourceExitCode -eq 0) {
+            Write-WinForgeOk "Fonte principal do winget atualizada."
+        }
+        else {
+            Write-WinForgeWarn "Não foi possível atualizar a fonte. A verificação continuará com os dados disponíveis."
+        }
+
+        Write-Host ""
+        Write-WinForgeStatus -Type "Running" -Message "Verificando atualizações disponíveis via winget..."
+        Write-Host ""
+
+        $upgradeOutput = winget upgrade --accept-source-agreements 2>&1
+        $upgradeExitCode = $LASTEXITCODE
+        $upgradeOutput | ForEach-Object { Write-Host $_ }
+        $outputText = $upgradeOutput -join "`n"
+
+        if (Test-WinForgeWingetNoUpgradeOutput -OutputText $outputText) {
+            Write-Host ""
+            Write-WinForgeOk "Nenhuma atualização via winget foi encontrada."
+            return $true
+        }
+
+        if ($upgradeExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($outputText)) {
+            throw "winget upgrade finalizou com código $upgradeExitCode sem retornar detalhes."
+        }
+
+        Write-WinForgeSection -Title "Como deseja continuar?"
+        Write-WinForgeMenuItem -Key "S" -Label "Atualizar todos os pacotes"
+        Write-WinForgeMenuItem -Key "N" -Label "Não atualizar"
+        Write-WinForgeMenuItem -Key "ID" -Label "Informar um ou mais IDs"
+        Write-Host ""
+        Write-Host "  Cole um ID ou vários IDs separados por vírgula." -ForegroundColor DarkGray
+        Write-Host "  Exemplo: Google.Chrome, Notepad++.Notepad++" -ForegroundColor DarkCyan
+        Write-Host ""
+
+        $availablePackages = @(ConvertFrom-WinForgeWingetListText -Lines $upgradeOutput)
+
+        while ($true) {
+            $rawSelection = (Read-Host "Digite S, N, ID ou um/mais IDs").Trim()
+
+            if ([string]::IsNullOrWhiteSpace($rawSelection)) {
+                Write-WinForgeStatus -Type "Error" -Message "Informe S, N, ID ou pelo menos um ID de pacote."
+                continue
+            }
+
+            $selection = $rawSelection.ToUpperInvariant()
+
+            if ($selection -eq "N") {
+                Write-Host ""
+                Write-WinForgeWarn "Atualização via winget não executada."
+                return $true
+            }
+
+            if ($selection -eq "S") {
+                $arguments = @(
+                    "upgrade",
+                    "--all",
+                    "--accept-source-agreements",
+                    "--accept-package-agreements",
+                    "--disable-interactivity"
+                )
+
+                Write-Host ""
+                Write-WinForgeStatus -Type "Running" -Message "Atualizando todos os pacotes disponíveis..."
+                Write-WinForgeCommand -Command "winget $($arguments -join ' ')"
+                Write-Host ""
+
+                & winget @arguments
+                $exitCode = $LASTEXITCODE
+
+                Write-Host ""
+
+                if ($exitCode -eq 0) {
+                    Write-WinForgeOk "Atualização via winget finalizada com sucesso."
+                    Write-WinForgeWarn "Alguns aplicativos podem exigir reinicialização ou uma etapa manual posterior."
+                    return $true
+                }
+
+                $failureMessage = "winget finalizou com código de saída: $exitCode. Revise a saída acima."
+
+                if ($ThrowOnFailure) {
+                    throw $failureMessage
+                }
+
+                Write-WinForgeWarn $failureMessage
+                return $false
+            }
+
+            if ($selection -eq "ID") {
+                Write-Host ""
+                Write-Host "  Copie os valores da coluna ID exibida acima." -ForegroundColor Cyan
+                Write-Host "  Para vários pacotes, separe os IDs por vírgula." -ForegroundColor DarkGray
+                Write-Host "  Exemplo: Google.Chrome, Notepad++.Notepad++" -ForegroundColor DarkCyan
+                Write-Host ""
+                $packageInput = (Read-Host "Digite um ou mais IDs").Trim()
+            }
+            else {
+                # Permite colar um ID ou uma lista diretamente no primeiro prompt.
+                $packageInput = $rawSelection
+            }
+
+            try {
+                $packageIds = @(ConvertTo-WinForgeWingetPackageIdList -InputText $packageInput)
+            }
+            catch {
+                Write-WinForgeStatus -Type "Error" -Message $_.Exception.Message
+                continue
+            }
+
+            if ($packageIds.Count -eq 0) {
+                Write-WinForgeStatus -Type "Error" -Message "Informe pelo menos um ID de pacote."
+                continue
+            }
+
+            $packageIds = @(Resolve-WinForgeWingetUpgradePackageIds -PackageIds $packageIds -AvailablePackages $availablePackages)
+            return (Invoke-WinForgeWingetPackageUpgrades -PackageIds $packageIds -ThrowOnFailure:$ThrowOnFailure)
+        }
+    }
+    catch {
+        if ($ThrowOnFailure) {
+            throw
+        }
+
+        Write-Host ""
+        Write-WinForgeStatus -Type "Error" -Message "Ocorreu um erro ao atualizar softwares via winget."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+    finally {
+        if (-not $NoPause) {
+            Write-Host ""
+            Pause
+        }
+    }
+}
+
+function Update-AllSoftware {
+    Invoke-WinForgeWingetUpgradeSelection | Out-Null
 }
 
 
 function Search-Software {
-    Show-Header "Buscar Software"
+    Show-Header "Buscar Software (winget)"
 
     try {
         if (-not (Test-WinForgeWingetAvailable)) {
@@ -475,21 +586,28 @@ function Search-Software {
 
         if ([string]::IsNullOrWhiteSpace($query)) {
             Write-Host ""
-            Write-Host "A busca não pode estar vazia." -ForegroundColor Red
+            Write-WinForgeStatus -Type Error -Message "A busca não pode estar vazia."
+            Write-Host ""
             Pause
             return
         }
 
         Write-Host ""
-        Write-Host "Buscando por: $query" -ForegroundColor Yellow
+        Write-WinForgeStatus -Type Running -Message "Buscando por: $query"
         Write-Host ""
 
-        winget search $query --accept-source-agreements
+        & winget search $query --accept-source-agreements
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -ne 0) {
+            Write-Host ""
+            Write-WinForgeStatus -Type Warning -Message "winget search finalizou com código $exitCode."
+        }
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro ao buscar software:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao buscar o software."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -498,7 +616,7 @@ function Search-Software {
 
 
 function Install-Software {
-    Show-Header "Instalar Software"
+    Show-Header "Instalar Software (winget)"
 
     try {
         if (-not (Test-WinForgeWingetAvailable)) {
@@ -544,7 +662,7 @@ function Install-Software {
         )
 
         Write-Host "Instalando: $packageId" -ForegroundColor Green
-        Write-Host "Comando: winget install --id $packageId -e --accept-source-agreements --accept-package-agreements --disable-interactivity" -ForegroundColor DarkCyan
+        Write-WinForgeCommand -Command "winget install --id $packageId -e --accept-source-agreements --accept-package-agreements --disable-interactivity"
         Write-Host ""
 
         & winget @arguments
@@ -574,7 +692,7 @@ function Install-Software {
 
 
 function Uninstall-Software {
-    Show-Header "Desinstalar Software"
+    Show-Header "Desinstalar Software (winget)"
 
     try {
         if (-not (Test-WinForgeWingetAvailable)) {
@@ -582,88 +700,75 @@ function Uninstall-Software {
             return
         }
 
-        Write-Host "Softwares encontrados:" -ForegroundColor Cyan
-        Write-Host ""
+        if (Test-WinForgeWingetUserContextMismatch) {
+            $interactiveUser = Get-WinForgeInteractiveUserName
+            $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-        $packages = Get-WinForgeInstalledSoftwareList
-        Show-WinForgeSoftwareTable -Packages $packages
+            Write-WinForgeWarn "O WinForge está elevado como $currentUser."
+            Write-WinForgeStatus -Type Info -Message "Pacotes exclusivos de $interactiveUser podem não aparecer neste contexto."
+            Write-Host ""
+        }
 
-        if ($packages.Count -eq 0) {
+        # A saída nativa evita depender do idioma ou do formato da tabela do winget.
+        & winget list --accept-source-agreements
+        $listExitCode = $LASTEXITCODE
+
+        if ($listExitCode -ne 0) {
+            Write-Host ""
+            Write-WinForgeStatus -Type Warning -Message "winget list finalizou com código $listExitCode."
             Write-Host ""
             Pause
             return
         }
 
         Write-Host ""
-        $query = Read-Host "Digite o Nome ou Id do software que deseja desinstalar"
+        Write-Host "Copie o ID exato do pacote que deseja remover." -ForegroundColor Cyan
+        $packageId = (Read-Host "Digite o ID do pacote").Trim()
 
-        if ([string]::IsNullOrWhiteSpace($query)) {
+        if ([string]::IsNullOrWhiteSpace($packageId)) {
             Write-Host ""
-            Write-Host "Nenhum software informado. Desinstalação cancelada." -ForegroundColor Yellow
-            Pause
-            return
-        }
-
-        $selectedPackage = Resolve-WinForgeInstalledPackage -Packages $packages -Query $query
-
-        if ($null -eq $selectedPackage) {
+            Write-WinForgeStatus -Type Warning -Message "Desinstalação cancelada."
             Write-Host ""
-            Write-Host "Software não encontrado. Verifique o Nome ou Id e tente novamente." -ForegroundColor Red
-            Pause
-            return
-        }
-
-        $displayName = $selectedPackage.Nome
-        $packageId = $selectedPackage.Id
-
-        Write-Host ""
-        Write-Host "Software selecionado:" -ForegroundColor Cyan
-        $selectedPackage | Select-Object Nome, Id, @{ Name = "Versão"; Expression = { $_.Versao } } | Format-List | Out-Host
-
-        $confirmed = Confirm-Action "Deseja realmente desinstalar '$displayName'?"
-
-        if ($confirmed -eq $false) {
-            Write-Host ""
-            Write-Host "Desinstalação cancelada." -ForegroundColor Yellow
             Pause
             return
         }
 
         Write-Host ""
+        Write-WinForgeKeyValue -Label "Pacote" -Value $packageId
 
-        if (-not [string]::IsNullOrWhiteSpace($packageId) -and $packageId -ne "Não disponível") {
-            $arguments = @("uninstall", "--id", $packageId, "-e", "--disable-interactivity")
-            Write-Host "Desinstalando: $displayName" -ForegroundColor Green
-            Write-Host "Comando: winget uninstall --id $packageId -e --disable-interactivity" -ForegroundColor DarkCyan
+        if (-not (Confirm-Action "Deseja desinstalar este pacote?")) {
             Write-Host ""
-            & winget @arguments
-        }
-        else {
-            $arguments = @("uninstall", "--name", $displayName, "--disable-interactivity")
-            Write-Host "Desinstalando: $displayName" -ForegroundColor Green
-            Write-Host "Comando: winget uninstall --name '$displayName' --disable-interactivity" -ForegroundColor DarkCyan
+            Write-WinForgeStatus -Type Warning -Message "Desinstalação cancelada."
             Write-Host ""
-            & winget @arguments
+            Pause
+            return
         }
 
+        $arguments = @("uninstall", "--id", $packageId, "-e", "--disable-interactivity")
+
+        Write-Host ""
+        Write-WinForgeStatus -Type Running -Message "Desinstalando $packageId..."
+        Write-WinForgeCommand -Command "winget $($arguments -join ' ')"
+        Write-Host ""
+
+        & winget @arguments
         $exitCode = $LASTEXITCODE
-
         Write-Host ""
 
         if ($exitCode -eq 0) {
-            Write-Host "Processo de desinstalação finalizado." -ForegroundColor Green
+            Write-WinForgeStatus -Type Success -Message "Desinstalação finalizada."
         }
         else {
-            Write-Host "winget uninstall finalizou com código de saída: $exitCode" -ForegroundColor Yellow
-            Write-Host "Revise a saída acima para entender o resultado." -ForegroundColor Yellow
+            Write-WinForgeStatus -Type Warning -Message "winget uninstall finalizou com código $exitCode."
+            Write-Host "  Revise a saída acima para entender o resultado." -ForegroundColor DarkGray
         }
 
-        Write-Host "Alguns aplicativos podem exigir interação manual ou reinicialização." -ForegroundColor Yellow
+        Write-WinForgeWarn "Alguns aplicativos podem exigir uma etapa manual ou reinicialização."
     }
     catch {
         Write-Host ""
-        Write-Host "Ocorreu um erro ao desinstalar software:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao desinstalar o software."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -715,17 +820,18 @@ function Show-EssentialSoftwareList {
     )
 
     if (-not $SkipHeader) {
-        Show-Header "Softwares Essenciais"
+        Show-Header "Softwares Essenciais (winget)"
     }
 
     Get-EssentialSoftwareCatalog |
         Sort-Object Categoria, Nome |
-        Format-Table Categoria, Nome, Id -AutoSize |
+        Select-Object Categoria, Nome, @{ Name = "ID"; Expression = { $_.Id } } |
+        Format-Table -AutoSize |
         Out-Host
 
     Write-Host ""
     Write-Host "Observação: o WinForge usa winget para instalar estes softwares." -ForegroundColor Yellow
-    Write-Host "Você pode instalar uma categoria específica, o pacote completo ou informar um Id específico." -ForegroundColor Yellow
+    Write-Host "Você pode instalar uma categoria específica, o pacote completo ou informar um ID específico." -ForegroundColor Yellow
     Write-Host ""
 
     if (-not $SkipPause) {
@@ -759,7 +865,11 @@ function Install-EssentialSoftwarePackages {
 
     Write-Host "Softwares selecionados:" -ForegroundColor Cyan
     Write-Host ""
-    $packages | Sort-Object Categoria, Nome | Format-Table Categoria, Nome, Id -AutoSize | Out-Host
+    $packages |
+        Sort-Object Categoria, Nome |
+        Select-Object Categoria, Nome, @{ Name = "ID"; Expression = { $_.Id } } |
+        Format-Table -AutoSize |
+        Out-Host
 
     Write-Host ""
     Write-Host "Alguns instaladores podem exigir interação, fechar aplicativos abertos ou reinicialização." -ForegroundColor Yellow
@@ -826,7 +936,10 @@ function Install-EssentialSoftwarePackages {
     Write-Host ""
     Write-Host "Resumo" -ForegroundColor Cyan
     Write-Host ""
-    $results | Format-Table -AutoSize | Out-Host
+    $results |
+        Select-Object Software, @{ Name = "ID"; Expression = { $_.Id } }, Status |
+        Format-Table -AutoSize |
+        Out-Host
 
     Write-Host ""
     Pause
@@ -841,16 +954,16 @@ function Install-EssentialSoftwareById {
         return
     }
 
-    Write-Host "Digite o Id exato do pacote winget que deseja instalar." -ForegroundColor Yellow
+    Write-Host "Digite o ID exato do pacote winget que deseja instalar." -ForegroundColor Yellow
     Write-Host "Exemplo: Mozilla.Firefox" -ForegroundColor Cyan
     Write-Host "Deixe em branco para voltar ao menu sem instalar nada." -ForegroundColor Yellow
     Write-Host ""
 
-    $packageId = Read-Host "Digite o Id do software que deseja instalar"
+    $packageId = Read-Host "Digite o ID do software que deseja instalar"
 
     if ([string]::IsNullOrWhiteSpace($packageId)) {
         Write-Host ""
-        Write-Host "Nenhum Id informado. Voltando ao menu." -ForegroundColor Yellow
+        Write-Host "Nenhum ID informado. Voltando ao menu." -ForegroundColor Yellow
         Write-Host ""
         Pause
         return
@@ -904,20 +1017,20 @@ function Install-EssentialSoftwareById {
 
 function Show-EssentialSoftwareMenu {
     do {
-        Show-Header "Softwares Essenciais"
+        Show-Header "Softwares Essenciais (winget)"
         Show-EssentialSoftwareList -SkipHeader -SkipPause
 
-        Write-Host "[1] Instalar pacote completo"
-        Write-Host "[2] Instalar softwares básicos"
-        Write-Host "[3] Instalar comunicação e mídia"
-        Write-Host "[4] Instalar desenvolvimento"
-        Write-Host "[5] Instalar jogos"
-        Write-Host "[6] Instalar produtividade"
-        Write-Host "[7] Instalar software específico"
-        Write-Host "[0] Voltar"
+        Write-WinForgeMenuItem -Key "1" -Label "Instalar pacote completo" -Accent
+        Write-WinForgeMenuItem -Key "2" -Label "Instalar softwares básicos"
+        Write-WinForgeMenuItem -Key "3" -Label "Instalar comunicação e mídia"
+        Write-WinForgeMenuItem -Key "4" -Label "Instalar desenvolvimento"
+        Write-WinForgeMenuItem -Key "5" -Label "Instalar jogos"
+        Write-WinForgeMenuItem -Key "6" -Label "Instalar produtividade"
+        Write-WinForgeMenuItem -Key "7" -Label "Instalar software específico"
+        Write-WinForgeMenuItem -Key "0" -Label "Voltar" -Exit
         Write-Host ""
 
-        $choice = Read-Host "Escolha uma opção"
+        $choice = Read-Host "Selecione uma opção"
 
         switch ($choice) {
             "1" { Install-EssentialSoftwarePackages -Category "" -Title "Instalar Pacote Completo" -ConfirmationTarget "todos os softwares essenciais" }

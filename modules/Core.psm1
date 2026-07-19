@@ -1,4 +1,4 @@
-﻿$script:WinForgeBuild = "1.0"
+﻿$script:WinForgeBuild = "2.0"
 
 function Set-WinForgeConsoleEncoding {
     # Garante melhor exibição de acentos no Windows PowerShell 5.1 e em consoles legados.
@@ -15,6 +15,18 @@ function Set-WinForgeConsoleEncoding {
 }
 
 
+function Get-WinForgeConsoleWidth {
+    try {
+        $width = [Console]::WindowWidth - 1
+    }
+    catch {
+        $width = 72
+    }
+
+    return [Math]::Min(88, [Math]::Max(52, $width))
+}
+
+
 function Show-Header {
     param (
         [string]$Title
@@ -27,18 +39,122 @@ function Show-Header {
         $displayTitle = $Title
     }
 
-    $width = [Math]::Max(44, $displayTitle.Length + 8)
-    $line = "=" * $width
-    $padding = [Math]::Max(0, [Math]::Floor(($width - $displayTitle.Length) / 2))
-    $centeredTitle = (" " * $padding) + $displayTitle
+    $line = "-" * (Get-WinForgeConsoleWidth)
 
     Clear-Host
-    Write-Host $line -ForegroundColor Cyan
-    Write-Host $centeredTitle -ForegroundColor Cyan
-    Write-Host $line -ForegroundColor Cyan
+    Write-Host $line -ForegroundColor DarkCyan
+    Write-Host "  $displayTitle" -ForegroundColor Cyan
+
+    if ($Title -eq "WinForge") {
+        Write-Host "  Manutenção, diagnóstico e ajustes do Windows" -ForegroundColor DarkGray
+    }
+
+    Write-Host $line -ForegroundColor DarkCyan
     Write-Host ""
 }
 
+
+function Write-WinForgeMenuItem {
+    param (
+        [string]$Key,
+        [string]$Label,
+        [switch]$Accent,
+        [switch]$Exit
+    )
+
+    $keyColor = "Cyan"
+    $labelColor = "Gray"
+
+    if ($Accent) {
+        $keyColor = "Green"
+        $labelColor = "White"
+    }
+    elseif ($Exit) {
+        $keyColor = "DarkGray"
+        $labelColor = "DarkGray"
+    }
+
+    Write-Host "  [" -ForegroundColor DarkGray -NoNewline
+    Write-Host $Key -ForegroundColor $keyColor -NoNewline
+    Write-Host "] " -ForegroundColor DarkGray -NoNewline
+    Write-Host $Label -ForegroundColor $labelColor
+}
+
+
+function Write-WinForgeSection {
+    param (
+        [string]$Title
+    )
+
+    Write-Host ""
+    Write-Host "  $Title" -ForegroundColor Cyan
+    Write-Host ("  " + ("-" * [Math]::Min(46, [Math]::Max(12, $Title.Length + 2)))) -ForegroundColor DarkGray
+}
+
+
+function Write-WinForgeKeyValue {
+    param (
+        [string]$Label,
+        [object]$Value,
+        [int]$LabelWidth = 24
+    )
+
+    $valueText = if ($null -eq $Value) {
+        "Não disponível"
+    }
+    elseif ($Value -is [System.Array]) {
+        ($Value | ForEach-Object { $_.ToString() }) -join ", "
+    }
+    elseif ([string]::IsNullOrWhiteSpace($Value.ToString())) {
+        "Não disponível"
+    }
+    else {
+        $Value.ToString()
+    }
+
+    Write-Host "  " -NoNewline
+    Write-Host ($Label.PadRight($LabelWidth)) -ForegroundColor DarkGray -NoNewline
+    Write-Host " : " -ForegroundColor DarkGray -NoNewline
+    Write-Host $valueText -ForegroundColor Gray
+}
+
+
+function Write-WinForgeStatus {
+    param (
+        [ValidateSet("Success", "Warning", "Error", "Info", "Running")]
+        [string]$Type,
+        [string]$Message
+    )
+
+    $badge = switch ($Type) {
+        "Success" { "[OK]" }
+        "Warning" { "[!]" }
+        "Error"   { "[X]" }
+        "Running" { "[..]" }
+        default   { "[i]" }
+    }
+
+    $color = switch ($Type) {
+        "Success" { "Green" }
+        "Warning" { "Yellow" }
+        "Error"   { "Red" }
+        "Running" { "Cyan" }
+        default   { "Cyan" }
+    }
+
+    Write-Host "  $badge " -ForegroundColor $color -NoNewline
+    Write-Host $Message -ForegroundColor Gray
+}
+
+
+function Write-WinForgeCommand {
+    param (
+        [string]$Command
+    )
+
+    Write-Host "  > " -ForegroundColor DarkGray -NoNewline
+    Write-Host $Command -ForegroundColor DarkCyan
+}
 
 function Confirm-Action {
     param (
@@ -370,6 +486,70 @@ function Get-ExpoXmpStatus {
 }
 
 
+function Restart-WinForgeExplorerShell {
+    # Configurações do Explorador e da barra de tarefas são recarregadas pelo shell.
+    # A rotina atua apenas na sessão atual e evita abrir uma janela de arquivos extra.
+    $currentSessionId = (Get-Process -Id $PID).SessionId
+    $previousExplorerProcesses = @(
+        Get-Process -Name "explorer" -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -eq $currentSessionId }
+    )
+    $previousProcessIds = @($previousExplorerProcesses | Select-Object -ExpandProperty Id)
+    $previousProcessesStillRunning = $false
+
+    if ($previousExplorerProcesses.Count -gt 0) {
+        $previousExplorerProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+
+    $exitDeadline = [DateTime]::UtcNow.AddSeconds(2)
+
+    do {
+        $previousProcessesStillRunning = @(
+            Get-Process -ErrorAction SilentlyContinue |
+                Where-Object { $previousProcessIds -contains $_.Id }
+        ).Count -gt 0
+
+        if (-not $previousProcessesStillRunning) {
+            break
+        }
+
+        Start-Sleep -Milliseconds 50
+    } while ([DateTime]::UtcNow -lt $exitDeadline)
+
+    if ($previousProcessesStillRunning) {
+        throw "O Explorer do Windows não pôde ser encerrado."
+    }
+
+    Start-Sleep -Milliseconds 100
+
+    $explorerRestarted = @(
+        Get-Process -Name "explorer" -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -eq $currentSessionId }
+    ).Count -gt 0
+
+    if (-not $explorerRestarted) {
+        Start-Process -FilePath (Join-Path $env:WINDIR "explorer.exe") -ErrorAction Stop | Out-Null
+    }
+
+    $startupDeadline = [DateTime]::UtcNow.AddSeconds(4)
+
+    do {
+        $explorerRestarted = @(
+            Get-Process -Name "explorer" -ErrorAction SilentlyContinue |
+                Where-Object { $_.SessionId -eq $currentSessionId }
+        ).Count -gt 0
+
+        if ($explorerRestarted) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $startupDeadline)
+
+    throw "O Explorer do Windows não reiniciou no tempo esperado."
+}
+
+
 function Set-RegistryDWordValue {
     param (
         [string]$Path,
@@ -390,7 +570,15 @@ function Set-WinForgeHighPerformancePowerPlan {
         [switch]$ThrowOnFailure
     )
 
-    # GUID oficial do plano Alto desempenho. Evita ambiguidade com aliases genéricos do powercfg.
+    if (-not (Get-Command "powercfg.exe" -ErrorAction SilentlyContinue)) {
+        if ($ThrowOnFailure) {
+            throw "powercfg.exe não foi encontrado."
+        }
+
+        return $false
+    }
+
+    # GUID do plano Alto desempenho. O fallback SCHEME_MIN é usado somente se necessário.
     $highPerformanceGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 
     & powercfg.exe /SETACTIVE $highPerformanceGuid
@@ -433,103 +621,6 @@ function Set-WinForgeHighPerformancePowerPlan {
 }
 
 
-function Invoke-WinForgeCommand {
-    param (
-        [string]$Title,
-        [string]$FilePath,
-        [string[]]$Arguments = @(),
-        [string[]]$Description = @(),
-        [string[]]$Warnings = @(),
-        [switch]$RequiresAdmin,
-        [switch]$SkipConfirmation
-    )
-
-    Show-Header $Title
-
-    if ($RequiresAdmin -and -not (Test-IsAdministrator)) {
-        Write-Host "Privilégios de Administrador são necessários para esta operação." -ForegroundColor Red
-        Write-Host ""
-        Write-Host "Reinicie o WinForge como Administrador e tente novamente." -ForegroundColor Yellow
-        Write-Host ""
-        Pause
-        return $false
-    }
-
-    foreach ($line in $Description) {
-        Write-Host $line -ForegroundColor Yellow
-    }
-
-    if ($Description.Count -gt 0) {
-        Write-Host ""
-    }
-
-    foreach ($line in $Warnings) {
-        Write-Host $line -ForegroundColor Cyan
-    }
-
-    if ($Warnings.Count -gt 0) {
-        Write-Host ""
-    }
-
-    Write-Host "Comando:" -ForegroundColor Cyan
-    Write-Host "$FilePath $($Arguments -join ' ')"
-    Write-Host ""
-
-    if (-not $SkipConfirmation) {
-        $confirmed = Confirm-Action "Deseja continuar?"
-
-        if ($confirmed -eq $false) {
-            Write-Host ""
-            Write-Host "Operação cancelada." -ForegroundColor Yellow
-            Write-Host ""
-            Pause
-            return $false
-        }
-    }
-
-    try {
-        $commandExists = Get-Command $FilePath -ErrorAction SilentlyContinue
-
-        if (-not $commandExists) {
-            Write-Host "Comando não encontrado: $FilePath" -ForegroundColor Red
-            Write-Host ""
-            Pause
-            return $false
-        }
-
-        Write-Host ""
-        Write-Host "Executando comando..." -ForegroundColor Green
-        Write-Host ""
-
-        & $FilePath @Arguments
-
-        $exitCode = $LASTEXITCODE
-
-        Write-Host ""
-
-        if ($exitCode -eq 0 -or $null -eq $exitCode) {
-            Write-Host "$Title concluído." -ForegroundColor Green
-        }
-        else {
-            Write-Host "$Title finalizado com código de saída: $exitCode" -ForegroundColor Yellow
-            Write-Host "Revise a saída do comando acima." -ForegroundColor Yellow
-        }
-
-        Write-Host ""
-        Pause
-        return ($exitCode -eq 0 -or $null -eq $exitCode)
-    }
-    catch {
-        Write-Host ""
-        Write-Host "Ocorreu um erro ao executar: $Title." -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        Write-Host ""
-        Pause
-        return $false
-    }
-}
-
-
 function Invoke-DiagnosticCommand {
     param (
         [string]$Title,
@@ -546,11 +637,7 @@ function Invoke-DiagnosticCommand {
         Show-Header $Title
     }
     else {
-        Write-Host ""
-        Write-Host "------------------------------------" -ForegroundColor Cyan
-        Write-Host $Title -ForegroundColor Cyan
-        Write-Host "------------------------------------" -ForegroundColor Cyan
-        Write-Host ""
+        Write-WinForgeSection -Title $Title
     }
 
     if (-not (Test-IsAdministrator)) {
@@ -582,8 +669,7 @@ function Invoke-DiagnosticCommand {
         Write-Host ""
     }
 
-    Write-Host "Comando:" -ForegroundColor Cyan
-    Write-Host "$FilePath $($Arguments -join ' ')"
+    Write-WinForgeCommand -Command "$FilePath $($Arguments -join ' ')"
     Write-Host ""
 
     if (-not $SkipConfirmation) {
@@ -617,7 +703,7 @@ function Invoke-DiagnosticCommand {
         }
 
         Write-Host ""
-        Write-Host "Executando. Não feche esta janela..." -ForegroundColor Green
+        Write-WinForgeStatus -Type Running -Message "Executando. Não feche esta janela."
         Write-Host ""
 
         & $FilePath @Arguments
@@ -627,11 +713,11 @@ function Invoke-DiagnosticCommand {
         Write-Host ""
 
         if ($exitCode -eq 0) {
-            Write-Host "$Title concluído com sucesso." -ForegroundColor Green
+            Write-WinForgeStatus -Type Success -Message "$Title concluído com sucesso."
         }
         else {
-            Write-Host "$Title finalizado com código de saída: $exitCode" -ForegroundColor Yellow
-            Write-Host "Revise a saída do comando acima." -ForegroundColor Yellow
+            Write-WinForgeStatus -Type Warning -Message "$Title finalizado com código de saída: $exitCode."
+            Write-Host "      Revise a saída do comando acima." -ForegroundColor DarkGray
         }
 
         Write-Host ""
@@ -664,7 +750,9 @@ function Invoke-NativeCommandDirect {
         [switch]$IgnoreExitCode
     )
 
-    & $FilePath @Arguments
+    # Comandos nativos são usados aqui apenas por seus efeitos e mensagens.
+    # Out-Host preserva a exibição e evita o retorno acidental de linhas ao pipeline.
+    & $FilePath @Arguments | Out-Host
 
     $exitCode = $LASTEXITCODE
 
@@ -681,10 +769,11 @@ function Write-WinForgeSubStep {
     )
 
     Write-Host ""
-    Write-Host ">> $Title" -ForegroundColor Cyan
+    Write-Host "  [>] " -ForegroundColor Cyan -NoNewline
+    Write-Host $Title -ForegroundColor White
 
     if (-not [string]::IsNullOrWhiteSpace($Message)) {
-        Write-Host "   $Message" -ForegroundColor Yellow
+        Write-Host "      $Message" -ForegroundColor DarkGray
     }
 }
 
@@ -694,7 +783,7 @@ function Write-WinForgeOk {
         [string]$Message
     )
 
-    Write-Host "   OK - $Message" -ForegroundColor Green
+    Write-WinForgeStatus -Type Success -Message $Message
 }
 
 
@@ -703,9 +792,8 @@ function Write-WinForgeWarn {
         [string]$Message
     )
 
-    Write-Host "   ATENÇÃO - $Message" -ForegroundColor Yellow
+    Write-WinForgeStatus -Type Warning -Message $Message
 }
-
 
 function Initialize-WinForgeEnvironment {
     Set-WinForgeConsoleEncoding
@@ -729,26 +817,30 @@ function Initialize-Winget {
     Write-Host ""
 
     try {
-        $wingetExists = Get-Command winget -ErrorAction SilentlyContinue
-
-        if (-not $wingetExists) {
-            Write-Host "winget não foi encontrado neste sistema." -ForegroundColor Red
-            Write-Host "Instale ou atualize o App Installer pela Microsoft Store." -ForegroundColor Yellow
+        if (-not (Get-Command "winget" -ErrorAction SilentlyContinue)) {
+            Write-WinForgeStatus -Type Error -Message "winget não foi encontrado neste sistema."
+            Write-Host "  Instale ou atualize o App Installer pela Microsoft Store." -ForegroundColor Yellow
             Write-Host ""
             Start-Sleep -Seconds 2
             return $false
         }
 
-        winget source update --accept-source-agreements | Out-Null
+        & winget source update --accept-source-agreements | Out-Null
+        $exitCode = $LASTEXITCODE
 
-        Write-Host "winget está pronto." -ForegroundColor Green
+        if ($exitCode -eq 0) {
+            Write-WinForgeStatus -Type Success -Message "winget está pronto."
+        }
+        else {
+            Write-WinForgeStatus -Type Warning -Message "winget está disponível, mas a fonte não pôde ser atualizada."
+        }
+
         Start-Sleep -Seconds 1
-
         return $true
     }
     catch {
-        Write-Host "Falha ao inicializar winget." -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-WinForgeStatus -Type Error -Message "Falha ao inicializar winget."
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
         Write-Host ""
         Start-Sleep -Seconds 2
         return $false

@@ -10,6 +10,7 @@ try {
     chcp.com 65001 | Out-Null
 }
 catch {
+    # A configuração de codificação é opcional; a inicialização deve continuar em terminais restritos.
 }
 
 $moduleRoot = Join-Path $PSScriptRoot "modules"
@@ -20,6 +21,7 @@ $requiredModules = @(
     "Diagnostics.psm1",
     "Network.psm1",
     "System.psm1",
+    "Personalization.psm1",
     "Maintenance.psm1",
     "Menus.psm1"
 )
