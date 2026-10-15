@@ -1,35 +1,14 @@
-# Runtime / temporary
-*.log
-*.tmp
-*.temp
-*.bak
-*.old
-
-# Generated packages / build output
+# Gerados pelo WinForge e pelas ferramentas
+SHA256SUMS.txt
 *.zip
-*.7z
-*.rar
-dist/
-build/
-out/
+*.log
+TestResults/
+testResults.xml
+coverage.xml
 
-# Local environment / secrets
-.env
-.env.*
-*.local.ps1
-*.secret.ps1
-secrets.*
-
-# Windows / macOS noise
+# Sistema e editores
 Thumbs.db
-Desktop.ini
+desktop.ini
 .DS_Store
-
-# Editor / IDE
 .vscode/
 .idea/
-*.code-workspace
-
-# Test output
-TestResults/
-coverage/
