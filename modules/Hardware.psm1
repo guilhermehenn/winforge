@@ -36,8 +36,15 @@ function Test-WinForgeIntegratedGpu {
 
     $name = $GpuName.Trim()
 
-    # Placas dedicadas conhecidas nunca são tratadas como integradas, mesmo que o nome contenha "Graphics".
-    if ($name -match "\b(GeForce|Quadro|RTX|GTX|Radeon\s+(RX|Pro|VII)|Arc\s+(A|B)[0-9]|Intel\(R\)\s+Arc)\b") {
+    # Placas dedicadas conhecidas nunca são tratadas como integradas, mesmo que o nome contenha "Graphics". Da Intel, só
+    # as Arc com modelo de série A ou B (A380, A770M, B580, Pro B60) são placas: "Intel(R) Arc(TM) Graphics" (Meteor
+    # Lake, Arrow Lake), "Arc(TM) 140V/140T" (Lunar Lake, Arrow Lake H) e "Arc(TM) B370/B390" (Panther Lake) estão
+    # dentro do processador.
+    if ($name -match "\b(GeForce|Quadro|RTX|GTX|Radeon\s+(RX|Pro|VII))\b") {
+        return $false
+    }
+
+    if ($name -match "\bArc(\(TM\))?\s+(Pro\s+)?[AB][0-9]{2,3}" -and $name -notmatch "\bArc(\(TM\))?\s+B3[0-9]{2}\b") {
         return $false
     }
 
@@ -48,6 +55,7 @@ function Test-WinForgeIntegratedGpu {
         "^AMD Radeon\s*(\(TM\)\s*)?Vega\s+[0-9]+(\s+Graphics)?$",  # Vega 8 / Vega 11
         "Intel\(R\).*(UHD|Iris|HD|Xe)\b.*Graphics",
         "Intel\(R\)\s+Graphics",                                    # Core Ultra: "Intel(R) Graphics"
+        "Intel\(R\)\s+Arc(\(TM\))?\s+(Graphics|[0-9]{3}[VT]\b|B3[0-9]{2}\b)", # Core Ultra: Arc Graphics, 140V, B390
         "Intel.*Integrated"
     )
 
@@ -159,6 +167,7 @@ function Get-WinForgeGpuMemoryBytes {
             $candidates += [PSCustomObject]@{
                 Name   = $adapterString
                 Memory = $memoryBytes
+                Exact  = ($normalizedGpuName -eq $normalizedAdapterString)
             }
         }
 
@@ -166,8 +175,10 @@ function Get-WinForgeGpuMemoryBytes {
             return $null
         }
 
+        # O nome exato vem antes: uma entrada que só contém o nome pode ser de uma placa que já saiu do PC (uma RTX 4070
+        # Ti SUPER de 16 GB trocada por uma RTX 4070 de 12 GB deixa a entrada antiga no Registro).
         $bestCandidate = $candidates |
-            Sort-Object -Property Memory -Descending |
+            Sort-Object -Property @{ Expression = { [bool]$_.Exact }; Descending = $true }, @{ Expression = "Memory"; Descending = $true } |
             Select-Object -First 1
 
         return $bestCandidate.Memory
@@ -184,7 +195,8 @@ function Get-WinForgeExpoXmpStatus {
     )
 
     # O Windows não expõe o perfil XMP/EXPO. O resultado é um indicativo baseado em velocidade
-    # anunciada pelo módulo (Speed) versus velocidade em uso (ConfiguredClockSpeed).
+    # anunciada pelo módulo (Speed) versus velocidade em uso (ConfiguredClockSpeed). As duas vêm em MT/s, a taxa de
+    # transferência que o nome do módulo usa (DDR4-3200 = 3200 MT/s) e que o Gerenciador de Tarefas do Windows 11 mostra.
     try {
         if ($null -eq $MemoryModules -or @($MemoryModules).Count -eq 0) {
             return "Desconhecido"
@@ -204,26 +216,40 @@ function Get-WinForgeExpoXmpStatus {
             return "Desconhecido"
         }
 
+        # Mais rápido do que o próprio módulo anuncia só acontece com um perfil (ou overclock manual) ligado na BIOS. É a
+        # comparação mais segura, então vem primeiro: vale para qualquer tipo de memória.
+        if ($null -ne $rated -and $rated -gt 0 -and $configured -gt $rated) {
+            return "Indicativo: ativado ($configured MT/s, acima dos $rated MT/s do módulo)"
+        }
+
+        # A maior velocidade padrão de cada geração (JEDEC): DDR5 vai até 8800 MT/s desde a revisão JESD79-5C (2024), DDR4
+        # até 3200 e DDR3 até 2133. Acima disso, só com perfil XMP/EXPO.
         $jedecMax = switch ($memoryType) {
-            "DDR5" { 5600 }
+            "DDR5" { 8800 }
             "DDR4" { 3200 }
-            "DDR3" { 1866 }
+            "DDR3" { 2133 }
             default { 0 }
+        }
+
+        if ($jedecMax -gt 0 -and $configured -gt $jedecMax) {
+            return "Indicativo: ativado ($configured MT/s, acima da velocidade padrão)"
+        }
+
+        # Abaixo do que o módulo anuncia: num notebook é o limite do fabricante (não há opção a ligar); num desktop pode ser
+        # o perfil desligado, mas também o limite do processador ou da placa, ou módulos diferentes misturados.
+        if ($null -ne $rated -and $rated -gt $configured) {
+            if (Test-WinForgeLaptop) {
+                return "Não se aplica (notebook: em uso $configured MT/s, o que o fabricante definiu)"
+            }
+
+            return "Abaixo do que o módulo anuncia ($rated MT/s; em uso $configured MT/s): perfil XMP/EXPO desligado, ou limite do processador ou da placa"
         }
 
         if ($jedecMax -eq 0) {
             return "Desconhecido"
         }
 
-        if ($configured -gt $jedecMax) {
-            return "Indicativo: ativado ($configured MHz, acima do padrão JEDEC)"
-        }
-
-        if ($null -ne $rated -and $rated -gt $configured) {
-            return "Indicativo: desativado (módulo anuncia $rated MHz, em uso $configured MHz)"
-        }
-
-        return "Padrão JEDEC / indeterminado ($configured MHz)"
+        return "Velocidade padrão ($configured MT/s)"
     }
     catch {
         return "Desconhecido"

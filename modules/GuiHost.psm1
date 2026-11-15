@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Management.Automation;
 using System.Management.Automation.Host;
 using System.Security;
@@ -49,6 +50,12 @@ namespace WinForge
         public GuiOption[] Options;
         public string DefaultKey;
         public bool Secure;
+        public bool NoSelectAll;
+        // Os botões de uma lista de marcação ("Desinstalar", "Pular"); vazios, a janela usa Confirmar e Cancelar.
+        public string ConfirmLabel;
+        public string CancelLabel;
+        // Uma revisão (a lista vem com o estado de agora marcado): o botão conta as mudanças e desmarcar tudo é resposta.
+        public bool AllowNone;
         public string Answer;
         public string[] AnswerKeys;
         public bool Accepted;
@@ -128,6 +135,12 @@ namespace WinForge
         private volatile GuiProgressInfo progress;
         private int progressVersion;
 
+        // O log da sessão: cada linha que as ações escrevem, com a hora (o transcript do PowerShell não vê o que passa
+        // por este host). Aberto por Start-WinForgeLogging, fechado por Stop-WinForgeLogging ou ao fechar a janela.
+        private readonly object logLock = new object();
+        private StreamWriter log;
+        private bool logLineOpen;
+
         public GuiHostUI()
         {
             raw = new GuiRawUI(this);
@@ -199,6 +212,80 @@ namespace WinForge
             item.Color = color;
             item.NewLine = newLine;
             lock (queueLock) { queue.Enqueue(item); }
+            WriteLog(item.Text, newLine);
+        }
+
+        public bool OpenLog(string path, string header)
+        {
+            lock (logLock)
+            {
+                if (log != null) { return true; }
+
+                try
+                {
+                    log = new StreamWriter(path, true, new UTF8Encoding(true));
+                    if (!string.IsNullOrEmpty(header)) { log.WriteLine(header); log.WriteLine(); }
+                    log.Flush();
+                    logLineOpen = false;
+                    return true;
+                }
+                catch
+                {
+                    log = null;
+                    return false;
+                }
+            }
+        }
+
+        public void CloseLog()
+        {
+            lock (logLock)
+            {
+                if (log == null) { return; }
+
+                try
+                {
+                    if (logLineOpen) { log.WriteLine(); }
+                    log.Dispose();
+                }
+                catch
+                {
+                    // O disco pode ter sumido (pendrive); o log é um complemento.
+                }
+
+                log = null;
+                logLineOpen = false;
+            }
+        }
+
+        private void WriteLog(string text, bool newLine)
+        {
+            lock (logLock)
+            {
+                if (log == null) { return; }
+
+                try
+                {
+                    if (!logLineOpen && !string.IsNullOrEmpty(text))
+                    {
+                        log.Write(DateTime.Now.ToString("HH:mm:ss ", CultureInfo.InvariantCulture));
+                        logLineOpen = true;
+                    }
+
+                    log.Write(text);
+
+                    if (newLine)
+                    {
+                        log.WriteLine();
+                        logLineOpen = false;
+                        log.Flush();
+                    }
+                }
+                catch
+                {
+                    // Idem.
+                }
+            }
         }
 
         public void EnqueueClear()
@@ -207,6 +294,24 @@ namespace WinForge
             item.Text = "";
             item.Clear = true;
             lock (queueLock) { queue.Enqueue(item); }
+        }
+
+        // O que ainda está na fila (a janela só dá a ação por terminada quando ela esvazia).
+        public int PendingCount
+        {
+            get { lock (queueLock) { return queue.Count; } }
+        }
+
+        // Uma ação nova começa sem a saída nem o progresso da anterior.
+        public void ClearQueue()
+        {
+            lock (queueLock) { queue.Clear(); }
+        }
+
+        public void ResetProgress()
+        {
+            progress = null;
+            Interlocked.Increment(ref progressVersion);
         }
 
         public GuiOutputItem[] Drain(int max)
@@ -325,11 +430,28 @@ namespace WinForge
 
         public string[] AskMulti(string title, string message, GuiOption[] options)
         {
+            return AskMulti(title, message, options, false);
+        }
+
+        // noSelectAll: a lista vem sem o "Marcar todos" (desinstalar, remover aplicativos, recursos do Windows).
+        public string[] AskMulti(string title, string message, GuiOption[] options, bool noSelectAll)
+        {
+            return AskMulti(title, message, options, noSelectAll, null, null, false);
+        }
+
+        // confirmLabel e cancelLabel: o que os botões dizem ("Desinstalar", "Pular"); nulos, Confirmar e Cancelar.
+        // allowNone: uma revisão, em que desmarcar tudo também é uma resposta (a lista volta vazia, e não nula).
+        public string[] AskMulti(string title, string message, GuiOption[] options, bool noSelectAll, string confirmLabel, string cancelLabel, bool allowNone)
+        {
             GuiPromptRequest request = new GuiPromptRequest();
             request.Kind = "multi";
             request.Title = title;
             request.Label = message;
             request.Options = options;
+            request.NoSelectAll = noSelectAll;
+            request.ConfirmLabel = confirmLabel;
+            request.CancelLabel = cancelLabel;
+            request.AllowNone = allowNone;
             Ask(request);
 
             Enqueue(message + ": ", ConsoleColor.Cyan, false);
@@ -356,9 +478,13 @@ namespace WinForge
 
         public GuiPromptRequest Ask(GuiPromptRequest request)
         {
-            if (stopping) { throw new PipelineStoppedException(); }
-
-            lock (promptLock) { pending = request; }
+            // O "parar" é conferido dentro da trava: se o CancelPending rodasse entre a conferência e o registro da
+            // pergunta, ele não a veria, e a ação ficaria esperando uma resposta que nunca vem.
+            lock (promptLock)
+            {
+                if (stopping) { throw new PipelineStoppedException(); }
+                pending = request;
+            }
 
             request.Done.WaitOne();
 
@@ -567,16 +693,127 @@ if (-not $global:WinForgeGuiReady) {
     $global:WinForgeGuiReady = $true
 }
 
+try { Reset-WinForgeOutcome } catch { }
+
 try {
     # O comando vem da tabela de navegação do próprio WinForge; vira um scriptblock para aceitar parâmetros.
     $commandBlock = [scriptblock]::Create($WinForgeGuiCommand)
     & $commandBlock | Out-Default
 }
 catch {
+    $failure = $_.Exception.Message
+    try { $failure = ConvertTo-WinForgeReadableError -Text $failure } catch { }
+
     Write-Host ""
-    Write-Host ("Falha: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ("Falha: " + $failure) -ForegroundColor Red
+
+    try { Set-WinForgeOutcome -Kind Failed -Detail $failure } catch { }
 }
+
+# O desfecho (OK, ressalvas, falha...) é a única saída do pipeline; a janela o lê quando a ação termina.
+try { Get-WinForgeOutcome } catch { }
 '@
+
+
+# ---------------------------------------------------------------------------
+# Uma janela só por usuário
+# ---------------------------------------------------------------------------
+# Abrir o WinForge de novo (pelo atalho, pelo .cmd ou pelo monitor na bandeja) não abre uma segunda janela, que rodaria
+# ações ao mesmo tempo que a primeira: o pedido (abrir, ou abrir já rodando uma ação) vai para a janela aberta, que
+# confere a cada meio segundo se chegou algum.
+
+$script:WinForgeWindowLock = $null
+
+
+function Get-WinForgeWindowLockName {
+    # Por sessão do Windows e por conta: a janela de outro Administrador (outra pasta de dados) não segura esta.
+    try {
+        return "Local\WinForge.Window.$([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value)"
+    }
+    catch {
+        return "Local\WinForge.Window"
+    }
+}
+
+
+function Enter-WinForgeWindowLock {
+    <#
+    $true quando esta é a janela do WinForge (a trava ficou com ela até o processo terminar) ou quando não deu para saber
+    (melhor abrir do que não abrir nada); $false quando já há uma janela aberta. -WaitMilliseconds: a reabertura como
+    Administrador espera a janela anterior fechar.
+    #>
+    param ([int]$WaitMilliseconds = 0)
+
+    # A janela elevada e a não elevada do mesmo usuário precisam enxergar a mesma trava (Open-WinForgeNamedMutex).
+    $mutex = Open-WinForgeNamedMutex -Name (Get-WinForgeWindowLockName)
+
+    if ($null -eq $mutex) { return $true }
+
+    $owned = $false
+
+    try { $owned = $mutex.WaitOne($WaitMilliseconds) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
+
+    if ($owned) {
+        $script:WinForgeWindowLock = $mutex
+        return $true
+    }
+
+    $mutex.Dispose()
+    return $false
+}
+
+
+function Get-WinForgeWindowRequestPath {
+    return (Join-Path (Get-WinForgeDataPath) "window-request.json")
+}
+
+
+function Send-WinForgeWindowRequest {
+    # Deixa o pedido para a janela aberta: Action = Id da navegação a rodar ("" = só trazer a janela para a frente).
+    param ([string]$Action = "")
+
+    if ($Action -notmatch '^[a-z0-9][a-z0-9.-]*$') { $Action = "" }
+
+    try {
+        Write-WinForgeStateJson -Path (Get-WinForgeWindowRequestPath) -InputObject ([ordered]@{ Action = $Action; At = (Get-Date).ToString("o", [System.Globalization.CultureInfo]::InvariantCulture) })
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+
+function Receive-WinForgeWindowRequest {
+    # O pedido que outra abertura deixou (e que é apagado ao ser lido), ou $null. Um pedido de mais de um minuto (de uma
+    # janela que estava travada) é descartado: rodar uma ação tanto tempo depois do clique surpreenderia a pessoa.
+    $path = Get-WinForgeWindowRequestPath
+
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+
+    $document = $null
+
+    try {
+        $document = (Read-WinForgeStateFile -Path $path).Document
+    }
+    finally {
+        Get-ChildItem -LiteralPath (Split-Path -Parent $path) -Filter "window-request.json*" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($null -eq $document) { return [PSCustomObject]@{ Action = "" } }
+
+    $at = [datetime]::MinValue
+    $atText = [string](Get-WinForgeJsonValue -Object $document -Name "At" -Default "")
+
+    if ([datetime]::TryParse($atText, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$at) -and ((Get-Date) - $at).TotalSeconds -gt 60) {
+        return [PSCustomObject]@{ Action = "" }
+    }
+
+    $action = [string](Get-WinForgeJsonValue -Object $document -Name "Action" -Default "")
+    if ($action -notmatch '^[a-z0-9][a-z0-9.-]*$') { $action = "" }
+
+    return [PSCustomObject]@{ Action = $action }
+}
 
 
 function Initialize-WinForgeGuiHost {
@@ -624,6 +861,10 @@ function New-WinForgeGuiSession {
         Status      = "Idle"
         ErrorIndex  = 0
         Command     = ""
+        Outcome     = $null
+        StartedAt   = $null
+        EndedAt     = $null
+        StopAskedAt = $null
     }
 }
 
@@ -644,6 +885,8 @@ function Start-WinForgeGuiCommand {
     }
 
     $Session.Host.GuiUI.ResetStop()
+    $Session.Host.GuiUI.ClearQueue()
+    $Session.Host.GuiUI.ResetProgress()
     $Session.Host.GuiUI.Raw.Columns = $Columns
 
     $proxy = $Session.Runspace.SessionStateProxy
@@ -658,6 +901,10 @@ function Start-WinForgeGuiCommand {
     $Session.Ps = $ps
     $Session.ErrorIndex = 0
     $Session.Command = $Command
+    $Session.Outcome = $null
+    $Session.StartedAt = Get-Date
+    $Session.EndedAt = $null
+    $Session.StopAskedAt = $null
     $Session.Async = $ps.BeginInvoke()
     $Session.Status = "Running"
 
@@ -665,28 +912,92 @@ function Start-WinForgeGuiCommand {
 }
 
 
-function Stop-WinForgeChildTools {
+function Get-WinForgeDescendantProcesses {
     <#
-    Depois que uma ação é interrompida, ferramentas nativas que ela iniciou (DISM, SFC, winget...) podem continuar
-    rodando sem ninguém para mostrar a saída. Encerra apenas os filhos diretos deste processo que estão na lista.
+    Os processos que descendem deste WinForge (os filhos e os filhos deles: o DISM e o DismHost que ele abre, o winget e o
+    instalador do programa, o atualizador de um navegador), numa leitura só do Win32_Process. Fica de fora o conhost: o
+    console do próprio WinForge mora num deles, e ele termina sozinho com quem o usa. Fica de fora também o MpCmdRun: depois
+    do Parar, é ele que pede ao Windows Defender para cancelar a verificação (fechar a janela nessa hora não pode matar o
+    pedido e deixar a verificação rodando por horas). Um "filho" mais velho que o pai é
+    um número de processo reaproveitado, e não entra. Devolve as linhas do Win32_Process (ProcessId, Name, CreationDate).
     #>
-    $toolNames = @("dism.exe", "dismhost.exe", "sfc.exe", "chkdsk.exe", "defrag.exe", "winget.exe", "powercfg.exe", "pnputil.exe", "ipconfig.exe", "netsh.exe")
+    param ([int]$RootId = $PID)
 
     try {
-        $children = @(
-            Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId = $PID" -ErrorAction Stop |
-                Where-Object { $toolNames -contains ([string]$_.Name).ToLowerInvariant() }
-        )
-
-        foreach ($child in $children) {
-            Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue
-        }
-
-        return $children.Count
+        $all = @(Get-CimInstance -ClassName Win32_Process -OperationTimeoutSec 10 -ErrorAction Stop)
     }
     catch {
-        return 0
+        return @()
     }
+
+    $byParent = @{}
+    $started = @{}
+
+    foreach ($row in $all) {
+        $parent = [int]$row.ParentProcessId
+        if (-not $byParent.ContainsKey($parent)) { $byParent[$parent] = New-Object System.Collections.ArrayList }
+        [void]$byParent[$parent].Add($row)
+        $started[[int]$row.ProcessId] = $row.CreationDate
+    }
+
+    $found = New-Object System.Collections.ArrayList
+    $seen = New-Object 'System.Collections.Generic.HashSet[int]'
+    $queue = New-Object 'System.Collections.Generic.Queue[int]'
+    [void]$seen.Add($RootId)
+    $queue.Enqueue($RootId)
+
+    while ($queue.Count -gt 0) {
+        $parentId = $queue.Dequeue()
+        if (-not $byParent.ContainsKey($parentId)) { continue }
+
+        foreach ($row in $byParent[$parentId]) {
+            $id = [int]$row.ProcessId
+            if (-not $seen.Add($id)) { continue }
+
+            $parentStart = $started[$parentId]
+            if ($null -ne $parentStart -and $null -ne $row.CreationDate -and [datetime]$row.CreationDate -lt [datetime]$parentStart) { continue }
+            if (([string]$row.Name) -in @("conhost.exe", "MpCmdRun.exe")) { continue }
+
+            [void]$found.Add($row)
+            $queue.Enqueue($id)
+        }
+    }
+
+    return @($found)
+}
+
+
+function Stop-WinForgeChildTools {
+    <#
+    Quando uma ação é interrompida, o que ela iniciou não pode continuar rodando escondido: encerra a árvore de processos
+    que descende deste WinForge (Get-WinForgeDescendantProcesses), dos mais novos para os mais velhos, ou a lista dada
+    (Processes, lida antes de a ação parar: depois, o DismHost já não tem o DISM como pai). Um processo só é encerrado se
+    ainda for o mesmo (a hora de início confere). O serviço que instala as atualizações do Windows não é filho do
+    WinForge e termina sozinho o que estiver fazendo. Devolve quantos foram encerrados.
+    #>
+    param ([object[]]$Processes = $null)
+
+    # Sempre uma lista (sob Set-StrictMode, uma lista vazia que vira $null não tem Count).
+    $targets = @(if ($null -ne $Processes) { $Processes } else { Get-WinForgeDescendantProcesses })
+    $stopped = 0
+
+    for ($i = $targets.Count - 1; $i -ge 0; $i--) {
+        $row = $targets[$i]
+
+        try {
+            $process = Get-Process -Id ([int]$row.ProcessId) -ErrorAction Stop
+
+            if ($null -ne $row.CreationDate -and [Math]::Abs(($process.StartTime - [datetime]$row.CreationDate).TotalSeconds) -gt 2) { continue }
+
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            $stopped++
+        }
+        catch {
+            continue
+        }
+    }
+
+    return $stopped
 }
 
 
@@ -700,8 +1011,15 @@ function Stop-WinForgeGuiCommand {
         return
     }
 
+    # A árvore é lida antes de parar: o PowerShell encerra só a ferramenta que ele mesmo abriu (o DISM), e os filhos dela
+    # (o DismHost, que faz o reparo de verdade; o instalador que o winget abriu) ficariam rodando sem ninguém ver.
+    $tree = @(Get-WinForgeDescendantProcesses)
+
     $Session.Host.GuiUI.CancelPending()
     [void]$Session.Ps.BeginStop($null, $null)
+    $Session.StopAskedAt = Get-Date
+
+    if ($tree.Count -gt 0) { [void](Stop-WinForgeChildTools -Processes $tree) }
 }
 
 
@@ -718,6 +1036,14 @@ function Read-WinForgeGuiUpdate {
     if ($Session.Status -eq "Running" -and $null -ne $Session.Ps) {
         $ps = $Session.Ps
 
+        # Um "Parar" que chega enquanto a ação ainda está começando (carregando os módulos) pode não pegar: enquanto ela
+        # não para, o pedido é repetido a cada 2 segundos.
+        if ($null -ne $Session.StopAskedAt -and -not $Session.Async.IsCompleted -and ((Get-Date) - $Session.StopAskedAt).TotalSeconds -ge 2) {
+            $Session.Host.GuiUI.CancelPending()
+            [void]$ps.BeginStop($null, $null)
+            $Session.StopAskedAt = Get-Date
+        }
+
         # Erros não terminantes ficam no fluxo de erros do pipeline; são repassados para a tela (avisos já passam pelo host).
         while ($Session.ErrorIndex -lt $ps.Streams.Error.Count) {
             $record = $ps.Streams.Error[$Session.ErrorIndex]
@@ -730,7 +1056,14 @@ function Read-WinForgeGuiUpdate {
             $state = $ps.InvocationStateInfo.State
 
             try {
-                $ps.EndInvoke($Session.Async)
+                $output = @($ps.EndInvoke($Session.Async))
+
+                # O desfecho vem como último item do pipeline (ver o final de GuiRunnerScript).
+                $found = @($output | Where-Object { $null -ne $_ -and $_.PSObject.TypeNames -contains "WinForge.Outcome" })
+
+                if ($found.Count -gt 0) {
+                    $Session.Outcome = $found[$found.Count - 1]
+                }
             }
             catch {
                 if ($state -ne "Stopped") {
@@ -754,9 +1087,17 @@ function Read-WinForgeGuiUpdate {
                 }
             }
 
+            # Erros gravados no último instante (depois da leitura acima) também vão para a tela.
+            while ($Session.ErrorIndex -lt $ps.Streams.Error.Count) {
+                $record = $ps.Streams.Error[$Session.ErrorIndex]
+                $Session.ErrorIndex++
+                $ui.WriteInfoLine(("Erro: " + $record.ToString()), [ConsoleColor]::Red)
+            }
+
             $ps.Dispose()
             $Session.Ps = $null
             $Session.Async = $null
+            $Session.EndedAt = Get-Date
             $Session.Status = $finalState
         }
     }
@@ -764,12 +1105,25 @@ function Read-WinForgeGuiUpdate {
     # A fila só é lida depois do estado: se a ação terminou, nada mais será enfileirado.
     $items = $ui.Drain($MaxItems)
 
+    # Terminada, mas com saída ainda na fila (uma ação que escreveu muito no fim): para a janela ela continua "em
+    # andamento" até a fila esvaziar, senão o fim da saída (o resumo do resultado) ficaria de fora.
+    $status = $Session.Status
+    if ($status -ne "Running" -and $ui.PendingCount -gt 0) { $status = "Running" }
+
+    # A versão é lida antes do andamento: um andamento novo gravado entre as duas leituras volta na próxima volta (a
+    # versão terá mudado), em vez de ficar marcado como mostrado sem ter aparecido.
+    $progressVersion = $ui.ProgressVersion
+    $progress = $ui.Progress
+
     return [PSCustomObject]@{
         Items           = $items
-        Status          = $Session.Status
+        Status          = $status
+        Outcome         = $Session.Outcome
         Prompt          = $ui.PendingPrompt
-        Progress        = $ui.Progress
-        ProgressVersion = $ui.ProgressVersion
+        Progress        = $progress
+        ProgressVersion = $progressVersion
+        StartedAt       = $Session.StartedAt
+        EndedAt         = $Session.EndedAt
     }
 }
 
@@ -813,6 +1167,10 @@ function Close-WinForgeGuiSession {
             if ($null -ne $Session.Ps) {
                 [void]$Session.Ps.BeginStop($null, $null)
             }
+
+            # A janela está fechando com a ação rodando: o que ela abriu também para, e o log fica fechado e completo.
+            [void](Stop-WinForgeChildTools)
+            $Session.Host.GuiUI.CloseLog()
         }
 
         elseif ($Session.Status -ne "Idle" -or $null -ne $Session.Runspace) {
@@ -879,6 +1237,8 @@ function Get-WinForgePromptPlan {
 
     $buttons = @()
     $showText = $false
+    $label = [string]$Prompt.Label
+    $defaultText = ""
 
     switch ($Prompt.Kind) {
         "key" {
@@ -888,10 +1248,16 @@ function Get-WinForgePromptPlan {
         "choice" {
             $index = 0
 
+            # Um destaque só por pergunta: a resposta padrão só ganha a cor quando a ação não destacou nenhuma outra (na
+            # pasta da revisão, "Limpar com o WinForge" em destaque e "Pular esta pasta" como padrão ficavam os dois).
+            $anyAccent = (@($Prompt.Options | Where-Object { [bool]$_.Accent }).Count -gt 0)
+
             foreach ($option in @($Prompt.Options)) {
                 $isAccent = [bool]$option.Accent
 
-                if (-not $isAccent -and -not [string]::IsNullOrEmpty($Prompt.DefaultKey) -and $option.Key -ieq $Prompt.DefaultKey) {
+                # A opção de sair ("Cancelar", "Voltar") costuma ser a padrão do ENTER no console, mas na janela ela
+                # não deve ganhar a cor de destaque: isso é da ação principal (ou de nenhuma, quando só há sair).
+                if (-not $anyAccent -and -not [bool]$option.Exit -and -not [string]::IsNullOrEmpty($Prompt.DefaultKey) -and $option.Key -ieq $Prompt.DefaultKey) {
                     $isAccent = $true
                 }
 
@@ -913,33 +1279,540 @@ function Get-WinForgePromptPlan {
         }
 
         default {
-            $label = [string]$Prompt.Label
-
             if ($label -match '(?i)[\(\[]\s*S\s*/\s*N\s*[\)\]]') {
                 $buttons += [PSCustomObject]@{ Text = "Sim"; Answer = "S"; Index = -1; Accent = $true; Description = ""; Exit = $false }
                 $buttons += [PSCustomObject]@{ Text = "Não"; Answer = "N"; Index = -1; Accent = $false; Description = ""; Exit = $false }
             }
-            else {
-                $showText = $true
-
-                if ($label -match '(?i)\bENTER\b' -and $label -match '(?i)pressione|conclua') {
-                    $buttons += [PSCustomObject]@{ Text = "Continuar"; Answer = ""; Index = -1; Accent = $true; Description = ""; Exit = $false }
-                }
+            elseif ($label -match '(?i)\bENTER\b' -and $label -match '(?i)pressione|conclua' -and $label -notmatch '(?i)digite|cole|informe') {
+                # "Pressione ENTER para seguir": só o botão; uma caixa de texto ali não serviria para nada.
+                $buttons += [PSCustomObject]@{ Text = "Continuar"; Answer = ""; Index = -1; Accent = $true; Description = ""; Exit = $false }
 
                 if ($label -match '(?i)\bP\s*=\s*pular') {
                     $buttons += [PSCustomObject]@{ Text = "Pular as etapas restantes"; Answer = "P"; Index = -1; Accent = $false; Description = ""; Exit = $false }
+                }
+            }
+            else {
+                # Texto livre. As dicas de teclado do console saem do rótulo e viram o que são na janela: "(ENTER = 30)"
+                # é a resposta já escrita na caixa; "(ENTER cancela)" e "(vazio = voltar)" viram o botão de sair. Sem
+                # resposta padrão, a caixa vazia é desistir (Read-WinForgeText): o botão Cancelar manda isso.
+                $showText = $true
+                $exitText = "Cancelar"
+
+                if ($label -match '(?i)\s*\(\s*ENTER\s*=\s*([^)]+)\)') {
+                    $defaultText = $Matches[1].Trim()
+                    $label = $label.Replace($Matches[0], "")
+                    $exitText = ""
+                }
+                elseif ($label -match '(?i)\s*\(\s*vazio\s*=\s*voltar\s*\)') {
+                    $label = $label.Replace($Matches[0], "")
+                    $exitText = "Voltar"
+                }
+                elseif ($label -match '(?i)\s*\(\s*ENTER\s+cancela\s*\)') {
+                    $label = $label.Replace($Matches[0], "")
+                }
+
+                if ($exitText) {
+                    $buttons += [PSCustomObject]@{ Text = $exitText; Answer = ""; Index = -1; Accent = $false; Description = ""; Exit = $true }
                 }
             }
         }
     }
 
     return [PSCustomObject]@{
-        Kind     = [string]$Prompt.Kind
-        ShowText = $showText
-        Buttons  = @($buttons)
-        Options  = @($Prompt.Options)
-        Label    = [string]$Prompt.Label
+        Kind        = [string]$Prompt.Kind
+        ShowText    = $showText
+        Buttons     = @($buttons)
+        Options     = @($Prompt.Options)
+        Label       = $label.Trim()
+        DefaultText = $defaultText
     }
+}
+
+
+# ---------------------------------------------------------------------------
+# Leituras em segundo plano (o Início)
+# ---------------------------------------------------------------------------
+
+# Um runspace à parte, só para leituras: a janela continua respondendo enquanto o PC é lido (a proteção do Windows e as
+# consultas WMI podem levar segundos). Os módulos são importados uma vez, na primeira leitura, e não na thread da janela.
+$script:GuiReaderScript = @'
+param ([string]$WinForgeReadModuleRoot, [string[]]$WinForgeReadModules, [string]$WinForgeReadCommand, [hashtable]$WinForgeReadArguments)
+
+$ErrorActionPreference = "Stop"
+
+if (-not $global:WinForgeReaderReady) {
+    foreach ($name in $WinForgeReadModules) {
+        $modulePath = Join-Path $WinForgeReadModuleRoot "$name.psm1"
+
+        try {
+            Import-Module -Name $modulePath -Force -DisableNameChecking -Global
+        }
+        catch {
+            # Caminhos com colchetes são lidos como curinga pelo Import-Module; escapar resolve (como na janela e nas ações).
+            Import-Module -Name ([System.Management.Automation.WildcardPattern]::Escape($modulePath)) -Force -DisableNameChecking -Global
+        }
+    }
+
+    $global:WinForgeReaderReady = $true
+}
+
+& $WinForgeReadCommand @WinForgeReadArguments
+'@
+
+
+function New-WinForgeGuiReader {
+    # Prepara o runspace das leituras. Abrir é rápido; os módulos só são importados na primeira leitura.
+    param (
+        [Parameter(Mandatory)]
+        [string]$ModuleRoot,
+
+        [Parameter(Mandatory)]
+        [string[]]$Modules
+    )
+
+    $runspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+    $runspace.Open()
+
+    return [PSCustomObject]@{
+        Runspace   = $runspace
+        ModuleRoot = $ModuleRoot
+        Modules    = $Modules
+        Ps         = $null
+        Async      = $null
+        Command    = ""
+        StartedAt  = $null
+        Watch      = $null
+    }
+}
+
+
+function Start-WinForgeGuiRead {
+    # Começa uma leitura (uma função dos módulos, com os parâmetros dados). Devolve $false se a anterior não terminou.
+    param (
+        [Parameter(Mandatory)]
+        $Reader,
+
+        [Parameter(Mandatory)]
+        [string]$Command,
+
+        [hashtable]$Arguments = @{}
+    )
+
+    if ($null -ne $Reader.Ps) { return $false }
+
+    $ps = [System.Management.Automation.PowerShell]::Create()
+    $ps.Runspace = $Reader.Runspace
+    [void]$ps.AddScript($script:GuiReaderScript, $false)
+    [void]$ps.AddArgument($Reader.ModuleRoot)
+    [void]$ps.AddArgument([string[]]$Reader.Modules)
+    [void]$ps.AddArgument($Command)
+    [void]$ps.AddArgument($Arguments)
+
+    $Reader.Ps = $ps
+    $Reader.Command = $Command
+    $Reader.StartedAt = Get-Date
+    $Reader.Watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $Reader.Async = $ps.BeginInvoke()
+
+    return $true
+}
+
+
+function Get-WinForgeGuiReadSeconds {
+    # Há quanto tempo a leitura em andamento começou, pelo cronômetro: um acerto do relógio do Windows no meio (a hora da
+    # internet, o fuso) não a faz passar do limite antes da hora nem a deixa presa. Sem cronômetro, pela hora de início.
+    param ([Parameter(Mandatory)]$Reader)
+
+    $watch = $(if ($null -ne $Reader.PSObject.Properties["Watch"]) { $Reader.Watch } else { $null })
+
+    if ($null -ne $watch) { return [double]$watch.Elapsed.TotalSeconds }
+    if ($null -eq $Reader.StartedAt) { return 0.0 }
+
+    return [double]((Get-Date) - [datetime]$Reader.StartedAt).TotalSeconds
+}
+
+
+function Receive-WinForgeGuiRead {
+    <#
+    O resultado da leitura em andamento: $null enquanto ela não termina; depois, Output (o que a função devolveu) e
+    Failed (verdadeiro quando ela lançou erro), e o leitor fica livre para a próxima.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        $Reader
+    )
+
+    if ($null -eq $Reader.Ps) { return $null }
+    if (-not $Reader.Async.IsCompleted) { return $null }
+
+    $ps = $Reader.Ps
+    $output = @()
+    $failed = $false
+
+    try {
+        $output = @($ps.EndInvoke($Reader.Async))
+        if ($ps.HadErrors -and $output.Count -eq 0) { $failed = $true }
+    }
+    catch {
+        $failed = $true
+    }
+    finally {
+        $Reader.Ps = $null
+        $Reader.Async = $null
+        $ps.Dispose()
+    }
+
+    return [PSCustomObject]@{ Output = $output; Failed = $failed }
+}
+
+
+function Close-WinForgeGuiReader {
+    # Descarta o leitor sem esperar: uma leitura presa (WMI que não responde) é interrompida e o runspace fechado em
+    # segundo plano, e a janela não fica parada esperando por ela.
+    param (
+        [Parameter(Mandatory)]
+        $Reader
+    )
+
+    try {
+        if ($null -ne $Reader.Ps) { [void]$Reader.Ps.BeginStop($null, $null) }
+        $Reader.Runspace.CloseAsync()
+    }
+    catch {
+        # Encerramento é best-effort.
+    }
+
+    $Reader.Ps = $null
+    $Reader.Async = $null
+}
+
+
+# ---------------------------------------------------------------------------
+# Auxiliares da janela (lógica sem WPF, para ser testada fora do Windows)
+# ---------------------------------------------------------------------------
+
+function Format-WinForgeClock {
+    # Relógio da execução: 00:00 ou 1:02:03.
+    param ([TimeSpan]$Span)
+
+    if ($Span.Ticks -lt 0) { $Span = [TimeSpan]::Zero }
+
+    if ($Span.TotalHours -ge 1) {
+        return ("{0}:{1:00}:{2:00}" -f [int][Math]::Floor($Span.TotalHours), $Span.Minutes, $Span.Seconds)
+    }
+
+    return ("{0:00}:{1:00}" -f $Span.Minutes, $Span.Seconds)
+}
+
+
+function Get-WinForgeRunView {
+    <#
+    Como a janela apresenta o fim de uma ação: Level (Ok | Warn | Bad | Muted) escolhe a cor; StatusText é o texto ao
+    lado do título; a faixa de resultado só aparece quando há algo a dizer (ShowBanner). Taskbar é o estado do botão
+    na barra de tarefas (Normal = verde, Paused = amarelo, Error = vermelho) enquanto a pessoa não volta à janela.
+    Status é o da sessão (Completed | Stopped | Failed); Outcome é o WinForge.Outcome devolvido pela ação, se houver.
+    Quando a ação deu título próprio ao resultado (Set-WinForgeResultView), ele vale na faixa e no status, com a cor que
+    ela pediu; Next e NextLabel são o botão do próximo passo, e HideSummary esconde o resumo.
+    #>
+    param (
+        [string]$Status,
+        $Outcome = $null,
+        [TimeSpan]$Elapsed = [TimeSpan]::Zero
+    )
+
+    $clock = Format-WinForgeClock -Span $Elapsed
+    $kind = "Done"
+    $title = ""
+    $summary = ""
+    $reboot = $false
+    $headline = ""
+    $tone = ""
+
+    if ($null -ne $Outcome) {
+        $kind = [string]$Outcome.Kind
+        $title = [string]$Outcome.Title
+        $summary = [string]$Outcome.Summary
+        $reboot = [bool]$Outcome.RebootRequired
+        $headline = ([string](Get-WinForgeJsonValue -Object $Outcome -Name "Headline" -Default "")).Trim()
+        $tone = [string](Get-WinForgeJsonValue -Object $Outcome -Name "Tone" -Default "")
+    }
+
+    $view = [ordered]@{
+        Level      = "Muted"
+        StatusText = "Concluído"
+        ShowBanner = $false
+        BannerTitle = ""
+        BannerText  = ""
+        ResultText  = ""
+        Taskbar     = "None"
+        Notify      = $true
+        ElapsedText = $clock
+        Next        = ""
+        NextLabel   = ""
+        HideSummary = $false
+    }
+
+    if ($Status -eq "Stopped") {
+        $view.Level = "Warn"
+        $view.StatusText = "Interrompido"
+        $view.ShowBanner = $true
+        $view.BannerTitle = "Interrompido"
+        $view.BannerText = "A ação foi interrompida. O que já tinha sido feito continua feito; a etapa em andamento ficou incompleta."
+        $view.Taskbar = "Paused"
+        $view.Notify = $false
+    }
+    elseif ($Status -eq "Failed") {
+        $view.Level = "Bad"
+        $view.StatusText = "Terminou com erro"
+        $view.ShowBanner = $true
+        $view.BannerTitle = "Terminou com erro"
+        $view.BannerText = $(if ($summary) { $summary } else { "A ação terminou com erro. Veja os detalhes técnicos." })
+        $view.Taskbar = "Error"
+    }
+    else {
+        switch ($kind) {
+            "Ok" {
+                $view.Level = "Ok"; $view.StatusText = "Concluído"; $view.Taskbar = "Normal"
+                $view.ShowBanner = $true; $view.BannerTitle = "Tudo certo"; $view.BannerText = $summary
+            }
+            "Warning" {
+                $view.Level = "Warn"; $view.StatusText = "Concluído com ressalvas"; $view.Taskbar = "Paused"
+                $view.ShowBanner = $true; $view.BannerTitle = "Concluído com ressalvas"; $view.BannerText = $summary
+            }
+            "Failed" {
+                $view.Level = "Bad"; $view.StatusText = "Não foi concluído"; $view.Taskbar = "Error"
+                $view.ShowBanner = $true; $view.BannerTitle = "Não foi concluído"; $view.BannerText = $summary
+            }
+            "Skipped" {
+                $view.Level = "Muted"; $view.StatusText = $(if ($title) { $title } else { "Nada a fazer" }); $view.Taskbar = "None"
+                $view.ShowBanner = $true; $view.BannerTitle = $view.StatusText; $view.BannerText = $summary
+                $view.Notify = $false
+            }
+            default {
+                # A ação só mostrou informações (consulta): não há veredito a destacar.
+                $view.Level = "Muted"; $view.StatusText = "Concluído"
+                $view.Notify = $false
+            }
+        }
+
+        # O título que a ação deu ao resultado ("3 ameaças pedem ação") e a cor que ele pede: uma ameaça pendente é
+        # vermelha mesmo com a verificação concluída. O botão do próximo passo só vale para um fim normal.
+        if ($headline -and $kind -in @("Ok", "Warning", "Failed", "Skipped")) {
+            $view.StatusText = $headline
+            $view.BannerTitle = $headline
+            $view.ShowBanner = $true
+
+            if ($tone -in @("Ok", "Warn", "Bad")) {
+                $view.Level = $tone
+                $view.Taskbar = switch ($tone) { "Ok" { "Normal" } "Warn" { "Paused" } default { "Error" } }
+                $view.Notify = $true
+            }
+
+            $view.Next = [string](Get-WinForgeJsonValue -Object $Outcome -Name "Next" -Default "")
+            $view.NextLabel = [string](Get-WinForgeJsonValue -Object $Outcome -Name "NextLabel" -Default "")
+            $view.HideSummary = [bool](Get-WinForgeJsonValue -Object $Outcome -Name "HideSummary" -Default $false)
+        }
+
+        if ($view.ShowBanner -and $reboot) {
+            $view.BannerText = ($view.BannerText + (Get-WinForgeRebootSentence -Kind $kind -Detail $view.BannerText)).Trim()
+        }
+    }
+
+    $view.BannerText = ($view.BannerText + " Duração: $clock.").Trim()
+    $view.ResultText = (Get-WinForgeResultSentence -Status $Status -Outcome $Outcome -ShowBanner $view.ShowBanner) + " Duração: $clock."
+    $view.ResultText = $view.ResultText.Trim()
+
+    return [PSCustomObject]$view
+}
+
+
+function Get-WinForgeResultSentence {
+    <#
+    A frase do resultado na tela de execução, embaixo do título ("Tudo certo", "Concluído com ressalvas"...): o que
+    aconteceu, sem repetir o título. Vem do detalhe que a ação registrou; sem ele, uma frase do próprio desfecho. Quando a
+    ação deu título próprio ao resultado, a frase é a dela (Note), que completa o título em vez de repeti-lo.
+    #>
+    param (
+        [string]$Status,
+        $Outcome = $null,
+        [bool]$ShowBanner = $true
+    )
+
+    if ($Status -eq "Stopped") {
+        return "O que já tinha sido feito continua feito; a etapa em andamento ficou incompleta."
+    }
+
+    $kind = "Done"
+    $detail = ""
+    $reboot = $false
+
+    if ($null -ne $Outcome) {
+        $kind = [string]$Outcome.Kind
+        $detail = ([string]$Outcome.Detail).Trim().TrimEnd(".").Trim()
+        $reboot = [bool]$Outcome.RebootRequired
+
+        $headline = ([string](Get-WinForgeJsonValue -Object $Outcome -Name "Headline" -Default "")).Trim()
+        $note = ([string](Get-WinForgeJsonValue -Object $Outcome -Name "Note" -Default "")).Trim().TrimEnd(".").Trim()
+
+        if ($headline -and $note -and $Status -ne "Failed") { $detail = $note }
+    }
+
+    # Longa demais, a frase é cortada num espaço, e não no meio de uma palavra.
+    if ($detail.Length -gt 220) {
+        $cut = $detail.LastIndexOf(" ", 216)
+        if ($cut -lt 120) { $cut = 217 }
+        $detail = $detail.Substring(0, $cut).TrimEnd(",", ";", " ") + "..."
+    }
+
+    $sentence = ""
+
+    if ($detail.Length -gt 0) {
+        $sentence = $detail.Substring(0, 1).ToUpperInvariant() + $detail.Substring(1)
+        if (-not $sentence.EndsWith("...")) { $sentence += "." }
+    }
+
+    if ($Status -eq "Failed") {
+        if ($sentence.Length -eq 0) { $sentence = "A ação terminou com um erro inesperado. Veja os detalhes técnicos." }
+        return $sentence
+    }
+
+    switch ($kind) {
+        "Ok" { if ($sentence.Length -eq 0) { $sentence = "Concluído com sucesso." } }
+        "Warning" { if ($sentence.Length -eq 0) { $sentence = "Algumas etapas pediram atenção; veja os detalhes técnicos." } }
+        "Failed" { if ($sentence.Length -eq 0) { $sentence = "Veja os detalhes técnicos para saber o motivo." } }
+        "Skipped" {
+            if ($detail -match "(?i)cancelad") { $sentence = "Operação cancelada." }
+            elseif ($sentence.Length -eq 0) { $sentence = "Não havia nada a fazer." }
+        }
+        default { $sentence = "" }
+    }
+
+    if ($ShowBanner -and $reboot) { $sentence = ($sentence + (Get-WinForgeRebootSentence -Kind $kind -Detail $detail)).Trim() }
+
+    return $sentence
+}
+
+
+function Get-WinForgePromptLayout {
+    <#
+    A tela de execução não rola, e os botões de uma pergunta têm de ficar sempre à vista. O cartão da pergunta recebe
+    como altura máxima o espaço que sobra entre o alto dele e os detalhes técnicos; dentro dele, só a lista (ou as opções
+    em linha) encolhe e rola. Se nem assim a pergunta fica confortável (a lista com pelo menos MinList, ou inteira se for
+    menor), o resumo acima dela encolhe primeiro, até sumir se preciso.
+    Medidas em pixels, com o cartão sem limite: ViewHeight (a tela de execução), PromptTop (o alto do cartão), Margin (a
+    margem embaixo dele), DetailsHeight (o que os detalhes técnicos precisam), PromptHeight (o cartão inteiro), ListHeight
+    (a lista ou as opções; 0 sem elas) e SummaryHeight (o resumo; 0 escondido).
+    Devolve PromptMaxHeight, SummaryMaxHeight (-1 = deixe o resumo como está) e Cramped (nem a pergunta sem a lista cabe
+    até o fim da tela: a janela tira o que der de dentro do cartão). O cartão nunca passa do fim da tela: medidas erradas
+    (uma lista contada como vazia) deixavam o cartão do tamanho da lista, sem rolar.
+    #>
+    param (
+        [double]$ViewHeight,
+        [double]$PromptTop,
+        [double]$Margin = 14,
+        [double]$DetailsHeight = 0,
+        [double]$PromptHeight,
+        [double]$ListHeight = 0,
+        [double]$SummaryHeight = 0,
+        [double]$MinList = 160,
+
+        # O mínimo dos detalhes técnicos abertos (o cabeçalho, com a saída espremida): a saída deles cede espaço antes do
+        # resumo e da lista. Negativo (o padrão): os detalhes não cedem nada.
+        [double]$DetailsMinHeight = -1
+    )
+
+    $chrome = [Math]::Max(0.0, $PromptHeight - $ListHeight)
+    $want = $chrome + [Math]::Min($ListHeight, $MinList)
+    $room = $ViewHeight - $PromptTop - $Margin - $DetailsHeight
+    $summary = -1
+
+    # Primeiro a saída dos detalhes técnicos abertos encolhe (ela rola e continua à mão); depois, o resumo.
+    if ($room -lt $want -and $DetailsMinHeight -ge 0 -and $DetailsHeight -gt $DetailsMinHeight) {
+        $room += [Math]::Min($want - $room, $DetailsHeight - $DetailsMinHeight)
+    }
+
+    $cut = 0.0
+
+    if ($room -lt $want -and $SummaryHeight -gt 0) {
+        $cut = [Math]::Min($want - $room, $SummaryHeight)
+        $summary = [Math]::Floor($SummaryHeight - $cut)
+        $room += $cut
+    }
+
+    # Nunca menos que a pergunta sem a lista: numa janela pequena demais, os botões ainda aparecem (e a lista some).
+    $prompt = [Math]::Floor([Math]::Max($room, [Math]::Min($chrome, $PromptHeight)))
+
+    # E nunca além do fim da tela (o alto do cartão sobe o tanto que o resumo encolheu).
+    $bottom = [Math]::Floor($ViewHeight - $PromptTop + $cut - $Margin)
+    $cramped = ($bottom -lt [Math]::Min($chrome, $PromptHeight))
+    if ($bottom -gt 0 -and $prompt -gt $bottom) { $prompt = $bottom }
+
+    return [PSCustomObject]@{ PromptMaxHeight = $prompt; SummaryMaxHeight = $summary; Cramped = $cramped }
+}
+
+
+function Get-WinForgeOutputFileName {
+    # Nome sugerido ao salvar a saída de uma ação: "WinForge - Reparar o Windows - 2026-10-18 1502.txt".
+    param (
+        [string]$Title,
+        [datetime]$When = (Get-Date)
+    )
+
+    $clean = ([string]$Title) -replace '[\\/:*?"<>|\x00-\x1F]', " "
+    $clean = ($clean -replace '\s+', ' ').Trim()
+
+    if ($clean.Length -gt 60) { $clean = $clean.Substring(0, 60).Trim() }
+    if ([string]::IsNullOrEmpty($clean)) { $clean = "saida" }
+
+    return ("WinForge - {0} - {1}.txt" -f $clean, $When.ToString("yyyy-MM-dd HHmm"))
+}
+
+
+function Resolve-WinForgeWindowBounds {
+    <#
+    Valida o tamanho e a posição guardados da janela. Devolve Left/Top/Width/Height/Maximized prontos para usar, ou
+    $null quando nada foi guardado ou a janela ficaria fora das telas atuais (monitor desligado, resolução menor).
+    Screen é a área virtual de todas as telas (Left, Top, Width, Height).
+    #>
+    param (
+        $Saved,
+        [Parameter(Mandatory)]$Screen,
+        [double]$MinWidth = 860,
+        [double]$MinHeight = 540
+    )
+
+    if ($null -eq $Saved) { return $null }
+
+    foreach ($name in "Left", "Top", "Width", "Height") {
+        if ($null -eq $Saved.PSObject.Properties[$name] -or $null -eq $Saved.PSObject.Properties[$name].Value) { return $null }
+    }
+
+    try {
+        $width = [double]$Saved.Width
+        $height = [double]$Saved.Height
+        $left = [double]$Saved.Left
+        $top = [double]$Saved.Top
+    }
+    catch {
+        return $null
+    }
+
+    if ([double]::IsNaN($width) -or [double]::IsNaN($height) -or [double]::IsNaN($left) -or [double]::IsNaN($top)) { return $null }
+
+    $width = [Math]::Max($MinWidth, [Math]::Min($width, [double]$Screen.Width))
+    $height = [Math]::Max($MinHeight, [Math]::Min($height, [double]$Screen.Height))
+
+    # Pelo menos um pedaço da barra de título (80 x 40) precisa continuar visível, para a janela poder ser arrastada.
+    $visibleWidth = [Math]::Min($left + $width, $Screen.Left + $Screen.Width) - [Math]::Max($left, $Screen.Left)
+    $visibleHeight = [Math]::Min($top + 40, $Screen.Top + $Screen.Height) - [Math]::Max($top, $Screen.Top)
+
+    if ($visibleWidth -lt 80 -or $visibleHeight -lt 40) { return $null }
+
+    $maximized = $false
+    $property = $Saved.PSObject.Properties["Maximized"]
+    if ($null -ne $property) { $maximized = [bool]$property.Value }
+
+    return [PSCustomObject]@{ Left = $left; Top = $top; Width = $width; Height = $height; Maximized = $maximized }
 }
 
 
