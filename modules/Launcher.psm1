@@ -5,6 +5,10 @@
 $script:WinForgeAppId = "WinForge.App"
 $script:WinForgeAppRoot = Split-Path -Parent $PSScriptRoot
 $script:WinForgeShortcutFileName = "WinForge.lnk"
+# Quem, além das contas de confiança, pode alterar os arquivos do WinForge (lido uma vez: Get-WinForgeAppFolderWriters).
+$script:WinForgeAppFolderWriters = $null
+# Se a janela está com a conta de outro Administrador (uma consulta ao WMI; o resumo é refeito a cada troca de tema).
+$script:WinForgeAccountMismatch = $null
 
 
 function Get-WinForgeAppRoot {
@@ -137,6 +141,21 @@ function Get-WinForgeShortcutLocation {
 }
 
 
+function Get-WinForgeShortcutPlaceText {
+    # O lugar do atalho numa frase: "na Área de Trabalho", "no Menu Iniciar".
+    param (
+        [Parameter(Mandatory)]
+        $Place
+    )
+
+    switch ([string]$Place.Id) {
+        "Desktop"   { return "na Área de Trabalho" }
+        "StartMenu" { return "no Menu Iniciar" }
+        default     { return "em $($Place.Label)" }
+    }
+}
+
+
 function Initialize-WinForgeAppIdentity {
     # Chamado pela janela antes de aparecer: o processo passa a se chamar WinForge para o Windows, e o botão da barra
     # de tarefas deixa de ser agrupado com o PowerShell. Devolve $true se o Windows aceitou.
@@ -201,6 +220,17 @@ function New-WinForgeAppShortcut {
         $result = New-WinForgeResult -Kind Failed -Detail "atalho não criado" -Title $title
     }
 
+    # Elevado com a conta de outro Administrador, a Área de Trabalho e o Menu Iniciar seriam os dessa conta.
+    if ($ready -and (Test-WinForgeUserContextMismatch)) {
+        $ready = $false
+        Write-WinForgeStatus -Type Warning -Message "O WinForge está aberto com a conta de outro Administrador: o atalho iria para a Área de Trabalho dessa conta. Para criar o atalho na sua conta, $(Get-WinForgeUnelevatedHint)."
+        $result = New-WinForgeResult -Kind Warning -Detail "com a conta de outro Administrador, o atalho não foi criado" -Title $title
+    }
+
+    if ($ready) {
+        Show-WinForgeFolderWritersNotice
+    }
+
     if ($ready) {
         # @($null) teria um item; por isso "sem -Location" é testado pelos parâmetros recebidos.
         if ($PSBoundParameters.ContainsKey("Location")) {
@@ -213,7 +243,15 @@ function New-WinForgeAppShortcut {
         $selected = @($places | Where-Object { $chosen -contains $_.Id })
 
         if ($selected.Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Nenhum atalho foi criado."
+            if ($chosen.Count -eq 0) {
+                Write-WinForgeStatus -Type Info -Message "Nenhum atalho foi criado."
+                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title
+            }
+            else {
+                # Pediram um lugar que este Windows não informou (por exemplo, sem o Menu Iniciar do usuário).
+                Write-WinForgeStatus -Type Error -Message "Este Windows não informou a pasta do lugar pedido para o atalho."
+                $result = New-WinForgeResult -Kind Failed -Detail "o lugar pedido não está disponível neste Windows" -Title $title
+            }
         }
         else {
             $result = New-WinForgeShortcutFiles -Places $selected -Launch $launch
@@ -221,7 +259,7 @@ function New-WinForgeAppShortcut {
     }
 
     if ($PassThru) { $result }
-    Exit-WinForgeAction -Embedded:$Embedded
+    Exit-WinForgeAction -Embedded:$Embedded -Result $result
 }
 
 
@@ -239,12 +277,16 @@ function Select-WinForgeShortcutLocation {
     $options = @()
     $position = 0
 
+    # O que cada lugar é, e não a pasta (C:\Users\...\Start Menu\Programs não diz nada a quem não a conhece).
+    $about = @{ Desktop = "O ícone fica na tela, junto dos seus arquivos"; StartMenu = "O WinForge entra na lista de programas do botão Iniciar" }
+
     foreach ($place in $Places) {
         $position++
-        $options += @{ Key = [string]$position; Label = $place.Label; Description = $place.Folder; Accent = ($position -eq 1) }
+        $description = $(if ($about.ContainsKey([string]$place.Id)) { $about[[string]$place.Id] } else { [string]$place.Folder })
+        $options += @{ Key = [string]$position; Label = $place.Label; Description = $description; Accent = ($position -eq 1) }
     }
 
-    $options += @{ Key = "A"; Label = "Os dois"; Description = "Todos os lugares acima" }
+    $options += @{ Key = "A"; Label = "Os dois"; Description = (@($Places | ForEach-Object { [string]$_.Label }) -join " e ") }
     $options += @{ Key = "0"; Label = "Cancelar"; Exit = $true }
 
     $answer = Read-WinForgeChoice -Message "Onde você quer o atalho do WinForge?" -Options $options -ShowMenu
@@ -279,8 +321,10 @@ function New-WinForgeShortcutFiles {
     )
 
     $created = 0
+    $updated = 0
     $failed = 0
     $appIdMissing = $false
+    $createdIds = @()
 
     foreach ($place in $Places) {
         $existed = Test-Path -LiteralPath $place.Path -PathType Leaf
@@ -299,30 +343,40 @@ function New-WinForgeShortcutFiles {
             }
 
             $created++
+            $createdIds += [string]$place.Id
+
+            if ($existed) { $updated++ }
+
             $verb = if ($existed) { "atualizado" } else { "criado" }
-            Write-WinForgeStatus -Type Success -Message "Atalho $verb em $($place.Label): $($place.Path)"
+            Write-WinForgeStatus -Type Success -Message "Atalho $verb $(Get-WinForgeShortcutPlaceText -Place $place)."
+            Write-Host "      $($place.Path)" -ForegroundColor DarkGray
 
             if (-not $saved.AppIdSet) { $appIdMissing = $true }
         }
         catch {
             $failed++
-            Write-WinForgeStatus -Type Error -Message "Não foi possível criar o atalho em $($place.Label): $($_.Exception.Message)"
+            Write-WinForgeStatus -Type Error -Message "Não foi possível criar o atalho $(Get-WinForgeShortcutPlaceText -Place $place): $($_.Exception.Message)"
         }
     }
 
     if ($created -gt 0) {
         Write-Host ""
 
+        # O Explorador guarda o ícone de cada atalho: sem este aviso, um atalho regravado continuaria com o ícone antigo.
+        if (Initialize-WinForgeShellInterop) {
+            try { [WinForge.ShellIdentity]::RefreshIcons() } catch { Write-Verbose "Ícones: $($_.Exception.Message)" }
+        }
+
         if (-not $Launch.HasIcon) {
             Write-WinForgeStatus -Type Warning -Message "O arquivo assets\WinForge.ico não foi encontrado; o atalho usa o ícone do PowerShell."
         }
 
         if ($appIdMissing) {
-            Write-WinForgeStatus -Type Warning -Message "O Windows não aceitou o identificador da barra de tarefas. O atalho funciona, mas ao fixá-lo na barra o botão pode aparecer como PowerShell."
+            Write-WinForgeStatus -Type Warning -Message "O Windows não aceitou o identificador da barra de tarefas: fixado na barra, o atalho pode aparecer como PowerShell."
         }
 
-        Write-WinForgeStatus -Type Info -Message "Para fixar na barra de tarefas: clique no atalho com o botão direito e escolha 'Fixar na barra de tarefas'."
-        Write-WinForgeStatus -Type Info -Message "Se você mover a pasta do WinForge, crie o atalho de novo."
+        # No Windows 11, a opção fica em 'Mostrar mais opções' (Área de Trabalho) ou em 'Mais' (Menu Iniciar). Mover a pasta do WinForge quebra o atalho: é criar de novo.
+        Write-WinForgeStatus -Type Info -Message "Para fixar na barra de tarefas: botão direito no atalho, 'Fixar na barra de tarefas' (no Windows 11, dentro de 'Mostrar mais opções' ou de 'Mais')."
     }
 
     if ($created -eq 0) {
@@ -330,10 +384,91 @@ function New-WinForgeShortcutFiles {
     }
 
     if ($failed -gt 0) {
-        return (New-WinForgeResult -Kind Warning -Detail "$created criado(s), $failed com erro" -Title "Criar atalho do WinForge")
+        return (New-WinForgeResult -Kind Warning -Detail "$(Format-WinForgeCount -Count $created -One 'atalho criado' -Many 'atalhos criados'), $failed com erro" -Title "Criar atalho do WinForge")
     }
 
-    return (New-WinForgeResult -Kind Ok -Title "Criar atalho do WinForge")
+    # Diz onde o atalho ficou, para a faixa de resultado responder a pergunta "onde ele foi parar?".
+    $where = (@($createdIds | ForEach-Object { if ($_ -eq "StartMenu") { "no Menu Iniciar" } else { "na Área de Trabalho" } }) -join " e ")
+    $verbDone = $(if ($updated -eq $created) { "atualizado" } elseif ($updated -eq 0) { "criado" } else { "gravado" })
+
+    # Um atalho sem o ícone ou sem o identificador da barra de tarefas funciona, mas não é o que a pessoa espera ver.
+    $caveats = @()
+
+    if (-not $Launch.HasIcon) { $caveats += "está com o ícone do PowerShell" }
+
+    if ($appIdMissing) { $caveats += "o botão pode aparecer como PowerShell ao ser fixado na barra de tarefas" }
+
+    if ($caveats.Count -gt 0) {
+        return (New-WinForgeResult -Kind Warning -Detail "atalho $verbDone $where, mas $($caveats -join '; ')" -Title "Criar atalho do WinForge")
+    }
+
+    # A faixa da janela: o que foi feito no título; onde ficou e como fixar na frase.
+    $headline = $(if ($created -gt 1) { "Atalhos $($verbDone)s" } else { "Atalho $verbDone" })
+    $pinHint = $(if ($created -gt 1) { "clique num deles com o botão direito" } else { "clique nele com o botão direito" })
+    $whereText = $where.Substring(0, 1).ToUpperInvariant() + $where.Substring(1)
+
+    return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "atalho $verbDone $where" -Title "Criar atalho do WinForge") `
+            -Headline $headline -Note "$whereText. Para fixar na barra de tarefas, $pinHint.")
+}
+
+
+function Get-WinForgeAppFolderWriters {
+    <#
+    As contas, além da sua, dos Administradores e do sistema, que podem alterar os arquivos do WinForge (a mesma conta do
+    agendamento: Get-WinForgeScheduleUntrustedWriters). A janela roda esses arquivos como Administrador: numa pasta que
+    outras contas do PC alteram (C:\WinForge criada direto no disco, onde os "Usuários autenticados" podem modificar),
+    qualquer uma delas passaria a rodar código como Administrador. Lido uma vez por processo; permissões que não puderam
+    ser lidas não entram (não é um alarme).
+    #>
+    if ($null -ne $script:WinForgeAppFolderWriters) { return $script:WinForgeAppFolderWriters }
+
+    $writers = @()
+
+    try {
+        if (Get-Command -Name Get-WinForgeScheduleUntrustedWriters -ErrorAction SilentlyContinue) {
+            $writers = @(Get-WinForgeScheduleUntrustedWriters -Root (Get-WinForgeAppRoot) | Where-Object { [string]$_ -notmatch '^não foi possível' })
+        }
+    }
+    catch {
+        $writers = @()
+    }
+
+    $script:WinForgeAppFolderWriters = $writers
+    return $writers
+}
+
+
+function Show-WinForgeFolderWritersNotice {
+    # O aviso de Criar atalho quando outras contas podem alterar os arquivos do WinForge (Get-WinForgeAppFolderWriters).
+    $writers = @(Get-WinForgeAppFolderWriters)
+
+    if ($writers.Count -eq 0) { return }
+
+    Write-WinForgeStatus -Type Warning -Notice -Message "Outras contas deste PC ($($writers -join ', ')) podem alterar os arquivos do WinForge, que roda como Administrador: se mais alguém usa este PC, extraia o WinForge de novo em Arquivos de Programas e crie o atalho de lá."
+    Write-Host ""
+}
+
+
+function Get-WinForgeShortcutState {
+    # Cada lugar do atalho (Área de Trabalho, Menu Iniciar) com Exists e Current (o atalho abre esta pasta do WinForge;
+    # um atalho que não pôde ser lido conta como desta pasta, para não acusar à toa).
+    $script = Join-Path (Get-WinForgeAppRoot) "WinForge.Gui.ps1"
+
+    foreach ($place in @(Get-WinForgeShortcutLocation)) {
+        $exists = Test-Path -LiteralPath $place.Path -PathType Leaf
+        $current = $true
+
+        if ($exists) {
+            $target = $null
+            try { $target = Get-WinForgeShortcutTarget -Path $place.Path } catch { $target = $null }
+
+            if ($null -ne $target -and [string]$target.Arguments -and ([string]$target.Arguments).IndexOf($script, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+                $current = $false
+            }
+        }
+
+        [PSCustomObject]@{ Id = $place.Id; Label = $place.Label; Path = $place.Path; Exists = $exists; Current = $current }
+    }
 }
 
 
@@ -360,16 +495,108 @@ function Show-WinForgeAbout {
 
     Write-WinForgeSection -Title "Atalho"
 
-    if ($null -eq (Get-WinForgeIconPath)) {
+    $iconMissing = ($null -eq (Get-WinForgeIconPath))
+
+    if ($iconMissing) {
         Write-WinForgeStatus -Type Warning -Message "O arquivo assets\WinForge.ico não foi encontrado; os atalhos usam o ícone do PowerShell."
     }
 
-    foreach ($place in @(Get-WinForgeShortcutLocation)) {
-        $exists = Test-Path -LiteralPath $place.Path -PathType Leaf
-        Write-WinForgeKeyValue -Label $place.Label -Value $(if ($exists) { "Atalho criado" } else { "Sem atalho" })
+    foreach ($place in @(Get-WinForgeShortcutState)) {
+        $text = $(if (-not $place.Exists) { "Sem atalho" } elseif ($place.Current) { "Atalho criado" } else { "Atalho de outra pasta do WinForge; crie de novo" })
+        Write-WinForgeKeyValue -Label $place.Label -Value $text
     }
 
-    Exit-WinForgeAction
+    # É uma tela de leitura: sem problema, não há faixa de resultado; com o ícone faltando, a faixa diz exatamente isso.
+    if ($iconMissing) {
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Warning -Detail "o ícone assets\WinForge.ico não foi encontrado" -Title "Versão e pastas")
+    }
+    else {
+        Exit-WinForgeAction
+    }
+}
+
+
+function Get-WinForgeAboutPageStatus {
+    <#
+    O resumo no alto da página Sobre o WinForge: a versão, onde o atalho já existe (e se ele abre esta pasta), o ícone,
+    se a janela está como Administrador e, quando é o caso, a conta e as permissões da pasta. Cada linha tem Label, Text e
+    Level (Normal | Warn | Muted). Só lê o que é local, sem consultar a internet; cada linha que não puder ser lida vira
+    "não foi possível ler" sozinha, em vez de derrubar a página.
+    #>
+    $rows = @()
+
+    try {
+        $rows += [PSCustomObject]@{ Label = "Versão"; Text = "Build $(Get-WinForgeBuild)"; Level = "Normal" }
+    }
+    catch {
+        $rows += [PSCustomObject]@{ Label = "Versão"; Text = "não foi possível ler"; Level = "Muted" }
+    }
+
+    try {
+        $places = @(Get-WinForgeShortcutState)
+        $with = @($places | Where-Object { $_.Exists -and $_.Current } | ForEach-Object { [string]$_.Label })
+        $stale = @($places | Where-Object { $_.Exists -and -not $_.Current } | ForEach-Object { [string]$_.Label })
+
+        if ($places.Count -eq 0) {
+            $rows += [PSCustomObject]@{ Label = "Atalho"; Text = "o Windows não informou as pastas do atalho"; Level = "Muted" }
+        }
+        elseif ($stale.Count -gt 0) {
+            # O atalho de uma cópia antiga (outra pasta) abriria a versão velha.
+            $rows += [PSCustomObject]@{ Label = "Atalho"; Text = "o de $($stale -join ' e ') abre outra pasta do WinForge; use Criar atalho do WinForge"; Level = "Warn" }
+        }
+        elseif ($with.Count -eq 0) {
+            $rows += [PSCustomObject]@{ Label = "Atalho"; Text = "ainda não criado; use Criar atalho do WinForge"; Level = "Muted" }
+        }
+        else {
+            $rows += [PSCustomObject]@{ Label = "Atalho"; Text = ($with -join " e "); Level = "Normal" }
+        }
+    }
+    catch {
+        $rows += [PSCustomObject]@{ Label = "Atalho"; Text = "não foi possível ler"; Level = "Muted" }
+    }
+
+    # O ícone na sua própria linha: uma falha ao conferi-lo não vira uma segunda linha "Atalho".
+    try {
+        if ($null -eq (Get-WinForgeIconPath)) {
+            $rows += [PSCustomObject]@{ Label = "Ícone"; Text = "o arquivo do ícone (assets\WinForge.ico) não foi encontrado; extraia a pasta inteira do WinForge de novo"; Level = "Warn" }
+        }
+    }
+    catch {
+        Write-Verbose "Ícone: $($_.Exception.Message)"
+    }
+
+    try {
+        # O WinForge abre sempre como Administrador; sem ele, a pessoa recusou o aviso do Windows ao abrir.
+        if (Test-WinForgeAdministrator) {
+            $rows += [PSCustomObject]@{ Label = "Administrador"; Text = "esta janela está aberta como Administrador"; Level = "Normal" }
+        }
+        else {
+            $rows += [PSCustomObject]@{ Label = "Administrador"; Text = "esta janela está sem Administrador; as ações que alteram o sistema pedem a permissão de novo"; Level = "Warn" }
+        }
+    }
+    catch {
+        $rows += [PSCustomObject]@{ Label = "Administrador"; Text = "não foi possível ler"; Level = "Muted" }
+    }
+
+    try {
+        # Uma consulta só por processo: a conta da janela não muda enquanto ela está aberta.
+        if ($null -eq $script:WinForgeAccountMismatch) { $script:WinForgeAccountMismatch = [bool](Test-WinForgeUserContextMismatch) }
+
+        if ($script:WinForgeAccountMismatch) {
+            $rows += [PSCustomObject]@{ Label = "Conta"; Text = "o WinForge está aberto com a conta de outro Administrador; atalhos, pastas e o monitor são os dessa conta"; Level = "Warn" }
+        }
+    }
+    catch {
+        Write-Verbose "Conta: $($_.Exception.Message)"
+    }
+
+    $writers = @(Get-WinForgeAppFolderWriters)
+
+    if ($writers.Count -gt 0) {
+        $rows += [PSCustomObject]@{ Label = "Pasta"; Text = "outras contas deste PC podem alterar os arquivos do WinForge; se mais alguém usa o PC, extraia o WinForge de novo em Arquivos de Programas"; Level = "Warn" }
+    }
+
+    return $rows
 }
 
 

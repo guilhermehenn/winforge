@@ -1,29 +1,118 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinForge" Width="1060" Height="720" MinWidth="860" MinHeight="540"
-        WindowStartupLocation="CenterScreen" Background="#0F1419" Foreground="#E6EDF3"
-        FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True" SnapsToDevicePixels="True">
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="WinForge" Width="1180" Height="760" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource WindowBrush}" Foreground="{DynamicResource TextBrush}"
+        FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display">
   <Window.Resources>
-    <!-- Botao da barra lateral -->
+    <!-- A largura dos cartões: o script a ajusta ao tamanho da janela (de 252 a 300), para a linha de cartões preencher a
+         página (Update-GuiContentWidth). WideCardWidth é meia linha (os atalhos do Início). -->
+    <sys:Double x:Key="CardWidth">252</sys:Double>
+    <sys:Double x:Key="WideCardWidth">384</sys:Double>
+    <!-- Cores do tema. Os valores abaixo são os do tema claro; o script troca cada pincel pelo do tema em uso
+         (claro ou escuro, como o Windows ou como a pessoa escolheu em Sobre o WinForge). -->
+    <SolidColorBrush x:Key="WindowBrush" Color="#F5F5F7"/>
+    <SolidColorBrush x:Key="SidebarBrush" Color="#ECECEF"/>
+    <SolidColorBrush x:Key="SidebarLineBrush" Color="#DCDCE1"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="CardHoverBrush" Color="#FAFAFC"/>
+    <SolidColorBrush x:Key="InsetBrush" Color="#F0F0F3"/>
+    <SolidColorBrush x:Key="LineBrush" Color="#E3E3E8"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#1D1D1F"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#636368"/>
+    <SolidColorBrush x:Key="DimBrush" Color="#66666B"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#0071E3"/>
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#0066CC"/>
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#005BB5"/>
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#0066CC"/>
+    <SolidColorBrush x:Key="AccentCardBrush" Color="#EAF2FD"/>
+    <SolidColorBrush x:Key="AccentLineBrush" Color="#B9D3F7"/>
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="NavSelectedBrush" Color="#DCDCE1"/>
+    <SolidColorBrush x:Key="NavHoverBrush" Color="#E3E3E7"/>
+    <SolidColorBrush x:Key="SearchBrush" Color="#E2E2E7"/>
+    <SolidColorBrush x:Key="TrackBrush" Color="#E5E5EA"/>
+    <SolidColorBrush x:Key="KnobBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="#D70015"/>
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="#FDEDED"/>
+    <SolidColorBrush x:Key="ThumbBrush" Color="#86868B"/>
+    <SolidColorBrush x:Key="ThumbHoverBrush" Color="#6C6C71"/>
+    <SolidColorBrush x:Key="SwitchLineBrush" Color="#8A8A8E"/>
+    <SolidColorBrush x:Key="SwitchKnobOffBrush" Color="#636368"/>
+    <SolidColorBrush x:Key="SwitchKnobOnBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="InputLineBrush" Color="#8A8A8E"/>
+    <SolidColorBrush x:Key="ButtonLineBrush" Color="#8A8A8E"/>
+
+    <!-- Molduras arredondadas com contorno (botões, cartões, caixas de texto): o fundo fica numa moldura e o contorno noutra,
+         dentro dela. Numa moldura só, o WPF pinta o fundo depois do contorno, e a borda suavizada do fundo cobre metade do
+         contorno nas quinas, que ficavam finas e falhadas. O raio do fundo é o do contorno mais meia espessura: as duas
+         curvas de fora coincidem. Os gatilhos trocam o fundo em "Bd" e o contorno em "Line". -->
+
+    <!-- Contorno de foco (só aparece navegando pelo teclado), na cor de destaque para texto: passa de 3:1 sobre todos os
+         fundos nos dois temas (a cor de destaque dos botões não passa no escuro) -->
+    <!-- O anel de foco do teclado fica 3 px para fora do controle: o canto dele é o do controle + 3, senão as curvas não
+         acompanham (o mesmo anel de canto 11 servia para botões, cartões de canto 14 e chaves em forma de pílula). A caixa de marcação
+         das listas fica com o anel comum: o anel dela contorna a linha inteira (caixa e texto), que é reta. -->
+    <Style x:Key="FocusRing">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Border Margin="-3" CornerRadius="11" BorderThickness="2" BorderBrush="{DynamicResource AccentTextBrush}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="FocusRingSmall">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Border Margin="-3" CornerRadius="10" BorderThickness="2" BorderBrush="{DynamicResource AccentTextBrush}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="FocusRingOption">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Border Margin="-3" CornerRadius="15" BorderThickness="2" BorderBrush="{DynamicResource AccentTextBrush}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="FocusRingCard">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Border Margin="-3" CornerRadius="17" BorderThickness="2" BorderBrush="{DynamicResource AccentTextBrush}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Item da barra lateral -->
     <Style x:Key="NavButton" TargetType="Button">
       <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Foreground" Value="#C9D4E0"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Margin" Value="0,2"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Margin" Value="0,1"/>
+      <Setter Property="Padding" Value="10,0"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8" Padding="14,10">
-              <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" RecognizesAccessKey="False"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavHoverBrush}"/>
               </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="#3B82F6"/>
-                <Setter TargetName="Bd" Property="BorderThickness" Value="1"/>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavSelectedBrush}"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45"/>
@@ -34,27 +123,60 @@
       </Setter>
     </Style>
 
-    <!-- Cartao de acao -->
-    <Style x:Key="CardButton" TargetType="Button">
-      <Setter Property="Background" Value="#161D27"/>
-      <Setter Property="BorderBrush" Value="#263241"/>
-      <Setter Property="Foreground" Value="#E6EDF3"/>
+    <!-- Item da barra lateral da página aberta: além do fundo, uma barrinha na cor de destaque à esquerda (o fundo sozinho
+         quase não se distingue do da barra lateral nem do item sob o mouse) -->
+    <Style x:Key="NavButtonSelected" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Margin" Value="0,1"/>
+      <Setter Property="Padding" Value="10,0"/>
       <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Margin" Value="0,0,12,12"/>
-      <Setter Property="Width" Value="276"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16,14">
-              <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Top"/>
+            <Grid>
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+              </Border>
+              <Border Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,0,0,0"
+                      Background="{DynamicResource AccentTextBrush}"/>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Cartão clicável (ações, fatos do Início, resultados da busca). A largura acompanha a da página (CardWidth, de 252 a
+         300): três por linha na janela padrão e dois na menor, a mesma grade em todas as páginas. -->
+    <Style x:Key="CardButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,12,12"/>
+      <Setter Property="Width" Value="{DynamicResource CardWidth}"/>
+      <Setter Property="Padding" Value="18"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingCard}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="14.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="14" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="False"/>
+              </Border>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="#3B82F6"/>
-                <Setter TargetName="Bd" Property="Background" Value="#1B2531"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBrush}"/>
+                <Setter TargetName="Line" Property="BorderBrush" Value="{DynamicResource AccentLineBrush}"/>
               </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="#3B82F6"/>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource InsetBrush}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -62,27 +184,263 @@
       </Setter>
     </Style>
 
-    <!-- Chave liga/desliga (ajustes do Windows) -->
+    <!-- Botão comum (secundário): fundo do cartão e contorno fino, visível também sobre os cartões -->
+    <Style x:Key="PillButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ButtonLineBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="FontSize" Value="13.5"/>
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+              </Border>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBrush}"/>
+                <Setter TargetName="Line" Property="BorderBrush" Value="{DynamicResource ThumbBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource InsetBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Botão principal: a ação recomendada da tela -->
+    <Style x:Key="PrimaryButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+      <Setter Property="FontSize" Value="13.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="16,7"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+              </Border>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+                <Setter TargetName="Line" Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentPressedBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Botão de interromper -->
+    <Style x:Key="DangerButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+      <Setter Property="FontSize" Value="13.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+              </Border>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DangerSoftBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DangerSoftBrush}"/>
+                <Setter TargetName="Line" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Botão discreto, sem contorno (ações secundárias de uma área) -->
+    <Style x:Key="GhostButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="10,6"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSmall}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavHoverBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavSelectedBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Opção de uma pergunta, em linha: título, descrição e a seta -->
+    <!-- Link no resumo da execução ("Página > Item"): na cor de destaque, sublinhado só sob o mouse -->
+    <!-- Com o foco do teclado, o link fica sublinhado e com fundo (o contorno pontilhado do sistema quase não aparece) -->
+    <Style x:Key="SummaryLink" TargetType="Hyperlink">
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+      <Setter Property="TextDecorations" Value="{x:Null}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="TextDecorations" Value="Underline"/>
+        </Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True">
+          <Setter Property="TextDecorations" Value="Underline"/>
+          <Setter Property="Background" Value="{DynamicResource AccentCardBrush}"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="OptionButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="Padding" Value="16,11"/>
+      <Setter Property="Margin" Value="0,0,0,8"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingOption}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="12.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+              </Border>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Line" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource InsetBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Botão de um seletor segmentado (Aparência: Automático, Claro, Escuro) -->
+    <Style x:Key="SegmentButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="14,5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSmall}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="SegmentButtonSelected" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+      <!-- Contorno na cor de destaque: o fundo do cartão sobre o trilho quase não se distingue (contraste baixo). -->
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="14,5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSmall}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="7.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+              </Border>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Chave liga/desliga (ajustes do Windows), como a do Windows 11: desligada, só o contorno e uma bolinha escura;
+         ligada, preenchida na cor de destaque, com a bolinha maior à direita. Os dois estados passam de 3:1 sobre o cartão. -->
     <Style x:Key="SwitchToggle" TargetType="ToggleButton">
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingOption}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
-            <Border x:Name="Track" Width="46" Height="24" CornerRadius="12" Background="#2B3748" BorderBrush="Transparent" BorderThickness="1">
-              <Ellipse x:Name="Knob" Width="16" Height="16" Fill="#C9D4E0" HorizontalAlignment="Left" Margin="3,0,0,0"/>
+            <Border x:Name="TrackFill" Width="42" Height="24" CornerRadius="12.5" Background="Transparent">
+              <Border x:Name="Track" CornerRadius="12" BorderThickness="1" BorderBrush="{DynamicResource SwitchLineBrush}">
+                <Ellipse x:Name="Knob" Width="12" Height="12" Fill="{DynamicResource SwitchKnobOffBrush}" HorizontalAlignment="Left" Margin="5,0,0,0"/>
+              </Border>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Track" Property="Background" Value="#3B82F6"/>
-                <Setter TargetName="Knob" Property="Fill" Value="#FFFFFF"/>
+                <Setter TargetName="TrackFill" Property="Background" Value="{DynamicResource AccentTextBrush}"/>
+                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentTextBrush}"/>
+                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource SwitchKnobOnBrush}"/>
+                <Setter TargetName="Knob" Property="Width" Value="16"/>
+                <Setter TargetName="Knob" Property="Height" Value="16"/>
                 <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
                 <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0"/>
               </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Track" Property="Opacity" Value="0.85"/>
-              </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Track" Property="BorderBrush" Value="#93C5FD"/>
+                <Setter TargetName="TrackFill" Property="Opacity" Value="0.88"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45"/>
@@ -93,29 +451,252 @@
       </Setter>
     </Style>
 
-    <!-- Botao em pilula -->
-    <Style x:Key="PillButton" TargetType="Button">
-      <Setter Property="Foreground" Value="#E6EDF3"/>
-      <Setter Property="Background" Value="#1F2A38"/>
+    <!-- Caixa de marcação das listas (perguntas de várias escolhas) -->
+    <Style x:Key="ListCheckBox" TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
       <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Margin" Value="0,0,10,0"/>
+      <Setter Property="Padding" Value="4,6"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
       <Setter Property="Template">
         <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="14,8">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Background="Transparent" Margin="{TemplateBinding Padding}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Border x:Name="BoxFill" Width="18" Height="18" CornerRadius="5.75" Background="{DynamicResource CardBrush}" VerticalAlignment="Top"
+                      Margin="0,1,12,0">
+                <Border x:Name="Box" CornerRadius="5" BorderThickness="1.5" BorderBrush="{DynamicResource DimBrush}">
+                  <Path x:Name="Mark" Data="M 3 8 L 6.5 11.5 L 12.5 4.5" Stroke="{DynamicResource OnAccentBrush}" StrokeThickness="2"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
+                </Border>
+              </Border>
+              <ContentPresenter Grid.Column="1" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
               </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="#93C5FD"/>
-              </Trigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Opacity" Value="0.45"/>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="BoxFill" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
               </Trigger>
             </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Caixa de busca (sem moldura própria: a moldura é a da barra lateral) -->
+    <Style x:Key="SearchTextBox" TargetType="TextBox">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="FontSize" Value="13.5"/>
+      <Setter Property="Padding" Value="6,0"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <!-- O próprio TextBox aplica o Padding ao PART_ContentHost: repeti-lo aqui (Margin) dobrava o recuo do texto. -->
+          <ControlTemplate TargetType="TextBox">
+            <Border Background="{TemplateBinding Background}">
+              <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Focusable="False"
+                            HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Caixa de texto das perguntas: a borda passa de 3:1, para a caixa parecer um lugar onde se escreve -->
+    <Style x:Key="InputTextBox" TargetType="TextBox">
+      <Setter Property="Background" Value="{DynamicResource InsetBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource InputLineBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="FontSize" Value="13.5"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8.5">
+              <Border x:Name="Line" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8">
+                <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+              </Border>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Line" Property="BorderBrush" Value="{DynamicResource AccentTextBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Barra de progresso fina, arredondada; sem percentual, uma faixa corre de um lado ao outro. A faixa tem um quarto da
+         largura da barra e corre pela origem relativa da escala: o mesmo ritmo e a mesma parte do tempo à vista em
+         qualquer largura de janela. Com Tag="busy", a faixa corre também por cima de uma barra com valor (a execução
+         inteira do Otimizar, enquanto a etapa atual não informa porcentagem). -->
+    <Style x:Key="SlimProgress" TargetType="ProgressBar">
+      <Setter Property="Height" Value="6"/>
+      <Setter Property="Minimum" Value="0"/>
+      <Setter Property="Maximum" Value="100"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Grid ClipToBounds="True">
+              <Border x:Name="PART_Track" Background="{DynamicResource TrackBrush}" CornerRadius="3"/>
+              <Border x:Name="PART_Indicator" Background="{DynamicResource AccentTextBrush}" CornerRadius="3" HorizontalAlignment="Left"/>
+              <Border x:Name="Runner" Background="{DynamicResource AccentTextBrush}" CornerRadius="3" Visibility="Collapsed" RenderTransformOrigin="-0.5,0.5">
+                <Border.RenderTransform>
+                  <ScaleTransform ScaleX="0.25"/>
+                </Border.RenderTransform>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsIndeterminate" Value="True">
+                <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="Runner" Property="Visibility" Value="Visible"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard x:Name="RunnerStory">
+                    <Storyboard RepeatBehavior="Forever">
+                      <PointAnimation Storyboard.TargetName="Runner" Storyboard.TargetProperty="RenderTransformOrigin"
+                                      From="-0.5,0.5" To="1.5,0.5" Duration="0:0:2.2"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <StopStoryboard BeginStoryboardName="RunnerStory"/>
+                </Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="Tag" Value="busy">
+                <Setter TargetName="Runner" Property="Visibility" Value="Visible"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard x:Name="BusyStory">
+                    <Storyboard RepeatBehavior="Forever">
+                      <PointAnimation Storyboard.TargetName="Runner" Storyboard.TargetProperty="RenderTransformOrigin"
+                                      From="-0.5,0.5" To="1.5,0.5" Duration="0:0:2.2"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <StopStoryboard BeginStoryboardName="BusyStory"/>
+                </Trigger.ExitActions>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Barras de rolagem finas, no estilo dos sistemas atuais -->
+    <Style x:Key="ScrollThumb" TargetType="Thumb">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border x:Name="T" Background="{DynamicResource ThumbBrush}" CornerRadius="3"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="T" Property="Background" Value="{DynamicResource ThumbHoverBrush}"/>
+              </Trigger>
+              <Trigger Property="IsDragging" Value="True">
+                <Setter TargetName="T" Property="Background" Value="{DynamicResource ThumbHoverBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ScrollPage" TargetType="RepeatButton">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="IsTabStop" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RepeatButton">
+            <Border Background="Transparent"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Width" Value="12"/>
+      <Setter Property="MinWidth" Value="12"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageUpCommand"/>
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb Style="{StaticResource ScrollThumb}" Margin="2,2"/>
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageDownCommand"/>
+                </Track.IncreaseRepeatButton>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal">
+          <Setter Property="Width" Value="Auto"/>
+          <Setter Property="MinWidth" Value="0"/>
+          <Setter Property="Height" Value="12"/>
+          <Setter Property="MinHeight" Value="12"/>
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="ScrollBar">
+                <Grid Background="Transparent">
+                  <Track x:Name="PART_Track" IsDirectionReversed="False">
+                    <Track.DecreaseRepeatButton>
+                      <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageLeftCommand"/>
+                    </Track.DecreaseRepeatButton>
+                    <Track.Thumb>
+                      <Thumb Style="{StaticResource ScrollThumb}" Margin="2,2"/>
+                    </Track.Thumb>
+                    <Track.IncreaseRepeatButton>
+                      <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageRightCommand"/>
+                    </Track.IncreaseRepeatButton>
+                  </Track>
+                </Grid>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- Dica (ToolTip) arredondada, nas cores do tema -->
+    <Style TargetType="ToolTip">
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToolTip">
+            <Border Background="{DynamicResource CardBrush}" CornerRadius="8.5" MaxWidth="380">
+              <Border BorderBrush="{DynamicResource ThumbBrush}" BorderThickness="1" CornerRadius="8" Padding="10,6">
+                <ContentPresenter>
+                  <ContentPresenter.Resources>
+                    <Style TargetType="TextBlock">
+                      <Setter Property="TextWrapping" Value="Wrap"/>
+                    </Style>
+                  </ContentPresenter.Resources>
+                </ContentPresenter>
+              </Border>
+            </Border>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -124,96 +705,326 @@
 
   <Grid>
     <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="230"/>
+      <ColumnDefinition Width="248"/>
       <ColumnDefinition Width="*"/>
     </Grid.ColumnDefinitions>
 
     <!-- Barra lateral -->
-    <Border Grid.Column="0" Background="#0B0F14" Padding="14,18">
-      <DockPanel>
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,18">
-          <!-- O logotipo (assets/WinForge.ico) so aparece depois de carregado pelo script -->
-          <Image x:Name="LogoImage" Width="38" Height="38" Margin="0,0,10,0" Visibility="Collapsed"
+    <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource SidebarLineBrush}" BorderThickness="0,0,1,0"
+            Padding="14,18,14,14">
+      <!-- Linhas na ordem da tela (logotipo, busca, páginas, rodapé): é também a ordem do Tab -->
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,0,0,0">
+          <!-- O logotipo (assets/WinForge.ico) só aparece depois de carregado pelo script -->
+          <Image x:Name="LogoImage" Width="32" Height="32" Margin="0,0,10,0" Visibility="Collapsed"
                  VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
           <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="WinForge" FontSize="22" FontWeight="Bold" Foreground="#FFFFFF"/>
-            <TextBlock x:Name="BuildText" Text="" Foreground="#6B7C90" FontSize="11"/>
+            <TextBlock Text="WinForge" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
+            <TextBlock x:Name="BuildText" Text="" Foreground="{DynamicResource DimBrush}" FontSize="12"/>
           </StackPanel>
         </StackPanel>
-        <StackPanel DockPanel.Dock="Bottom">
-          <Border Height="1" Background="#1A222D" Margin="6,6,6,6"/>
-          <!-- Paginas com Placement = Footer (Sobre o WinForge) -->
-          <StackPanel x:Name="FooterNav"/>
-          <TextBlock x:Name="AdminText" Foreground="#6B7C90" FontSize="11" Margin="14,6,0,0" TextWrapping="Wrap"/>
-        </StackPanel>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-          <StackPanel x:Name="NavPanel"/>
+
+        <!-- Busca (Ctrl+K): acha ações, atalhos e ajustes de qualquer página. Com o foco na caixa, o contorno fica na cor de
+             destaque, como nas outras caixas de texto. -->
+        <Border Grid.Row="1" Margin="0,16,0,0" Height="34" CornerRadius="9.5" Background="{DynamicResource SearchBrush}">
+          <Border CornerRadius="9" BorderThickness="1">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Style.Triggers>
+                  <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentTextBrush}"/>
+                  </Trigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <Viewbox Grid.Column="0" Width="15" Height="15" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                <Canvas Width="24" Height="24">
+                  <Path Data="M 10.5 16.5 A 6 6 0 1 1 10.5 4.5 A 6 6 0 1 1 10.5 16.5 Z M 15 15 L 19.5 19.5" Stroke="{DynamicResource DimBrush}"
+                        StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                </Canvas>
+              </Viewbox>
+              <!-- A caixa fica só na coluna do texto: a última coluna é da dica Ctrl K (caixa vazia) ou do botão de limpar. -->
+              <TextBox x:Name="SearchBox" Grid.Column="1" Style="{StaticResource SearchTextBox}" AutomationProperties.Name="Buscar no WinForge"
+                       MaxLength="200"
+                       ToolTip="Buscar ações, atalhos e ajustes (Ctrl+K ou Ctrl+F). Enter abre o primeiro resultado; seta para baixo vai aos cartões; Esc volta. Ctrl+1 a Ctrl+0 abrem as páginas."/>
+              <!-- A dica começa onde o texto começa: Padding (6) + o recuo interno do texto (2). A janela confere com o cursor. -->
+              <TextBlock x:Name="SearchHint" Grid.Column="1" Text="Buscar" Foreground="{DynamicResource MutedBrush}" FontSize="13.5" Margin="8,0,0,0"
+                         VerticalAlignment="Center" IsHitTestVisible="False"/>
+              <Border x:Name="SearchKeys" Grid.Column="2" Margin="0,0,7,0" CornerRadius="5.5" VerticalAlignment="Center" Background="{DynamicResource CardBrush}"
+                      IsHitTestVisible="False">
+                <Border Padding="5,1" CornerRadius="5" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}">
+                  <TextBlock Text="Ctrl K" FontSize="11" Foreground="{DynamicResource DimBrush}"/>
+                </Border>
+              </Border>
+              <!-- Limpar a busca (com texto na caixa, no lugar da dica Ctrl K): o mesmo que o Esc. Fora da ordem do Tab, como
+                   nas caixas de busca do Windows: pelo teclado, o Esc faz o mesmo. -->
+              <Button x:Name="SearchClear" Grid.Column="2" Width="24" Height="24" Margin="0,0,5,0" VerticalAlignment="Center" Visibility="Collapsed"
+                      Focusable="False" AutomationProperties.Name="Limpar a busca" ToolTip="Limpar a busca (Esc)">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6">
+                      <Viewbox Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Canvas Width="24" Height="24">
+                          <Path x:Name="Glyph" Data="M 5 5 L 19 19 M 19 5 L 5 19" Stroke="{DynamicResource DimBrush}" StrokeThickness="3.2"
+                                StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Canvas>
+                      </Viewbox>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardBrush}"/>
+                        <Setter TargetName="Glyph" Property="Stroke" Value="{DynamicResource TextBrush}"/>
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Button.Template>
+              </Button>
+            </Grid>
+            </Border>
+        </Border>
+
+        <!-- As áreas roláveis cortam o que passa da borda: margem negativa por fora e positiva por dentro deixam 4 px para o
+             anel de foco sem mudar a posição do conteúdo (o mesmo nas outras listas da janela). -->
+        <ScrollViewer Grid.Row="2" Margin="-4,10,-4,0" VerticalScrollBarVisibility="Auto" Focusable="False">
+          <StackPanel x:Name="NavPanel" Margin="4"/>
         </ScrollViewer>
-      </DockPanel>
+
+        <StackPanel Grid.Row="3">
+          <Border Height="1" Background="{DynamicResource SidebarLineBrush}" Margin="4,6,4,8"/>
+          <!-- Páginas com Placement = Footer (Sobre o WinForge) -->
+          <StackPanel x:Name="FooterNav"/>
+          <DockPanel Margin="10,8,4,0">
+            <Viewbox DockPanel.Dock="Left" Width="13" Height="13" VerticalAlignment="Top" Margin="0,1,8,0" IsHitTestVisible="False">
+              <Canvas Width="24" Height="24">
+                <Path Data="M 12 3.2 L 19.5 6 V 11.5 C 19.5 16 16.4 19.4 12 20.8 C 7.6 19.4 4.5 16 4.5 11.5 V 6 Z" Stroke="{DynamicResource DimBrush}"
+                      StrokeThickness="2.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+              </Canvas>
+            </Viewbox>
+            <TextBlock x:Name="AdminText" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap"/>
+          </DockPanel>
+        </StackPanel>
+      </Grid>
     </Border>
 
-    <Grid Grid.Column="1" Margin="28,22,20,16">
-      <!-- Paginas (cartoes, ajustes, inicio) -->
-      <Grid x:Name="PagesView">
+    <Grid Grid.Column="1">
+      <!-- Páginas (cartões, ajustes, Início) -->
+      <Grid x:Name="PagesView" Margin="36,28,24,0">
         <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <StackPanel Grid.Row="0" Margin="0,0,0,18">
-          <TextBlock x:Name="PageTitle" FontSize="24" FontWeight="SemiBold"/>
-          <TextBlock x:Name="PageSubtitle" Foreground="#8A9BB0" Margin="0,2,0,0" TextWrapping="Wrap"/>
+        <!-- Aparece quando uma ação está rodando (ou acabou) e a pessoa foi olhar outra página -->
+        <Border x:Name="RunStrip" Grid.Row="0" Visibility="Collapsed" Margin="0,0,12,16" CornerRadius="12.5" Background="{DynamicResource CardBrush}">
+          <Border Padding="16,10,10,10" CornerRadius="12" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="RunStripStop" Style="{StaticResource PillButton}" Content="Parar" Margin="0,0,8,0" AutomationProperties.Name="Parar a ação em andamento"/>
+                <Button x:Name="RunStripDismiss" Style="{StaticResource PillButton}" Content="Dispensar" Margin="0,0,8,0" Visibility="Collapsed"/>
+                <Button x:Name="RunStripView" Style="{StaticResource PrimaryButton}" Content="Ver"/>
+              </StackPanel>
+              <Ellipse x:Name="RunStripDot" Width="9" Height="9" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="RunStripTitle" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="RunStripText" Foreground="{DynamicResource MutedBrush}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </Border>
+        <StackPanel Grid.Row="1" Margin="0,0,12,22">
+          <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextOptions.TextFormattingMode="Ideal"/>
+          <!-- Sem texto (o Início), a linha some, e o conteúdo sobe -->
+          <TextBlock x:Name="PageSubtitle" Foreground="{DynamicResource MutedBrush}" FontSize="14" Margin="0,4,0,0" TextWrapping="Wrap">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Style.Triggers>
+                  <Trigger Property="Text" Value="">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                  </Trigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
         </StackPanel>
-        <ScrollViewer x:Name="PageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
-          <StackPanel x:Name="ContentPanel"/>
+        <ScrollViewer x:Name="PageScroll" Grid.Row="2" Margin="-4,-4,0,0" VerticalScrollBarVisibility="Auto" Padding="0,0,12,24" Focusable="False">
+          <StackPanel x:Name="ContentPanel" Margin="4,4,0,0" HorizontalAlignment="Left"/>
         </ScrollViewer>
       </Grid>
 
-      <!-- Execucao: saida, progresso e perguntas -->
-      <Grid x:Name="RunView" Visibility="Collapsed">
+      <!-- Execução: andamento, resultado, perguntas e os detalhes técnicos -->
+      <!-- Recebe o foco do teclado quando uma ação começa (sem contorno: o foco passa para os botões com o Tab) -->
+      <Grid x:Name="RunView" Visibility="Collapsed" Margin="36,28,36,24" MaxWidth="1236" HorizontalAlignment="Left" Focusable="True" FocusVisualStyle="{x:Null}">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
           <RowDefinition Height="*"/>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <DockPanel Grid.Row="0" Margin="0,0,0,12">
-          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-            <Button x:Name="StopButton" Style="{StaticResource PillButton}" Content="Parar" Background="#7F1D1D"/>
-            <Button x:Name="CopyButton" Style="{StaticResource PillButton}" Content="Copiar saída"/>
-            <Button x:Name="BackButton" Style="{StaticResource PillButton}" Content="Voltar" Background="#3B82F6" Visibility="Collapsed" Margin="0"/>
+        <DockPanel Grid.Row="0" Margin="0,0,0,18">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="16,4,0,0">
+            <Button x:Name="RerunButton" Style="{StaticResource PillButton}" Content="Executar de novo" Visibility="Collapsed" Margin="0,0,10,0"/>
+            <!-- Discreto: numa execução de mais de uma hora, o vermelho não pode ser o que mais chama a atenção na tela; a
+                 confirmação continua. -->
+            <Button x:Name="StopButton" Style="{StaticResource PillButton}" Content="Parar" AutomationProperties.Name="Parar a ação em andamento"/>
+            <Button x:Name="BackButton" Style="{StaticResource PrimaryButton}" Content="Voltar" Visibility="Collapsed" ToolTip="Voltar (Esc)"/>
           </StackPanel>
           <StackPanel>
-            <TextBlock x:Name="RunTitle" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-              <Ellipse x:Name="RunDot" Width="9" Height="9" Fill="#3B82F6" VerticalAlignment="Center" Margin="0,0,8,0"/>
-              <TextBlock x:Name="RunStatus" Foreground="#8A9BB0"/>
+            <TextBlock x:Name="RunTitle" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" TextOptions.TextFormattingMode="Ideal"/>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+              <Ellipse x:Name="RunDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="1,0,8,0"/>
+              <TextBlock x:Name="RunStatus" Foreground="{DynamicResource MutedBrush}" FontSize="13"/>
+              <TextBlock x:Name="RunElapsed" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="6,0,0,0" AutomationProperties.HelpText="Tempo decorrido"/>
             </StackPanel>
           </StackPanel>
         </DockPanel>
-        <Border Grid.Row="1" Background="#0B0F14" BorderBrush="#263241" BorderThickness="1" CornerRadius="10">
-          <RichTextBox x:Name="OutputBox" Background="Transparent" BorderThickness="0" Foreground="#C9D4E0"
-                       FontFamily="Cascadia Mono, Consolas" FontSize="12.5" IsReadOnly="True"
-                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="12,10"/>
+
+        <!-- O andamento (etapa atual e progresso) e, ao terminar, o resultado; embaixo, o que já foi feito -->
+        <Border x:Name="RunHero" Grid.Row="1" Margin="0,0,0,14" CornerRadius="16.5" Background="{DynamicResource CardBrush}">
+          <Border Padding="22,20" CornerRadius="16" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}">
+            <StackPanel>
+              <StackPanel x:Name="ProgressPanel">
+                <TextBlock x:Name="RunStepText" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock x:Name="ProgressText" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                <ProgressBar x:Name="RunProgress" Style="{StaticResource SlimProgress}" Margin="0,14,0,0" IsIndeterminate="True"/>
+              </StackPanel>
+              <!-- Resultado real da ação: verde (tudo certo), amarelo (ressalvas), vermelho (falha), cinza (nada feito) -->
+              <DockPanel x:Name="ResultBanner" Visibility="Collapsed">
+                <Border x:Name="ResultIcon" DockPanel.Dock="Left" Width="48" Height="48" CornerRadius="24" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                <!-- O próximo passo, quando o resultado pede um (abrir a Segurança do Windows com ameaças pendentes): o botão de
+                     destaque da tela, e o Voltar fica discreto -->
+                <Button x:Name="ResultAction" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Visibility="Collapsed" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock x:Name="ResultBannerTitle" FontWeight="SemiBold" FontSize="19" TextWrapping="Wrap"/>
+                  <TextBlock x:Name="ResultBannerText" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" FontSize="13.5" Margin="0,3,0,0"/>
+                </StackPanel>
+              </DockPanel>
+              <StackPanel x:Name="ActivityPanel" Visibility="Collapsed">
+                <Border x:Name="ActivitySeparator" Height="1" Background="{DynamicResource LineBrush}" Margin="0,16,0,6"/>
+                <!-- Recebe o foco (Tab) para o resumo poder ser rolado pelo teclado -->
+                <ScrollViewer x:Name="ActivityScroll" MaxHeight="232" Margin="-4" VerticalScrollBarVisibility="Auto" Focusable="True" IsTabStop="True"
+                              FocusVisualStyle="{StaticResource FocusRingSmall}" AutomationProperties.Name="Resumo do que a ação fez">
+                  <StackPanel x:Name="ActivityList" Margin="4"/>
+                </ScrollViewer>
+              </StackPanel>
+            </StackPanel>
+          </Border>
         </Border>
-        <StackPanel Grid.Row="2" x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,10,0,0">
-          <TextBlock x:Name="ProgressText" Foreground="#8A9BB0" FontSize="12" TextTrimming="CharacterEllipsis"/>
-          <ProgressBar x:Name="RunProgress" Height="6" Minimum="0" Maximum="100" Background="#1F2A38" Foreground="#3B82F6" BorderThickness="0" Margin="0,4,0,0"/>
-        </StackPanel>
-        <Border Grid.Row="3" x:Name="PromptBar" Visibility="Collapsed" Margin="0,10,0,0" Background="#161D27"
-                BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="10" Padding="14,12">
-          <StackPanel>
-            <TextBlock x:Name="PromptLabel" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <ScrollViewer x:Name="PromptListScroll" MaxHeight="230" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Margin="0,0,0,10">
-              <StackPanel x:Name="PromptList"/>
-            </ScrollViewer>
-            <DockPanel x:Name="PromptTextRow" Margin="0,0,0,8">
-              <Button x:Name="PromptSend" DockPanel.Dock="Right" Style="{StaticResource PillButton}" Content="Enviar" Background="#3B82F6" Margin="10,0,0,0"/>
-              <TextBox x:Name="PromptInput" Background="#0B0F14" Foreground="#E6EDF3" CaretBrush="White" BorderBrush="#263241"
-                       Padding="8,6" FontFamily="Cascadia Mono, Consolas" FontSize="13"/>
+
+        <!-- A pergunta e os detalhes técnicos dividem o resto da tela. O painel encaixado no alto mede a pergunta com a
+             altura que sobra até o fim da janela, e não com uma altura sem fim: uma lista de 200 programas nunca empurra os
+             botões para fora da tela, e rola, mesmo se a conta fina de Update-GuiPromptFit falhar. Os detalhes técnicos
+             ficam com o que sobrar embaixo dela (fechados, só o cabeçalho; abertos, o resto da tela). -->
+        <DockPanel Grid.Row="2" LastChildFill="True">
+        <!-- Pergunta da ação: botões, opções em linha, lista de marcação ou caixa de texto -->
+        <!-- Contorno na cor de destaque: a pergunta se distingue dos outros cartões -->
+        <!-- Os botões de resposta ficam sempre à vista: a janela limita a altura do cartão ao espaço que sobra (Update-GuiPromptFit,
+             e o painel em volta, que nunca deixa o cartão passar do fim da janela) e só a linha da lista (ou das opções em
+             linha), a de altura "*", encolhe e rola; a pergunta, o filtro, a caixa de texto e os botões ficam inteiros. A ordem
+             dos elementos é a do Tab.
+             No alto do cartão: a etapa (quando o cartão do andamento sai para a lista ter espaço) e o que a ação acabou de dizer
+             sobre a pergunta (as últimas linhas do resumo desde o último título), para a pergunta nunca ficar sem o contexto. -->
+        <Border DockPanel.Dock="Top" x:Name="PromptBar" Visibility="Collapsed" Margin="0,0,0,14" CornerRadius="16.5" Background="{DynamicResource CardBrush}">
+          <Border Padding="22,20" CornerRadius="16" BorderThickness="1" BorderBrush="{DynamicResource AccentTextBrush}">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock x:Name="PromptStep" Grid.Row="0" Visibility="Collapsed" Foreground="{DynamicResource MutedBrush}" FontSize="12.5"
+                         FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,0,0,8"/>
+              <StackPanel x:Name="PromptContext" Grid.Row="1" Visibility="Collapsed" Margin="0,0,0,10"/>
+              <TextBlock x:Name="PromptLabel" Grid.Row="2" TextWrapping="Wrap" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12"/>
+              <!-- Filtro das listas de marcação longas (mais de 10 itens) -->
+              <Grid x:Name="PromptFilterRow" Grid.Row="3" Visibility="Collapsed" Margin="0,0,0,10">
+                <TextBox x:Name="PromptFilter" Style="{StaticResource InputTextBox}" AutomationProperties.Name="Filtrar a lista"/>
+                <!-- Borda (1) + Padding (10) + o recuo interno do texto (2); a janela confere com o cursor. -->
+                <TextBlock x:Name="PromptFilterHint" Text="Filtrar a lista" Foreground="{DynamicResource MutedBrush}" FontSize="13.5" Margin="13,0,0,0"
+                           VerticalAlignment="Center" IsHitTestVisible="False"/>
+              </Grid>
+              <!-- Um Tab só entra na lista (as setas andam entre os itens e o Espaço marca): numa lista de 80 programas, o Confirmar
+                   fica a um Tab de distância -->
+              <ScrollViewer x:Name="PromptListScroll" Grid.Row="4" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Margin="-4,-4,-4,8" Focusable="False">
+                <StackPanel x:Name="PromptList" Margin="4" KeyboardNavigation.TabNavigation="Once" KeyboardNavigation.DirectionalNavigation="Contained"/>
+              </ScrollViewer>
+              <ScrollViewer x:Name="PromptOptionsScroll" Grid.Row="4" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Margin="-4,-4,-4,0" Focusable="False">
+                <StackPanel x:Name="PromptOptions" Margin="4"/>
+              </ScrollViewer>
+              <TextBlock x:Name="PromptFilterEmpty" Grid.Row="5" Visibility="Collapsed" Text="Nenhum item com esse texto." Foreground="{DynamicResource MutedBrush}"
+                         FontSize="13.5" Margin="2,0,0,12"/>
+              <DockPanel x:Name="PromptTextRow" Grid.Row="6" Margin="0,0,0,10">
+                <Button x:Name="PromptSend" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Enviar" Margin="10,0,0,0"/>
+                <TextBox x:Name="PromptInput" Style="{StaticResource InputTextBox}" AutomationProperties.LabeledBy="{Binding ElementName=PromptLabel}"/>
+              </DockPanel>
+              <!-- Cada botão tem 8 de margem embaixo (para quebrar em duas linhas); o -8 devolve o espaço do cartão por igual. -->
+              <WrapPanel x:Name="PromptButtons" Grid.Row="7" Margin="0,0,0,-8"/>
+            </Grid>
+          </Border>
+        </Border>
+
+        <!-- Os detalhes técnicos: a saída completa da ação (a mesma do log) -->
+        <Border x:Name="DetailsCard" VerticalAlignment="Top" CornerRadius="16.5" Background="{DynamicResource CardBrush}">
+          <Border Padding="10,6,10,10" CornerRadius="16" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}">
+            <DockPanel>
+              <DockPanel DockPanel.Dock="Top">
+                <!-- Os botões da saída só aparecem com os detalhes abertos (Set-GuiDetailsOpen): fechados, não há o que copiar à vista. -->
+                <StackPanel x:Name="DetailsActions" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+                  <Button x:Name="CopyButton" Style="{StaticResource GhostButton}" Content="Copiar" ToolTip="Copia o texto dos detalhes técnicos"/>
+                  <Button x:Name="SaveButton" Style="{StaticResource GhostButton}" Content="Salvar" ToolTip="Salva o texto dos detalhes técnicos em um arquivo .txt"/>
+                  <Button x:Name="LogButton" Style="{StaticResource GhostButton}" Content="Abrir log" ToolTip="Abre o log completo desta sessão do WinForge"/>
+                </StackPanel>
+                <Button x:Name="DetailsToggle" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" AutomationProperties.Name="Mostrar os detalhes técnicos">
+                  <StackPanel Orientation="Horizontal">
+                    <Viewbox Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center">
+                      <Canvas Width="24" Height="24">
+                        <Path x:Name="DetailsChevron" Data="M 9.5 6 L 15.5 12 L 9.5 18" Stroke="{DynamicResource MutedBrush}" StrokeThickness="2.6"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                      </Canvas>
+                    </Viewbox>
+                    <TextBlock Text="Detalhes técnicos" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
+              </DockPanel>
+              <!-- Com o foco do teclado nos detalhes, a borda aparece; o cursor também, para selecionar com Shift + setas -->
+              <Border x:Name="DetailsPanel" Visibility="Collapsed" Margin="0,8,0,0" CornerRadius="11" Background="{DynamicResource InsetBrush}">
+                <Border CornerRadius="10" BorderThickness="2">
+                  <Border.Style>
+                    <Style TargetType="Border">
+                      <Setter Property="BorderBrush" Value="Transparent"/>
+                      <Style.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                          <Setter Property="BorderBrush" Value="{DynamicResource AccentTextBrush}"/>
+                        </Trigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Border.Style>
+                  <RichTextBox x:Name="OutputBox" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextBrush}"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="12.5" IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="10,10"
+                               SelectionBrush="{DynamicResource AccentBrush}" AutomationProperties.Name="Detalhes técnicos da ação"/>
+                  </Border>
+              </Border>
             </DockPanel>
-            <WrapPanel x:Name="PromptButtons"/>
-          </StackPanel>
+            </Border>
         </Border>
+        </DockPanel>
       </Grid>
     </Grid>
   </Grid>

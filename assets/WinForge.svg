@@ -1,21 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" width="256" height="256">
-  <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#5A98FA"/>
-      <stop offset="1" stop-color="#1D4ED8"/>
-    </linearGradient>
-    <linearGradient id="iron" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#D3E1F7"/>
-    </linearGradient>
-    <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FEF08A"/>
-      <stop offset="1" stop-color="#F59E0B"/>
-    </linearGradient>
-    <path id="anvil" d="M28,116 Q58,110 92,100 L216,100 Q221,100 221,105 L221,126 Q221,131 216,131 L186,131 Q165,137 163,152 L165,170 Q167,176 180,180 L204,186 Q209,188 209,193 L209,208 Q209,213 204,213 L52,213 Q47,213 47,208 L47,193 Q47,188 52,186 L76,180 Q89,176 91,170 L93,152 Q93,140 78,135 Q48,129 28,116 Z"/>
-  </defs>
-  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#tile)"/>
-  <use xlink:href="#anvil" transform="translate(0,7)" fill="#0B2A8A" fill-opacity="0.38"/>
-  <use xlink:href="#anvil" fill="url(#iron)"/>
-  <path fill="url(#spark)" d="M184,22 Q193,52 226,60 Q193,68 184,98 Q175,68 142,60 Q175,52 184,22 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">WinForge</title>
+  <desc id="desc">Ícone minimalista: bigorna branca com face azul sobre um quadrado grafite de cantos arredondados.</desc>
+  <rect x="32" y="32" width="960" height="960" rx="208" fill="#17191F"/>
+  <g transform="translate(-36 -88) scale(.9)">
+    <path fill="#5B91FF" d="M731 489 765 458Q769 454 777 454H965Q975 454 975 464V489Z"/>
+    <path fill="#F3F5F7" d="M242 506H465L469 497Q472 489 481 489H975V564Q975 575 964 575C883 577 800 613 771 671C735 744 782 775 874 795L933 860Q940 877 926 877H386Q370 877 377 861L438 795C513 778 552 752 552 709C552 666 516 633 469 633H439Q432 633 425 629L245 518Q231 508 242 506Z"/>
+  </g>
 </svg>

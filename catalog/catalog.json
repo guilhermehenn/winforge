@@ -1,0 +1,266 @@
+{
+  "Format": "WinForge.Catalog",
+  "Version": 1,
+  "Updated": "2026-11-15",
+  "Essentials": [
+    {
+      "Categoria": "Básico",
+      "Nome": "7-Zip",
+      "Id": "7zip.7zip",
+      "Descricao": "Abre e cria arquivos compactados (.zip, .7z, .rar)"
+    },
+    {
+      "Categoria": "Básico",
+      "Nome": "Adobe Acrobat Reader",
+      "Id": "Adobe.Acrobat.Reader.64-bit",
+      "Descricao": "Abre e assina PDFs"
+    },
+    {
+      "Categoria": "Básico",
+      "Nome": "Google Chrome",
+      "Id": "Google.Chrome",
+      "Descricao": "Navegador do Google"
+    },
+    {
+      "Categoria": "Básico",
+      "Nome": "Mozilla Firefox",
+      "Id": "Mozilla.Firefox",
+      "Descricao": "Navegador da Mozilla"
+    },
+    {
+      "Categoria": "Básico",
+      "Nome": "Notepad++",
+      "Id": "Notepad++.Notepad++",
+      "Descricao": "Editor de texto e de código"
+    },
+    {
+      "Categoria": "Básico",
+      "Nome": "VLC Media Player",
+      "Id": "VideoLAN.VLC",
+      "Descricao": "Toca quase todo formato de vídeo e áudio"
+    },
+    {
+      "Categoria": "Comunicação e mídia",
+      "Nome": "Discord",
+      "Id": "Discord.Discord",
+      "Descricao": "Conversa por voz, vídeo e texto"
+    },
+    {
+      "Categoria": "Comunicação e mídia",
+      "Nome": "Zoom",
+      "Id": "Zoom.Zoom",
+      "Descricao": "Reuniões e aulas por vídeo"
+    },
+    {
+      "Categoria": "Produtividade",
+      "Nome": "Everything",
+      "Id": "voidtools.Everything",
+      "Descricao": "Acha qualquer arquivo do PC pelo nome, na hora"
+    },
+    {
+      "Categoria": "Produtividade",
+      "Nome": "LibreOffice",
+      "Id": "TheDocumentFoundation.LibreOffice",
+      "Descricao": "Textos, planilhas e apresentações, grátis"
+    },
+    {
+      "Categoria": "Produtividade",
+      "Nome": "Microsoft PowerToys",
+      "Id": "Microsoft.PowerToys",
+      "Descricao": "Utilitários extras da Microsoft para o Windows"
+    },
+    {
+      "Categoria": "Jogos",
+      "Nome": "Steam",
+      "Id": "Valve.Steam",
+      "Descricao": "Loja e biblioteca de jogos"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "Git",
+      "Id": "Git.Git",
+      "Descricao": "Controle de versões de código"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "Java JDK 25 (Temurin, LTS)",
+      "Id": "EclipseAdoptium.Temurin.25.JDK",
+      "Descricao": "Java mais recente com suporte longo"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "Java JDK 21 (Temurin, LTS)",
+      "Id": "EclipseAdoptium.Temurin.21.JDK",
+      "Descricao": "Java anterior com suporte longo, para projetos que pedem a 21"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "Node.js LTS",
+      "Id": "OpenJS.NodeJS.LTS",
+      "Descricao": "JavaScript fora do navegador, na versão com suporte longo"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "PowerShell 7",
+      "Id": "Microsoft.PowerShell",
+      "Descricao": "O PowerShell atual, instalado ao lado do Windows PowerShell"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "Python 3.15",
+      "Id": "Python.Python.3.15",
+      "Descricao": "Linguagem Python"
+    },
+    {
+      "Categoria": "Para programadores",
+      "Nome": "Visual Studio Code",
+      "Id": "Microsoft.VisualStudioCode",
+      "Descricao": "Editor de código da Microsoft"
+    }
+  ],
+  "WindowsLifecycle": [
+    {
+      "Build": 14393,
+      "Name": "Windows 10 1607",
+      "HomeEnd": "2018-04-10",
+      "EnterpriseEnd": "2019-04-09",
+      "LtscEnd": "2026-10-13",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 9612,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 17763,
+      "Name": "Windows 10 1809",
+      "HomeEnd": "2020-11-10",
+      "EnterpriseEnd": "2021-05-11",
+      "LtscEnd": "2029-01-09",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 9376,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 19044,
+      "Name": "Windows 10 21H2",
+      "HomeEnd": "2023-06-13",
+      "EnterpriseEnd": "2024-06-11",
+      "LtscEnd": "2027-01-12",
+      "EsuEnd": "",
+      "IotLtscEnd": "2032-01-13",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 7807,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 19045,
+      "Name": "Windows 10 22H2",
+      "HomeEnd": "2025-10-14",
+      "EnterpriseEnd": "2025-10-14",
+      "LtscEnd": "",
+      "EsuEnd": "2027-10-12",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 6575,
+      "EsuOrgEnd": "2028-10-10",
+      "UpdateRevision": 7807,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 22000,
+      "Name": "Windows 11 21H2",
+      "HomeEnd": "2023-10-10",
+      "EnterpriseEnd": "2024-10-08",
+      "LtscEnd": "",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 0,
+      "UpdateDate": ""
+    },
+    {
+      "Build": 22621,
+      "Name": "Windows 11 22H2",
+      "HomeEnd": "2024-10-08",
+      "EnterpriseEnd": "2025-10-14",
+      "LtscEnd": "",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 0,
+      "UpdateDate": ""
+    },
+    {
+      "Build": 22631,
+      "Name": "Windows 11 23H2",
+      "HomeEnd": "2025-11-11",
+      "EnterpriseEnd": "2026-11-10",
+      "LtscEnd": "",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 7652,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 26100,
+      "Name": "Windows 11 24H2",
+      "HomeEnd": "2026-10-13",
+      "EnterpriseEnd": "2027-10-12",
+      "LtscEnd": "2029-10-09",
+      "EsuEnd": "",
+      "IotLtscEnd": "2034-10-10",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 9711,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 26200,
+      "Name": "Windows 11 25H2",
+      "HomeEnd": "2027-10-12",
+      "EnterpriseEnd": "2028-10-10",
+      "LtscEnd": "",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 9711,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 26300,
+      "Name": "Windows 11 26H2",
+      "HomeEnd": "2028-10-10",
+      "EnterpriseEnd": "2029-10-09",
+      "LtscEnd": "",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 9711,
+      "UpdateDate": "2026-10-13"
+    },
+    {
+      "Build": 28000,
+      "Name": "Windows 11 26H1",
+      "HomeEnd": "2028-03-14",
+      "EnterpriseEnd": "2029-03-13",
+      "LtscEnd": "",
+      "EsuEnd": "",
+      "IotLtscEnd": "",
+      "EsuFirstRevision": 0,
+      "EsuOrgEnd": "",
+      "UpdateRevision": 3231,
+      "UpdateDate": "2026-10-13"
+    }
+  ]
+}

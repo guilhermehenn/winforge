@@ -64,11 +64,18 @@ namespace WinForge
         [DllImport("shell32.dll", ExactSpelling = true)]
         private static extern int SHGetPropertyStoreForWindow(IntPtr handle, ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
 
-        [DllImport("propsys.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
-        private static extern int InitPropVariantFromString([MarshalAs(UnmanagedType.LPWStr)] string value, out PropVariant variant);
-
         [DllImport("ole32.dll", ExactSpelling = true)]
         private static extern int PropVariantClear(ref PropVariant variant);
+
+        [DllImport("shell32.dll", ExactSpelling = true)]
+        private static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
+
+        // SHCNE_ASSOCCHANGED: o Explorador relê os ícones (um atalho regravado com um ícone novo no mesmo arquivo
+        // continuaria com o antigo, guardado no cache).
+        public static void RefreshIcons()
+        {
+            SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero);
+        }
 
         // Devolve 0 (S_OK) quando o Windows aceitou.
         public static int SetProcessAppId(string appId)
@@ -82,8 +89,12 @@ namespace WinForge
             key.FormatId = AppUserModelFormat;
             key.PropertyId = propertyId;
 
-            PropVariant variant;
-            Marshal.ThrowExceptionForHR(InitPropVariantFromString(value, out variant));
+            // InitPropVariantFromString é uma função "inline" do propvarutil.h: nenhuma DLL a exporta, e chamá-la daqui
+            // sempre falhava (EntryPointNotFoundException). O PROPVARIANT de texto é montado à mão: VT_LPWSTR com a cópia
+            // da string na memória do COM, que o PropVariantClear libera.
+            PropVariant variant = new PropVariant();
+            variant.ValueType = 31;
+            variant.Pointer = Marshal.StringToCoTaskMemUni(value);
 
             try
             {
@@ -330,6 +341,71 @@ function Save-WinForgeShortcutFile {
     return [PSCustomObject]@{
         Path     = $Path
         AppIdSet = $appIdSet
+    }
+}
+
+
+function Test-WinForgeAdvertisedShortcut {
+    <#
+    Verdadeiro para um atalho "anunciado" do Windows Installer (o do Office e de muitos programas MSI): ele não aponta
+    para o programa, e sim para o produto instalado, que o Windows resolve na hora de abrir. O TargetPath que se lê dele
+    é o ícone guardado em %WINDIR%\Installer, e não o programa: se outro limpador apagou esse ícone, o atalho parece
+    quebrado e continua funcionando. O sinal fica no cabeçalho do .lnk: o campo LinkFlags (4 bytes no deslocamento
+    0x14) com o bit HasDarwinID (0x1000).
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $stream = $null
+
+    try {
+        $stream = New-Object System.IO.FileStream -ArgumentList $Path, ([IO.FileMode]::Open), ([IO.FileAccess]::Read), ([IO.FileShare]::ReadWrite)
+        $header = New-Object byte[] 24
+
+        if ($stream.Read($header, 0, 24) -lt 24) { return $false }
+        if ([BitConverter]::ToInt32($header, 0) -ne 0x4C) { return $false }
+
+        return (([BitConverter]::ToInt32($header, 0x14) -band 0x1000) -ne 0)
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+}
+
+
+function Get-WinForgeShortcutTarget {
+    # Para onde um atalho (.lnk) aponta: TargetPath e Arguments. $null se o arquivo não pôde ser lido como atalho.
+    # Atalhos de aplicativos da Store voltam com o TargetPath vazio; os anunciados do Windows Installer, com o ícone
+    # guardado (veja Test-WinForgeAdvertisedShortcut).
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $shell = $null
+    $link = $null
+
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $link = $shell.CreateShortcut($Path)
+
+        return [PSCustomObject]@{
+            TargetPath = [string]$link.TargetPath
+            Arguments  = [string]$link.Arguments
+        }
+    }
+    catch {
+        return $null
+    }
+    finally {
+        foreach ($com in @($link, $shell)) {
+            if ($null -ne $com) { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($com) }
+        }
     }
 }
 

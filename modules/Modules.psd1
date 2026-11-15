@@ -11,18 +11,35 @@
         'Shortcuts',
         'Shell',
         'Launcher',
+        'AppUpdate',
         'Cleanup',
+        'CleanupTools',
         'Repair',
         'Software',
         'Network',
+        'NetworkTools',
         'Diagnostics',
+        'WindowsUpdate',
+        'Startup',
         'Hardware',
         'Security',
         'Reports',
         'Tweaks',
+        'Backup',
+        'WindowsFeatures',
+        'PreinstalledApps',
         'Maintenance',
         'Schedule',
-        'Navigation'
+        'Catalog',
+        'Journal',
+        'WindowsSupport',
+        'RegistryCleaner',
+        'Performance',
+        'Drivers',
+        'Checkup',
+        'Agent',
+        'Navigation',
+        'Home'
     )
 
     Console = @(
@@ -30,6 +47,7 @@
     )
 
     Gui     = @(
-        'GuiHost'
+        'GuiHost',
+        'GuiDesign'
     )
 }
