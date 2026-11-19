@@ -76,6 +76,22 @@ No PowerShell, dentro da pasta do WinForge:
 
 A ação `Check` faz consultas e não exige administrador; algumas informações podem ficar indisponíveis sem elevação.
 
+## Como relatar um problema
+
+[Abra uma issue](https://github.com/guilhermehenn/winforge/issues/new)
+informando:
+
+- Versão do WinForge.
+- Versão e build do Windows.
+- Interface utilizada: gráfica ou terminal.
+- Função executada e passos para reproduzir o problema.
+- Resultado esperado e o que aconteceu.
+- Mensagem de erro completa ou captura de tela.
+
+Se compartilhar logs ou relatórios de
+`%LOCALAPPDATA%\WinForge`, confira o conteúdo
+e remova informações pessoais antes de enviar.
+
 ## Documentação e projeto
 
 - [Guia detalhado da build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md) — referência arquivada da versão publicada; pode não refletir versões posteriores.
