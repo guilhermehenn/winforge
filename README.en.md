@@ -15,6 +15,10 @@ Take care of your Windows PC in one place: WinForge cleans, repairs, updates and
 
 [Website](https://usewinforge.com.br/en/) · [**Download WinForge**](https://github.com/guilhermehenn/winforge/releases/latest/download/WinForge.zip) · [All versions](https://github.com/guilhermehenn/winforge/releases) · [What changed (in Portuguese)](CHANGELOG.md)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/guilhermehenn/winforge/main/docs/images/inicio.png" width="820" alt="WinForge's Home screen, with the PC health score and the Check PC and Optimize buttons">
+</p>
+
 ## Why WinForge
 
 - **Everything in one place:** cleanup, Windows repair, updates, network, security, programs and tweaks, in four groups: Care, Fix, Protect and Configure.
@@ -128,10 +132,12 @@ Found a problem or have a suggestion? [Open an issue](https://github.com/guilher
 
 **About WinForge > Support package** puts the logs, the quick checkup and the latest report in a zip. Before sharing logs, reports or the package, review them and remove personal information.
 
+**Found a security issue?** Please don't open a public issue: follow the [security policy](https://github.com/guilhermehenn/winforge/security/policy) and use **Report a vulnerability**, which only the maintainer sees.
+
 ## For developers
 
 - [Technical documentation (in Portuguese)](https://github.com/guilhermehenn/winforge/blob/main/docs/documentacao-tecnica-4.0.md): how WinForge is built, where everything is and how to change the code. Newcomers start with "Comece por aqui" (start here).
-- [Documentation index (in Portuguese)](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): the feature map, the 4.0 history and the review of each screen.
+- [Documentation index (in Portuguese)](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): the feature map and the technical documentation.
 - `modules/`: the features; `gui/`: the window; `lang/`: the translations (gettext); `tools/`: signing, the release zip and translations.
 - [What changed in each version (in Portuguese)](CHANGELOG.md) and the [detailed guide for build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md) (archived, in Portuguese).
 

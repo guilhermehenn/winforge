@@ -15,6 +15,10 @@ Cuide do seu PC com Windows num lugar só: o WinForge limpa, repara, atualiza e 
 
 [Site](https://usewinforge.com.br) · [**Baixar o WinForge**](https://github.com/guilhermehenn/winforge/releases/latest/download/WinForge.zip) · [Todas as versões](https://github.com/guilhermehenn/winforge/releases) · [O que mudou](CHANGELOG.md)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/guilhermehenn/winforge/main/docs/images/inicio.png" width="820" alt="A tela Início do WinForge, com a nota de saúde do PC e os botões Verificar o PC e Otimizar">
+</p>
+
 ## Por que o WinForge
 
 - **Tudo num lugar só:** limpeza, reparo do Windows, atualizações, rede, segurança, programas e ajustes, em quatro grupos: Cuidar, Consertar, Proteger e Configurar.
@@ -128,10 +132,12 @@ Achou um problema ou tem uma sugestão? [Abra uma issue](https://github.com/guil
 
 **Sobre o WinForge > Pacote de suporte** reúne os logs, a verificação rápida e o último relatório em um zip. Antes de compartilhar logs, relatórios ou o pacote, confira o conteúdo e remova informações pessoais.
 
+**Achou uma falha de segurança?** Não abra uma issue pública: siga a [política de segurança](https://github.com/guilhermehenn/winforge/security/policy) e use **Report a vulnerability**, que chega só ao mantenedor.
+
 ## Para quem desenvolve
 
 - [Documentação técnica](https://github.com/guilhermehenn/winforge/blob/main/docs/documentacao-tecnica-4.0.md): como o WinForge é feito, onde fica cada coisa e como mudar o código. Quem chega agora começa por "Comece por aqui".
-- [Índice da documentação](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): o mapa de funcionalidades, o histórico da 4.0 e as revisões de cada tela.
+- [Índice da documentação](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): o mapa de funcionalidades e a documentação técnica.
 - `modules/`: as funções; `gui/`: a janela; `lang/`: as traduções (gettext); `tools/`: assinatura, o zip da versão e traduções.
 - [O que mudou em cada versão](CHANGELOG.md) e o [guia detalhado da build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md) (arquivado).
 

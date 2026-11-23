@@ -15,6 +15,10 @@ Cuida tu PC con Windows en un solo lugar: WinForge limpia, repara, actualiza y a
 
 [Sitio web](https://usewinforge.com.br/es/) · [**Descargar WinForge**](https://github.com/guilhermehenn/winforge/releases/latest/download/WinForge.zip) · [Todas las versiones](https://github.com/guilhermehenn/winforge/releases) · [Qué cambió (en portugués)](CHANGELOG.md)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/guilhermehenn/winforge/main/docs/images/inicio.png" width="820" alt="La pantalla Inicio de WinForge, con la nota de salud del PC y los botones Revisar el PC y Optimizar">
+</p>
+
 ## Por qué WinForge
 
 - **Todo en un solo lugar:** limpieza, reparación de Windows, actualizaciones, red, seguridad, programas y ajustes, en cuatro grupos: Cuidar, Reparar, Proteger y Configurar.
@@ -128,10 +132,12 @@ Reparar Windows, instalar actualizaciones y cambiar ajustes del sistema los nece
 
 **Acerca de WinForge > Paquete de soporte** reúne los registros, la revisión rápida y el último informe en un zip. Antes de compartir registros, informes o el paquete, revisa su contenido y elimina la información personal.
 
+**¿Encontraste un fallo de seguridad?** No abras un issue público: sigue la [política de seguridad](https://github.com/guilhermehenn/winforge/security/policy) y usa **Report a vulnerability**, que solo ve el mantenedor.
+
 ## Para desarrolladores
 
 - [Documentación técnica (en portugués)](https://github.com/guilhermehenn/winforge/blob/main/docs/documentacao-tecnica-4.0.md): cómo está hecho WinForge, dónde está cada cosa y cómo cambiar el código. Quien llega ahora empieza por "Comece por aqui" (empieza aquí).
-- [Índice de la documentación (en portugués)](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): el mapa de funciones, el historial de la 4.0 y la revisión de cada pantalla.
+- [Índice de la documentación (en portugués)](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): el mapa de funciones y la documentación técnica.
 - `modules/`: las funciones; `gui/`: la ventana; `lang/`: las traducciones (gettext); `tools/`: firma, el zip de la versión y traducciones.
 - [Qué cambió en cada versión (en portugués)](CHANGELOG.md) y la [guía detallada de la build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md) (archivada, en portugués).
 

@@ -1,6 +1,6 @@
 # WinForge 4.0 — mapa de funcionalidades
 
-O mapa do que o WinForge faz hoje, feito pela visão de produto em 18/11/2026, sobre a Build 4.0 (com as integrações da revisão R6 do `docs/historico-4.0.md`). Para cada função, ele diz o que ela faz, onde aparece e com quem conversa. As lacunas de integração encontradas estão no fim, com o que foi feito e o que ficou para depois.
+O mapa do que o WinForge faz hoje, feito pela visão de produto em 18/11/2026, sobre a Build 4.0. Para cada função, ele diz o que ela faz, onde aparece e com quem conversa. As lacunas de integração encontradas estão no fim, com o que foi feito e o que ficou para depois.
 
 **Conferido de novo na R29 (20/11/2026):** cada item, a frase inteira, o grupo e o Administrador, contra a tabela de navegação do código; os 53 ajustes em 10 grupos. Mudou a frase de Versão e pastas (da R25), a conta dos textos e o fim do Otimizar (da R28).
 

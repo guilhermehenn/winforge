@@ -1,6 +1,6 @@
 # WinForge 4.0 — documentação técnica
 
-**Atualizada em:** 22/11/2026 · **Vale para:** a Build 4.0 em preparação (branch `b370`, depois da R60)
+**Atualizada em:** 22/11/2026 · **Vale para:** a Build 4.0
 
 **Para quem é:** quem vai manter, revisar ou estender o WinForge. A [parte de produto](#produto) diz o que ele é, para quem e por que se comporta como se comporta. A [parte de desenvolvimento](#desenvolvimento) diz como ele é feito, onde fica cada coisa e o que não pode quebrar ao mudar o código. Quem chega agora começa por [Comece por aqui](#5-comece-por-aqui).
 
@@ -858,7 +858,6 @@ O WinForge funciona como o gettext: **o texto em português é a chave**. Em por
 - **Ícones** (`Get-WinForgeIconData`): desenhos de traço numa caixa de 24 x 24. Um nome desconhecido vira o de reticências.
 - **A faixa do resultado:** a ação diz o que mostrar com `Set-WinForgeResultView` ([seção 9](#9-o-contrato-de-uma-ação)), e a janela decide como (`Get-WinForgeRunView`). A ação escolhe no máximo o tom (`Ok`, `Warn` ou `Bad`); as cores e os tamanhos são da janela.
 
-As decisões de desenho estão em [revisao-interface-4.0.md](revisao-interface-4.0.md).
 
 ## 20. Regras de engenharia
 
@@ -961,16 +960,16 @@ O GitHub mostra o `README.md` da raiz na página do repositório, e o da pasta `
 - **Uma ajuda que pede atenção** (os scripts sem assinatura) num alerta do GitHub (`> [!IMPORTANT]`), um só por README; as perguntas frequentes em `<details>`, que abrem com um clique.
 - **Os diagramas** em Mermaid, num bloco `mermaid`, que o GitHub desenha nos arquivos Markdown (os deste documento).
 - **O "About" do repositório** (a engrenagem ao lado de About), à mão, porque não fica em nenhum arquivo:
-  - **a descrição:** "Cuide do seu PC com Windows num lugar só: limpa, repara, atualiza e avisa antes do problema. Em português, inglês e espanhol.";
+  - **a descrição:** "Free, open-source Windows 10/11 maintenance tool in PowerShell: cleanup, repair, updates, security checks and app management via winget, with alerts before problems. Portuguese, English and Spanish.";
   - **o site** (Website): `https://usewinforge.com.br`;
-  - **os tópicos** (só letras minúsculas, números e hífens, até 50 caracteres cada e no máximo 20): `windows`, `windows-10`, `windows-11`, `powershell`, `wpf`, `pc-maintenance`, `windows-maintenance`, `system-repair`, `cleanup`, `diagnostics`, `winget`, `windows-update`, `privacy`;
+  - **os tópicos** (só letras minúsculas, números e hífens, até 50 caracteres cada e no máximo 20): `windows`, `windows-10`, `windows-11`, `powershell`, `wpf`, `winget`, `windows-update`, `windows-maintenance`, `pc-maintenance`, `system-maintenance`, `system-repair`, `cleanup`, `diagnostics`, `windows-tweaks`, `privacy`;
   - **Releases** marcado, para a página mostrar a versão mais recente.
 - **Os selos do README** vêm do shields.io, e o da versão lê o último release publicado: sem release, ele não mostra um número.
 
 ## 23. Riscos e limitações conhecidas
 
-- **Nada da Build 4.0 rodou num Windows de verdade.** Todo o ciclo foi conferido fora do Windows, com o Windows simulado onde precisava. O `CHANGELOG.md` lista o que pede conferência num PC, e o [histórico](historico-4.0.md) diz o que falta antes de publicar.
-- **Não há testes automatizados no repositório.** As conferências de cada revisão rodaram fora dele. Uma mudança no código pede a conferência de quem a fez e, antes de publicar, o roteiro de conferência num PC (no projeto WinForge do Claude, em `claude/roteiro-conferencia-4.0.md`).
+- **A Build 4.0 foi conferida fora do Windows**, com o Windows simulado onde precisava. Antes de divulgar uma versão, ela precisa rodar num PC com Windows 10 e num com Windows 11: instalar, Verificar o PC, Otimizar, atualizar com um clique e desinstalar.
+- **Não há testes automatizados no repositório.** As conferências de cada revisão rodaram fora dele. Uma mudança no código pede a conferência de quem a fez e, antes de publicar, a conferência num PC com Windows.
 - **Os scripts não são assinados.** O Windows pode avisar ao abrir. O `tools/Sign-WinForge.ps1` está pronto para quando houver um certificado.
 - **A atualização com um clique depende do contrato do Setup** ([seção 13.3](#133-atualizar-com-um-clique)) e do nome `WinForge.zip`. Mudar qualquer um dos dois quebra a atualização das versões já instaladas.
 - **A identidade na barra de tarefas também é contrato** ([seção 10.6](#106-o-botão-na-barra-de-tarefas)): outro cálculo daria outra identidade à mesma pasta, e os atalhos e os itens fixados dela deixariam de se juntar à janela. Quem fixou o WinForge na barra numa versão anterior desafixa e fixa de novo, uma vez.
@@ -1008,30 +1007,5 @@ O [índice da pasta docs](README.md) diz o que cada documento tem. Os que mais s
 | Documento | O que tem |
 |---|---|
 | [funcionalidades-4.0.md](funcionalidades-4.0.md) | Cada página e cada item, com a frase e o Administrador |
-| [historico-4.0.md](historico-4.0.md) | Cada revisão do ciclo da 4.0 e o que falta antes de publicar |
-| [revisao-interface-4.0.md](revisao-interface-4.0.md) | As decisões de desenho da janela |
-| [revisao-ux-4.0.md](revisao-ux-4.0.md) | A revisão de UX/UI, com os achados e o plano (R38) |
-| [avaliacao-4.0.md](avaliacao-4.0.md) | A avaliação completa da 4.0 e as sugestões de funções novas (R35) |
-| [revisao-arquivos-4.0.md](revisao-arquivos-4.0.md) | A revisão de todos os arquivos (R29) |
 | [CHANGELOG.md](../CHANGELOG.md) | O que mudou para quem usa |
-
-As revisões de cada tela, a primeira e a segunda:
-
-| Tela | Revisões |
-|---|---|
-| Início | [primeira](revisao-inicio-4.0.md) · [segunda](revisao-inicio-2-4.0.md) |
-| Manutenção | [primeira](revisao-manutencao-4.0.md) · [segunda](revisao-manutencao-2-4.0.md) |
-| Verificar o PC | [primeira](revisao-verificar-o-pc-4.0.md) · [segunda](revisao-verificar-o-pc-2-4.0.md) |
-| Otimizar | [primeira](revisao-otimizar-4.0.md) · [segunda](revisao-otimizar-2-4.0.md) |
-| Limpeza | [primeira](revisao-limpeza-4.0.md) · [segunda](revisao-limpeza-2-4.0.md) |
-| Desempenho | [primeira](revisao-desempenho-4.0.md) · [segunda](revisao-desempenho-2-4.0.md) |
-| Reparo | [primeira](revisao-reparo-4.0.md) · [segunda](revisao-reparo-2-4.0.md) |
-| Diagnóstico | [primeira](revisao-diagnostico-4.0.md) · [segunda](revisao-diagnostico-2-4.0.md) |
-| Rede | [primeira](revisao-rede-4.0.md) · [segunda](revisao-rede-2-4.0.md) |
-| Segurança | [primeira](revisao-seguranca-4.0.md) · [segunda](revisao-seguranca-2-4.0.md) |
-| Atualizações | [primeira](revisao-atualizacoes-4.0.md) · [segunda](revisao-atualizacoes-2-4.0.md) |
-| Programas | [primeira](revisao-programas-4.0.md) · [segunda](revisao-programas-2-4.0.md) |
-| Ajustes do Windows | [primeira](revisao-ajustes-4.0.md) · [segunda](revisao-ajustes-2-4.0.md) |
-| Personalização | [primeira](revisao-personalizacao-4.0.md) · [segunda](revisao-personalizacao-2-4.0.md) |
-| Sobre o WinForge | [primeira](revisao-sobre-4.0.md) · [segunda](revisao-sobre-2-4.0.md) |
-| Busca | [primeira](revisao-busca-4.0.md) · [segunda](revisao-busca-2-4.0.md) |
+| [SECURITY.md](../.github/SECURITY.md) | Como relatar uma falha de segurança |

@@ -276,74 +276,7 @@ A 4.0 é a versão para divulgar: o WinForge passa a se instalar, a se atualizar
 - **winget num Windows em espanhol:** as tabelas do winget ("Nombre", "Origen") voltam a ser lidas. Antes, **Atualizar programas**, **Listar programas instalados**, a busca de programas, a desinstalação e o **Verificar o PC** não reconheciam a lista.
 - **Atualizar programas, só com programas deixados de fora:** quando o winget deixa de fora todos os programas com versão nova (os marcados para não atualizar e os de versão desconhecida), a tela diz que os programas estão em dia. Antes, dizia que não dava para ler a lista e oferecia "Atualizar tudo o que o winget oferecer", e o **Verificar o PC** dizia "não foi possível ler".
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: instalar pelo WinForge-Setup.cmd (Windows 10 22H2 e 11 recente), a entrada em Configurações > Aplicativos e a desinstalação por lá; atualizar com um clique a partir de uma cópia instalada e de uma pasta extraída, da janela e do menu de texto, inclusive com o monitor aberto; a Configuração inicial numa conta nova; a chave do BitLocker num notebook com BitLocker (salvar num pendrive, mostrar na tela, criar uma chave); a senha do Wi-Fi numa rede doméstica, numa aberta e num desktop sem Wi-Fi, e a senha e a chave no resumo da janela; o teste de memória do agendamento ao aviso do monitor; uma tela azul real lida em Telas azuis; o aviso de disco num disco com problema, se houver; o pacote de suporte; o tempo de abertura da janela; o menu de texto aberto de um Prompt de Comando, na atualização; o aviso de tela azul do monitor; o atalho do instalador na página Sobre e no Criar atalho do WinForge; o aviso do BitLocker no backup antes de formatar; instalar por cima de uma pasta extraída com o monitor e a manutenção ligados; desinstalar com um arquivo preso; tudo numa conta sem Administrador também. Da janela nova: as transições dos botões e da chave, e sem elas com as animações do Windows desligadas; o botão de cada destaque; os botões vermelhos das perguntas que apagam sem volta; a nota do Início com os botões ao lado da frase e, numa janela estreita, embaixo; a fonte no Windows 11 e no 10; os dois temas e dois temas de contraste (Aquático e Deserto, no Windows 11); o tamanho do texto em 150% e em 225%, com os cartões e as listas sem cortar; o menu Mais opções com o mouse e com o teclado (setas, Enter e Esc); as linhas, o destaque e o escudo nos três idiomas; a faixa Configuração inicial; o Histórico neste PC depois de um Otimizar; o movimento das páginas, e as animações desligadas no Windows; o segundo clique no Mais opções, que fecha o menu; o tempo de abrir em inglês e em espanhol; um PC com o WMI lento ou com defeito. Do Início: a nota com a manutenção atrasada, com um botão Verificar o PC só; a nota com o texto a 150% e a 225%; o Otimizar numa rede que funciona (só o DNS) e numa sem internet; um driver opcional no Windows Update, que fica de fora; a bateria carregando na tela em inglês. Da Manutenção: o Verificar o PC num PC com referências quebradas no registro; o Histórico de manutenções depois de dois Otimizar; a Manutenção agendada em espanhol; o ponto de restauração no Windows 11 25H2 com a Restauração pontual ligada. Do Diagnóstico: a Saúde dos discos e Discos e espaço livre num PC real, com o tipo de cada disco (SSD, HDD ou NVMe), os contadores com Administrador e o tempo das duas telas, e num pendrive; Dispositivos com problema em inglês; o Teste de memória respondendo Não depois de um teste; uma tela azul real com um dos códigos novos, se houver. Da Segurança: o Estado da proteção e a auditoria com e sem Administrador, no mesmo tempo de antes; o lembrete da chave na auditoria de um notebook com BitLocker; a conta Convidado num Windows em português com a tela em inglês; o arquivo EICAR (um falso vírus inofensivo) numa pasta verificada. Da Limpeza: Limpar componentes do Windows num PC com uma atualização esperando reinício e num sem; a pasta Downloads num pendrive; as faixas de Esvaziar a Lixeira, da Limpeza personalizada e dos componentes; a Limpeza rápida com a Lixeira vazia. Do Desempenho: Gerenciar inicialização com tarefas agendadas de outros fabricantes (desativar uma, conferir no Agendador de Tarefas e desfazer pelo Histórico de mudanças); a faixa de Liberar memória e do Acelerar agora; marcar só um programa sem janela em Programas pesando agora e responder Não; a revisão do Otimizar respondendo Não. Do Reparo: o CHKDSK num PC com mais de um disco e um externo pela USB, no mesmo tempo de antes; Detectar dispositivos com um dispositivo novo ligado; a faixa nova do DISM sem internet, se der para provocar; a faixa da otimização num SSD e num HD. Das Atualizações: **Atualizar aplicativos da Microsoft Store** com o WinForge aberto sem o modo Administrador; uma versão nova do Windows oferecida, desmarcada na lista; as páginas da HP e do NVIDIA App com a tela em inglês; o **Corrigir o Windows Update** num PC sem problema e com um serviço desativado. Dos Programas: restaurar um backup num Windows recém-instalado; ligar o Windows Sandbox, com o reinício oferecido e a pergunta em inglês; o Microsoft 365 Copilot na lista de **Remover aplicativos do Windows**; um backup com o Wi-Fi desligado. Da Rede: reparar a rede num PC com VirtualBox ou WSL; o aviso pela Área de Trabalho Remota; trocar o DNS num PC de domínio; o upload numa internet rápida; o teste de conectividade numa rede sem internet; o tipo de rede explicado. Dos Ajustes do Windows: aplicar os recomendados num PC com um ponto de restauração do mesmo dia; uma chave que uma política impede, num PC da empresa; o Recall num Windows 11 23H2 e num 24H2 Copilot+; o aviso de bateria num notebook; a pasta na faixa da exportação. Da Personalização: a cor no Iniciar e na barra com o modo personalizado. Do Sobre o WinForge: o destaque de Criar atalho antes e depois de criar o atalho; a Pasta do WinForge em Versão e pastas; Criar atalho numa cópia instalada; Verificar nova versão sem internet; a linha Leva e o conteúdo do pacote de suporte. Da Busca: o Idioma pela busca; a busca num PC de mesa e com outro antivírus; a busca em inglês com um erro de digitação; a sugestão "sem espaço"; o cartão Idioma depois de mudar o idioma pelo menu de texto. Do Verificar o PC: a faixa num PC usado, com o botão no ponto mais importante; a linha Proteção com o firewall de uma rede desligado; liberar espaço com o disco perto do limite; os temporários em uso. Do Otimizar: as atualizações antecipadas ligadas, que continuam ligadas; a faixa num PC em dia e com uma etapa com problema; a parte automática cancelada; o resumo dos navegadores. Dos programas instalados só para a conta: desinstalar e atualizar o CapCut, o gallery-dl ou o FFmpeg for yt-dlp com o WinForge como Administrador, em Programas e no Otimizar; o Parar no meio de uma desinstalação dessas; o UAC desligado; o WinForge aberto com a conta de outro Administrador. Das mensagens da janela: fechar o WinForge no meio de uma ação (também pela barra de tarefas, com ele minimizado), o Parar, o pedido de Administrador e a troca de idioma, nos dois temas, no contraste alto, com o texto a 225% e nos três idiomas; o Esc, o Enter, o Tab e o Ctrl+C; o Narrador lendo a mensagem. Do ícone na barra de tarefas: o WinForge aberto de duas pastas, uma depois da outra, com o da primeira fixado; o de uma pasta nova depois de apagar a pasta de um item fixado; a pasta instalada com o atalho do instalador fixado; uma unidade de rede mapeada, com e sem Administrador; o Sobre o WinForge com um atalho de uma versão anterior. Das seis funções novas: a linha Ativação num Windows ativado e num não ativado; a integridade da memória na auditoria, ligada e desligada, com e sem Administrador; **Reparar o Instalador de Aplicativo** numa conta nova, sem o winget; marcar e desmarcar programas em **Manter programas na versão atual**, conferindo com `winget pin list`, e desfazer pelo Histórico de mudanças; **Destravar a impressão** com um documento preso na fila; **Acertar a data e a hora** com o relógio alguns minutos e alguns dias errado, num PC de domínio e sem internet; **Atualizar programas** e **Listar programas instalados** num Windows em espanhol. Do visual novo: as cores laranja nos dois temas e nos temas de contraste; a fonte dos títulos no Windows 11 e no 10; o Início numa janela larga e numa estreita, nos três idiomas e com o texto a 225% (a faixa da nota, os cartões e a linha um embaixo do outro quando o texto não cabe); o ícone novo na barra de tarefas, no Alt+Tab e nos atalhos (o Windows pode mostrar o antigo até reler os ícones). Da segunda revisão do Otimizar: a pergunta do winget num PC real, já pronta depois da inicialização e das pastas, e sem internet, com a linha do prazo; numa conexão limitada, o aviso, a pergunta e as três etapas deixadas para depois; sem o Instalador de Aplicativo (no Windows Sandbox), a oferta de reparo; "Antes da parte automática" e "Para terminar" no alto da janela, com a barra e o Narrador; cancelar a parte automática depois de mudar a inicialização; o ponto de restauração com o serviço de cópias de sombreamento (VSS) desativado. Da segunda revisão do Verificar o PC: o tempo da verificação num PC real, com o winget respondendo e sem internet; o Parar no meio, sem nenhum winget sobrando no Gerenciador de Tarefas; as atualizações pausadas nas Configurações, com e sem atraso; o ponto e o reparo sem o Instalador de Aplicativo (no Windows Sandbox, que não tem o winget); um atalho quebrado no OneDrive; dois discos com sinal de falha, se houver. Da segunda revisão da Busca: os resultados de um ajuste e a caixa de busca com o Narrador (o caminho com vírgulas e o atalho Ctrl+K); a dica da caixa nos três idiomas; o Enter em "limpar", em "winforge" e, em inglês, em "tweaks". Da segunda revisão do Sobre o WinForge: o aviso da versão nova no monitor (uma vez por versão, e nada numa conexão limitada) e a linha da versão no resumo; um aviso de tela azul que aparece uma vez; a Aparência e o Idioma pelo teclado e com o Narrador; os botões novos nos três idiomas. Da segunda revisão da Personalização: desfazer as teclas do idioma pelo Histórico de mudanças; o Modo escuro na linha com a aparência Automática; as frases curtas a 900 de largura nos três idiomas; os Widgets desligados conferidos em outra conta. Da segunda revisão dos Ajustes do Windows: a chave mudando na própria linha, com o mouse, o teclado e o Narrador, em Ajustes e na Personalização; os recomendados numa conta sem Administrador; o WinForge aberto com a conta de outro Administrador, com as linhas Outra conta e o resumo; o Alto desempenho num notebook com Modern Standby e num desktop; o resumo do alto e as linhas cinza nos três idiomas; a busca do Explorador depois de desativar a web na busca. Da segunda revisão dos Programas: o backup num pendrive achado pela restauração num Windows recém-instalado, com o **Procurar de novo**; a faixa do alto e o reparo do Instalador de Aplicativo na restauração; o backup em C:\Backup e a raiz do pendrive em **Outra pasta**; o reinício oferecido depois de instalar, desinstalar e restaurar; o Paint 3D num Windows 10 que ainda o tem; os botões novos nos três idiomas. Da aparência fora do Otimizar: a lista da revisão dos ajustes, na janela e no menu de texto. Da segunda revisão das Atualizações: a faixa do alto, com as atualizações pausadas; a pausa em **Instalar atualizações do Windows**, em **Atualizar drivers** e no **Otimizar**; o Otimizar numa conexão limitada; o nome do WinForge no histórico do Windows Update; a escolha do reinício pendente; o **Corrigir o Windows Update** num PC sem problema; o resumo dos drivers; os botões novos nos três idiomas. Da segunda revisão da Segurança: o **Estado da proteção** e a **Auditoria** no tempo novo; a oferta de reiniciar depois de uma verificação; os pendrives em **Verificar uma pasta**, com um leitor de cartão vazio; uma unidade de rede mapeada; a cópia da chave num pendrive protegido contra gravação; a Área de Trabalho Remota por uma política; os botões novos nos três idiomas. Da segunda revisão da Rede: a faixa **Conexão** com internet, sem internet, sem rede e num Wi-Fi que pede login; o **Testar conectividade** no tempo novo; a oferta de reiniciar depois do reparo; o DNS com o nome do provedor; a **Senha do Wi-Fi** num notebook com um adaptador USB; os botões novos nos três idiomas. Da segunda revisão do Diagnóstico: o **Reinício pendente** depois de instalar uma atualização e antes de reiniciar; **Tempo ligado e energia** num PC ligado há uma semana; **Discos e espaço livre** com o disco quase cheio; as **Telas azuis** num PC com várias; os botões novos nos três idiomas; a **Saúde dos discos** e **Sobre este PC** no mesmo tempo de antes. Da segunda revisão do Reparo: os botões das perguntas nos três idiomas; o reparo completo num notebook na bateria; o **Destravar a impressão** com o Spooler parado e, se der, preso em "Iniciando"; o **Corrigir o Windows Update** e o **Acertar a data e a hora**, no mesmo tempo de antes; o CHKDSK com um disco externo pela USB. Da segunda revisão do Desempenho: a faixa do alto com a memória alta e com o PC ligado há uma semana, nos dois temas, com o mouse, o teclado e o Narrador; um atalho na pasta Inicializar, desativado e desfeito pelo Histórico de mudanças; os botões nos três idiomas; dois programas com o mesmo nome em Programas pesando agora. Da segunda revisão da Limpeza: a faixa do alto com o disco quase cheio, nos dois temas, com o mouse, o teclado e o Narrador, e o aviso de pouco espaço do monitor; os botões das perguntas nos três idiomas; a Limpeza rápida num PC usado; o tempo de Analisar uso de espaço. Da segunda revisão da Manutenção: a faixa do alto nos dois temas, com o mouse, o teclado e o Narrador; a manutenção agendada com o Agendador de Tarefas parado; uma execução mensal que falha no Windows 11; desfazer pelo Histórico de mudanças um ajuste do Explorador e duas trocas de DNS. Da segunda revisão do Início: o WinForge aberto de duas pastas, com a mensagem de outra pasta; o Início inteiro com o disco quase cheio; o aviso e o log da janela, se uma parte faltar; a configuração inicial aparecendo com a leitura; o foco do teclado na nota, no ler de novo e no Agora não; o Narrador na nota; a faixa inclinada com pontos de atenção. Do site do WinForge: **Site do WinForge** com a janela como Administrador (o navegador abre sem ele) e nos três idiomas; os endereços da entrada em Aplicativos instalados depois de instalar e depois de atualizar com um clique. Da cor de destaque e da inicialização: a linha Cor de destaque abrindo as Cores do Windows; **Remover o que sobrou** em Gerenciar inicialização depois de desinstalar um programa feito com o Squirrel (o FACEIT, por exemplo), com o item sumindo também do Gerenciador de Tarefas. Das ferramentas: o zip montado pelo `tools/New-WinForgePackage.ps1` no Windows PowerShell 5.1.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Install.psm1 (novo):** a troca de arquivos (`Install-WinForgeFiles`, com cópia de segurança, conferência por SHA-256 e volta ao que era), a extração segura do zip (`Expand-WinForgeReleasePackage`), a entrada em Aplicativos instalados (`Register-WinForgeInstall`, `Update-WinForgeInstallVersion`, `Unregister-WinForgeInstall`), os processos de uma pasta do WinForge (`Get-WinForgeRunningCopies`), a atualização (`Start-WinForgeUpdateInstall`, que só espera o cmd aberto para o menu (`Test-WinForgeMenuBatchHost`), `Install-WinForgeUpdatePackage`, `Read-WinForgeUpdateResult`) e a desinstalação (`Uninstall-WinForge`, com `Get-WinForgeSetupFiles` por último, `Remove-WinForgePackageFileList` e `Get-WinForgeInteractiveUserPlaces`). Só os arquivos do WinForge (os da raiz, com o SHA256SUMS.txt de uma versão assinada, e os de modules, gui, lang e assets) são trocados ou apagados.
-- **WinForge.Setup.ps1 e WinForge-Setup.cmd (novos):** instalar, desinstalar (rodando de uma cópia temporária, para poder apagar a pasta) e, com `-Update`, a troca de arquivos da atualização, sem janela. O contrato com versões futuras: `-Update -Target <pasta> -WaitProcessId <ids> -Reopen Gui|Console`; sem os módulos, `Invoke-WinForgeSetupUpdateFallback` reabre a cópia de antes com o motivo.
-- **AppUpdate.psm1:** `Invoke-WinForgeSelfUpdate`; **Core.psm1:** `Request-WinForgeAppExit` e `Get-WinForgeAppExitRequest` (a janela e o menu fecham depois da ação), `Write-WinForgeSecret` (uma linha "rótulo : valor") e `Add-WinForgeOpenTime`; **GuiHost.psm1:** `WriteSecretValue`.
-- **WinForge.Gui.ps1:** `New-GuiSetupCard`, `Invoke-GuiSetupStep`, `Show-GuiUpdateResult` e o fechamento para a atualização; **WinForge.Console.ps1 e Menus.psm1:** o mesmo no menu de texto.
-- **Home.psm1:** `Get-WinForgeSetupChecklist` e `Close-WinForgeSetupCard`; **Schedule.psm1:** `Register-WinForgeScheduledMaintenance -Root`; **Agent.psm1:** as conferências `diskhealth`, `memtest` e `bluescreen`, `Set-WinForgeMonitor -Choose On`, `Start-WinForgeAgent -Root` e `Move-WinForgeAgentEntry`.
-- **Diagnostics.psm1:** `Show-WinForgeBlueScreens`, `Get-WinForgeBlueScreens`, `Get-WinForgeBlueScreenMainCause`, `Get-WinForgeBugCheckInfo`, `Start-WinForgeMemoryTest`, `Get-WinForgeMemoryTestResult`, `Get-WinForgeSettingDate`, `Test-WinForgeDiskFailing` e `Read-WinForgeEventRecords`; **Checkup.psm1:** a saúde do disco na etapa do disco (`Get-WinForgeCheckupDiskSpace` separado) e a etapa `bluescreens`.
-- **Security.psm1:** `Show-WinForgeBitLockerKey` e `Get-WinForgeBitLockerVolumes`; **NetworkTools.psm1:** `Show-WinForgeWifiPassword`, `Read-WinForgeWifiProfiles` e `Test-WinForgeWifiAdapter`; **Reports.psm1:** `New-WinForgeSupportPackage`, `Get-WinForgeReportStabilityItems` e `Stability` em `Get-WinForgeCheckReport`; **Backup.psm1:** `Get-WinForgeBackupBitLockerDrives`; **Launcher.psm1 e Install.psm1:** `Test-WinForgeInstallerShortcut`, `Test-WinForgeShortcutIsWinForge`, `Get-WinForgeInstallStateText` e `Common` em `Get-WinForgeShortcutState`; `Add-WinForgeChange` em Tweaks, Network, Schedule, Repair e Backup.
-- **Navigation.psm1:** os itens `diagnostics.blue-screens`, `diagnostics.memory-test`, `security.bitlocker-key`, `network.wifi-password` e `app.support`.
-- **Revisão de código:** saíram `Get-WinForgeIconNames` (GuiDesign.psm1), `Test-WinForgeStaticIpConfigured` (Network.psm1) e `Test-WinForgeTextMatch` (Core.psm1), sem uso; cada função exportada tem um nome só entre os módulos (com dois iguais, vale o do último módulo carregado); `Get-WinForgeLocalAppDataPath` (Core.psm1), usada pela pasta de dados e pela desinstalação; `Clear-AgentAbandonedWorkers` (WinForge.Agent.ps1); `Invoke-WinForgeSetupUpdateFallback -Cause` (WinForge.Setup.ps1).
-- **Revisão da interface:**
-  - **GuiDesign.psm1:** as paletas novas (as mesmas chaves), `Get-WinForgeHighContrastPalette`, `Get-WinForgeHighContrastConsolePalette`, `Get-WinForgeTypeRamp`, `Get-WinForgeTextScale`, `Get-WinForgeNavGroups` e `Get-WinForgeNavOrder`.
-  - **MainWindow.xaml:** os recursos `UiFont`, `CaptionSize`, `BodySize`, `BodyLargeSize`, `SubtitleSize`, `TitleSize` e `CodeSize` no lugar de cada tamanho escrito; os estilos `RowButton`, `MenuItemButton`, `FocusRingSwitch` e `FocusRingInset`; os cantos 4 e 8; saiu o `WideCardWidth`.
-  - **WinForge.Gui.ps1:** `Set-GuiTypography`, `Get-GuiThemeState` e o tema `Contrast` em `Set-GuiTheme`; `New-GuiActionRow`, `New-GuiRowGroup`, `New-GuiHeroCard`, `New-GuiPageActionButton`, `Show-GuiMoreMenu`, `New-GuiTweakActionRow`, `New-GuiValueSummary`, `Add-GuiNavHeading` e `Start-GuiEntrance`; `New-GuiSetupCard` (a Configuração inicial). Saíram `New-GuiActionCard`, `New-GuiQuickActionCard` e `New-GuiNote`.
-  - **Navigation.psm1:** `Detail` (a frase inteira, na dica, no leitor de tela e na busca) e `ListCategory` em `New-WinForgeNavItem`; 87 descrições encurtadas para até 60 letras.
-  - **O que faltou do designer:** `Convert-WinForgeXamlMotion`, `ConvertTo-WinForgeOpaqueColor` e `Get-WinForgeLineRamp` (GuiDesign.psm1); as camadas `Hover` e `Press` nos modelos dos botões (MainWindow.xaml); `ButtonText` em `New-WinForgeNavItem`; `Danger` nas opções de `Read-WinForgeChoice` e `-Danger` em `Confirm-WinForgeAction` (Console.psm1), que chegam à janela pelo `GuiOption` (GuiHost.psm1).
-  - **Home.psm1:** `Get-WinForgeHomeValueSummary`; saiu `Get-WinForgeHomeActions`. **Core.psm1:** `Freed` na entrada do histórico de manutenções. **Maintenance.psm1:** a linha Liberado nas manutenções.
-- **Revisão geral:** `Read-WinForgeTextCatalog` (Core.psm1) tira as aspas na própria leitura e só chama `ConvertFrom-WinForgePoString` numa linha com barra invertida, com o mesmo resultado de antes; `-Keywords` nos itens `tweaks.recommended`, `tweaks.restore-point`, `tweaks.revert-all` e `app.logs` (Navigation.psm1); `Show-GuiMoreMenu` (WinForge.Gui.ps1) tira o mouse do botão enquanto o menu está aberto.
-- **Segunda revisão de código:** `Remove-WinForgeItem` passou da Cleanup.psm1 para o Core.psm1, com `Remove-WinForgeFolder` (as pastas do WinForge, sem seguir atalhos de pasta), usada em Install, Backup, NetworkTools e Reports; `-OperationTimeoutSec` nas 34 consultas ao WMI que não tinham; saiu `$script:HomeStampBar` (WinForge.Gui.ps1), sem uso, e a janela para todos os relógios ao fechar.
-- **Revisão do Início:** `Get-WinForgeHealthActionPlan` (GuiDesign.psm1) e `New-GuiHealthButtons -PrimaryId` (WinForge.Gui.ps1) decidem os botões da nota; `Code` em `Get-WinForgeBatteryState` (Diagnostics.psm1), usado pelo Início, que passou a ler o notebook da sessão; `SignaturesNeverUpdated` no aviso da Security.psm1 e na Checkup.psm1; `Get-WinForgeHomeWindowsShortName` encurta o Windows Server; saíram a etapa `registry` do Otimizar e `Invoke-WinForgeMaintenanceRegistry` (Maintenance.psm1); `Invoke-WinForgeNetworkRepair -Embedded -Force` só limpa o DNS com a rede funcionando (Network.psm1); `Install-WinForgePendingUpdates` deixa de fora as opcionais (WindowsUpdate.psm1).
-- **Revisão da Manutenção:** `New-WinForgePlanItem` (Maintenance.psm1) sem a descrição e o tipo, que nenhuma tela mostrava; `Get-WinForgeMaintenanceTrends` sem a média da variação do espaço; "Revisar os ajustes do Windows" em `Get-WinForgeMaintenanceStepReference`; o registro como Info em `Get-WinForgeCheckupRegistry` (Checkup.psm1); `Update-WinForgeStoreApps` (Software.psm1) só abre a Store fora do Otimizar; `Show-WinForgeScheduledMaintenance` (Schedule.psm1) sem destaque quando o Agendador não responde.
-- **Revisão do Diagnóstico:** `Get-Partition`, `Get-StorageReliabilityCounter` e `Get-PnpDevice` rodam com `-AsJob` e espera de até 60 segundos (`Invoke-WinForgeCimCommand`, no Core.psm1); os discos físicos vêm de `MSFT_PhysicalDisk` pelo `Get-CimInstance` com `-OperationTimeoutSec 60`, e `Get-WinForgeDiskTypeText` entende os códigos de MediaType e BusType; mais oito códigos em `Get-WinForgeBugCheckInfo`; `Show-WinForgeBlueScreens` e `Start-WinForgeMemoryTest` deixam a faixa sair do que a tela mostrou.
-- **Revisão da Segurança:** `Invoke-WinForgeCimCommand` (Core.psm1, novo, com `$script:WinForgeCimTimeoutSec`) também para `Get-MpComputerStatus`, `Get-MpThreat`, `Get-MpThreatDetection`, `Get-MpPreference` e `Get-NetFirewallProfile` (Security.psm1); o tempo esgotado vira `TimeoutException`. Em Security.psm1: `Get-WinForgeThreatListText` (nova), `Get-WinForgeGuestAccount` no lugar de `Get-WinForgeGuestAccountEnabled`, `GuestName` e `Administrator` nos fatos da auditoria e o conselho dos pontos que só informam em `New-WinForgeAuditCheck`.
-- **Revisão da Limpeza:** `Invoke-WinForgeComponentCleanup` (Cleanup.psm1) roda o DISM com `-NeedsServicing` e os textos próprios em `-ServicingText`, novo em `Invoke-WinForgeTool`, e `Request-WinForgeRepairRestart` (Repair.psm1) recebe os textos, com os do reparo como padrão; o 0x800F0806 vira "falta reiniciar". `Set-WinForgeRecycleBinNext` aceita a ressalva (só o botão). `Clear-WinForgeDownloads` confere a Lixeira e o limite dela antes da escolha. As faixas novas ficam em `Clear-WinForgeRecycleBin`, `Invoke-WinForgeQuickCleanup`, `Invoke-WinForgeDownloadsRemoval`, `Invoke-WinForgeCustomCleanup`, `Show-WinForgeSpaceAnalysis` e `Invoke-WinForgeRegistryCleanup` (RegistryCleaner.psm1); a pergunta dos restos fica em CleanupTools.psm1.
-- **Revisão do Desempenho:** `Get-ScheduledTask`, `Enable-ScheduledTask` e `Disable-ScheduledTask` rodam pelo `Invoke-WinForgeCimCommand` (Startup.psm1), e `Get-WinForgeStartupTasksProblem` (nova) diz por que a leitura falhou, para o aviso de `Set-WinForgeStartupItems` e o motivo do desfazer (Journal.psm1); `Read-WinForgeStartupReview` devolve uma lista vazia quando nada muda e `$null` quando a pessoa desiste. Em Performance.psm1: `Initialize-WinForgeMemoryNative` pede `PROCESS_QUERY_LIMITED_INFORMATION` e `PROCESS_SET_QUOTA`; as faixas de `Invoke-WinForgeMemoryOptimization` e `Invoke-WinForgeBoost`; o Não ao "à força" em `Show-WinForgeHeavyProcesses`.
-- **Revisão do Reparo:** `Set-WinForgeDismFailureView` (no lugar de `Set-WinForgeDismServiceView`) e `Set-WinForgeSfcFailureView` (nova) montam as faixas das falhas do DISM e do SFC, sozinhos e no reparo completo (`Set-WinForgeRepairView`); a leitura do disco de cada unidade do CHKDSK e `Get-WinForgeDeviceScanRemaining` rodam pelo `Invoke-WinForgeCimCommand`; o código 2 do CHKDSK é "nenhum erro" em `Start-WinForgeChkdsk`; as faixas do agendamento recusado, de `Start-WinForgeDriveOptimization` e de `Invoke-WinForgeDeviceScan` com o 3010 (Repair.psm1).
-- **Revisão das Atualizações:** `Set-WinForgeUpdateTimeoutView` (nova) monta a faixa do tempo esgotado nas atualizações e nos drivers; `Get-WinForgeUpdateFixStep` leva a falta de espaço à Limpeza personalizada; a versão nova do Windows vem desmarcada em `Install-WinForgeWindowsUpdates`; os nomes dos serviços e as faixas de `Repair-WinForgeWindowsUpdate` (WindowsUpdate.psm1). O título traduzido de `Install-WinForgeDriverUpdates`, o campo `Target` e as páginas sem país fixo em `Get-WinForgeVendorToolCatalog`, e as faixas de `Show-WinForgeVendorTools` (Drivers.psm1). `Update-WinForgeStoreApps` sem o modo Administrador (Software.psm1).
-- **Revisão dos Programas:** `Get-WinForgeWingetMissingResult` (nova) monta a faixa sem o winget (Software.psm1, também em Drivers.psm1); `Invoke-WinForgeWingetPackages` guarda o motivo do primeiro que falhou, e `Set-WinForgeWingetPackagesView` monta a faixa de quando nenhum deu certo; as faixas de `Remove-WinForgePreinstalledApps` e o nome do Microsoft 365 Copilot (PreinstalledApps.psm1); a pergunta, a faixa e o reinício de `Set-WinForgeWindowsFeatures` (WindowsFeatures.psm1); as faixas do backup e da restauração, o backup mais novo em destaque e o `--ignore-versions` (Backup.psm1).
-- **Revisão da Rede:** `Get-WinForgeStaticIpConfiguration` devolve `Dhcp`, e `Get-WinForgeNetworkRepairCommands` ganha `-NoDhcp`; os avisos, a Manutenção e as faixas de `Invoke-WinForgeNetworkRepair`; `Measure-WinForgeUpload -WarmupUrl`; `Set-WinForgeSpeedFailureView` (nova); o tipo de rede e a faixa de `Show-WinForgeNetworkInfo` (Network.psm1). "Fixo:" pela tradução, o PC de domínio e as faixas de `Set-WinForgeDnsProvider`, `Undo-WinForgeDnsChange` e `Show-WinForgeWifiPassword` (NetworkTools.psm1).
-- **Revisão dos Ajustes do Windows:** o ponto de restauração com `-IgnoreFrequency` e as faixas de `Invoke-WinForgeTweakBatch`; as faixas de "nada mudou" e o Explorador só quando algo mudou em `Invoke-WinForgeTweakToggle`; as faixas dos recomendados, dos perfis, de `Export-WinForgeTweaks`, `Import-WinForgeTweaks` e `Invoke-WinForgeRevertAllTweaks`; `Format-WinForgeTweakExportFolder` (nova); o aviso do notebook sem rótulo em `Read-WinForgeTweakSelection`, `Get-WinForgeTweakReviewText` e na chave da janela; o Recall com `-MinBuild 26100` (Tweaks.psm1, WinForge.Gui.ps1).
-- **Revisão da Personalização:** `Get-WinForgeTweakActionState` (nova), o estado nas linhas de ação de `Update-GuiTweaksList`; o Explorador só com uma cor escolhida e as faixas de `Set-WinForgeAccentColor`; a descrição da cor no Iniciar e na barra de tarefas (Tweaks.psm1, WinForge.Gui.ps1).
-- **Revisão do Sobre o WinForge:** `Test-WinForgeAppShortcutNeeded` e `Format-WinForgeReasonNote` (novas); o destaque de Criar atalho em `Show-GuiListPage`; as faixas de Criar atalho, de Verificar nova versão, do pacote de suporte, do monitor, dos dados online e do idioma; a linha Leva do pacote de suporte (Launcher.psm1, AppUpdate.psm1, Reports.psm1, Agent.psm1, Catalog.psm1, Console.psm1, Navigation.psm1, WinForge.Gui.ps1).
-- **Revisão da Busca:** `Test-WinForgeNavItemHidden` e `Get-GuiHiddenItemState` (novas), a mesma regra em `Show-GuiListPage` e `Show-GuiSearchResults`; o Idioma da busca no cartão; o vocabulário da correção com `get_Keys()`; a página pelo título só numa busca de uma palavra; palavras de ligação, sinônimos, os verbos de chave nos ajustes e palavras-chave; a dica da caixa (Navigation.psm1, WinForge.Gui.ps1, gui/MainWindow.xaml).
-- **Revisão do Verificar o PC:** `Get-WinForgeCheckupWeight`, `Get-WinForgeCheckupOrder` e `Format-WinForgeCheckupReason` (novas); o nome curto (`Short`) nas listas; `Set-WinForgeCheckupView` reescrita; a proteção pelos pontos da tela (`Get-WinForgeSecurityFindings`); os temporários e a limpeza que não tirou nada; o disco lido de novo e a lista sem resposta em `Invoke-WinForgeCheckup` (Checkup.psm1).
-- **Revisão do Otimizar:** `Set-WinForgeMaintenanceView`, `Get-WinForgeMaintenanceStepTarget` e `Format-WinForgeMaintenanceGain` (novas) e o plano sem as atualizações antecipadas (Maintenance.psm1); `Disable-WinForgeEarlyUpdates` saiu, e a revisão dos ajustes inclui as antecipadas, menos com a política da empresa (Tweaks.psm1); o resumo de `Update-WinForgeBrowsers` (Software.psm1); `Invoke-WinForgeFolderReview` (Cleanup.psm1); com o botão na faixa, o fim do Otimizar continua abrindo no Resumo (WinForge.Gui.ps1).
-- **tools/New-WinForgePackage.ps1 (novo):** monta o `WinForge.zip` da versão com os arquivos que o instalador gerencia (`Get-WinForgePackageFiles`), o CHANGELOG das cinco builds mais recentes e o `SHA256SUMS.txt` do que está no zip, e mostra o SHA-256 do zip. **tools/Sign-WinForge.ps1** passa a só assinar.
-- **Programas só da conta:** `Invoke-WinForgeWingetUserScope` (Software.psm1, nova), chamada por `Invoke-WinForgeWingetPackages` no código 0x8A15007D; `Invoke-WinForgeLimited`, `Get-WinForgeLimitedRunState`, `New-WinForgeLimitedRunTaskXml`, `Remove-WinForgeLimitedRunLeftovers` e as funções de leitura da execução (Schedule.psm1, novas), e `Get-WinForgeHiddenPowerShellCommand`, o PowerShell sem janela que a manutenção agendada já usava, agora à parte; `Get-WinForgeCurrentUserSid` e `Get-WinForgeTokenElevationType` (Core.psm1, novas); `Uninstall-WinForge` tira o que sobrou de uma execução interrompida.
-- **WinForge.Unelevated.ps1 (novo):** o script que a tarefa de uma vez só roda com a conta de quem usa o PC, sem Administrador: recebe o pedido na linha de comando, roda o programa e grava a saída e o código de saída na pasta da execução.
-- **Mensagens da janela:** `Show-GuiMessage` (WinForge.Gui.ps1) monta a janela da mensagem (`New-GuiMessageDialog`, nova) a partir de `Get-WinForgeMessagePlan` (GuiDesign.psm1, nova), com a caixa do Windows como reserva (`Show-GuiSystemMessage`, nova); as 19 mensagens da janela com a frase em destaque e os verbos dos botões.
-- **Identidade na barra de tarefas por pasta:** `Get-WinForgeAppId` (Launcher.psm1, nova): `WinForge.App.` e 16 letras do SHA-256 do caminho da pasta, no processo, na janela e nos atalhos do Criar atalho e do instalador (`Get-WinForgeLaunchDefinition -Root`); `Get-WinForgeShortcutAppId` (Shell.psm1, nova) e `Get-WinForgeShortcutState -Identity`, que aponta o atalho desta pasta com outra identidade.
-- **docs/documentacao-tecnica-4.0.md (novo):** a documentação técnica do WinForge, do produto (para quem é, os princípios e os fluxos) ao código (o começo para quem chega, a arquitetura em diagramas e as decisões dela, a tabela de navegação, o contrato de uma ação e as marcas da saída, os dados, a integração com o Windows, os idiomas, o visual, as regras, como estender, como publicar e a página do repositório no GitHub). Os READMEs levam a ela. **docs/README.md (novo):** o índice da documentação.
-- **Seis funções novas:** `Get-WinForgeWindowsActivation` e `Get-WinForgeWindowsActivationText` (Diagnostics.psm1), em Sobre este PC e no relatório (Reports.psm1); `Get-WinForgeMemoryIntegrityState` e o ponto `memory-integrity` da auditoria (Security.psm1); `Repair-WinForgeWinget` e `Get-WinForgeWingetVersion` (Software.psm1), com o botão na faixa de `Get-WinForgeWingetMissingResult`; `Set-WinForgeWingetPins`, `Get-WinForgeWingetPins`, `ConvertFrom-WinForgeWingetPinTable`, `Invoke-WinForgeWingetPin`, `Test-WinForgeWingetPinId`, `Get-WinForgeWingetPinJournalText` e `Get-WinForgeWingetHeldCount` (Software.psm1), com o desfazer `winget-pin` (Journal.psm1); `Reset-WinForgePrintQueue` e `Get-WinForgeSpoolFiles` (Repair.psm1); `Sync-WinForgeTime`, `Get-WinForgeClockOffset`, `Get-WinForgeClockOffsetText`, `Write-WinForgeClockState`, `Invoke-WinForgeTimeResync` e `Get-WinForgeTimeSource` (NetworkTools.psm1); os itens `software.winget-repair` (sem cartão), `updates.winget-hold`, `repair.print-queue` e `network.time` (Navigation.psm1), com os ícones (GuiDesign.psm1). `ConvertFrom-WinForgeWingetTable` reconhece o cabeçalho em espanhol, e `Test-WinForgeWingetNoUpgradeOutput`, a saída só com programas deixados de fora.
-- **O visual novo:** as paletas laranja, com as chaves `Hero`, `HeroPanel` e `Bar`, o tamanho `Display` (68) na escala, o ícone `scan`, a face laranja em `Get-WinForgeLogoDrawing`, `Get-WinForgeScoreMarks`, `Get-WinForgeHomeColumns`, `Test-WinForgeHeroWide` e `Get-WinForgeHeroBand` (GuiDesign.psm1); o logotipo desenhado, a linha da barra lateral, os recursos `DisplayFont` e `TitleLargeSize`, sem `LogoImage` e `BuildText` (MainWindow.xaml); `Get-GuiDisplayFont`, `New-GuiValueBox`, `New-GuiText -Display`, `Add-GuiNavButton -Note`, e no Início `New-GuiScoreBlock`, `Set-GuiHeroLayout`, `Update-GuiHeroBand`, `New-GuiHomeCard`, `New-GuiHomeSkeleton`, `New-GuiHomeStrip`, `Update-GuiHomeStripLayout`, `Set-GuiHomeColumns`, `Update-GuiHomeColumns`, `Measure-GuiNaturalWidth`, `Get-GuiHomeFitWidth`, `Set-GuiHomeDividers` e `Set-GuiHomeCardText` (chamada por `Set-GuiHomeFact`); saíram `New-GuiScoreRing` e `Set-GuiHealthLayout` (WinForge.Gui.ps1); `Usage` no fato do disco e o nome Sistema no cartão do Windows (Home.psm1); `assets/WinForge.svg` e `assets/WinForge.ico` com a face laranja.
-- **Os recursos da janela no Windows PowerShell 5.1:** `Set-GuiResource` (WinForge.Gui.ps1, nova) guarda nos dicionários de recursos do WPF o objeto de verdade, e não o embrulho do PowerShell, e as duas fontes (`UiFont` e `DisplayFont`) são feitas pelo construtor do `FontFamily`. Sem isso, o WPF recusava as fontes: a janela ficava na Segoe UI, e o que usa a fonte dos títulos (a nota, os cartões e o histórico do Início, o destaque de cada página) não aparecia.
-- **Segunda revisão do Início:** `Set-GuiDisplayFont` põe a fonte dos títulos direto em cada texto (`New-GuiText -Display`, `New-GuiScoreBlock`), sem a referência ao recurso; `Add-GuiHomePart` e `Show-GuiHomeProblem` põem cada parte do Início inteira, com `Add-WinForgeWindowProblem` (Core.psm1) e o `janela.log` no Pacote de suporte (Reports.psm1); `ScheduleSetup` em `Read-WinForgeHomeSchedule` e `Get-WinForgeSetupChecklist -ScheduleDone` (Home.psm1), com `Update-GuiSetupCard` e `Close-GuiSetupCard`; `Get-GuiHeroBandHeight`; `Get-GuiHomeFocusKey`, `Get-GuiHomeHealthFocus` e `Restore-GuiHomeHealthFocus`; `Test-GuiRequestFromOtherFolder`, `Show-GuiOtherFolderMessage` e `Receive-GuiWindowRequest`, com `Root` e `App` no pedido de outra abertura (GuiHost.psm1); `New-GuiValueSummary` numa peça (WinForge.Gui.ps1).
-- **Segunda revisão da Manutenção:** `Get-WinForgeMaintenancePageStatus` (Maintenance.psm1, nova) e `New-GuiPageStatus` com `Opens` montam a faixa do alto; saíram `New-GuiMaintenanceFact`, `New-GuiFactCard`, `Set-GuiFactCardText` e `Set-GuiCardWidth` (WinForge.Gui.ps1); `Get-WinForgeScheduleStatus`, `Register-WinForgeScheduledMaintenance` e `Unregister-WinForgeScheduledMaintenance` pelo `Invoke-WinForgeCimCommand`, e `RecordFailed` em `Get-WinForgeScheduleStatus` (Schedule.psm1); o desfazer de um ajuste com `RestartExplorer` e `RebootRequired`, e `Show-WinForgeChangeHistory` com o Explorador e sem desfazer de novo o que outra mudança já cobriu (Journal.psm1).
-- **Segunda revisão da Limpeza:** `Get-WinForgeCleanupPageStatus` com `Opens` (a Limpeza personalizada com pouco espaço), `Get-WinForgeCleanupZeroNote` (nova), `AlreadyEmpty` em `Clear-WinForgeRecycleBin` e `Unmeasured` em `Invoke-WinForgeCleanupTargets`; `Invoke-WinForgeFolderCleanup`, `Clear-WinForgeUserTemp` e `Clear-WinForgeWindowsTemp` sem a pergunta que nunca aparecia e sem `-Notes`, `-Embedded` e `-PassThru` (Cleanup.psm1); `Get-WinForgePathStats` sem um bloco por arquivo (Core.psm1); `-YesLabel` e `-NoLabel` em `Invoke-WinForgeTool` (Repair.psm1); o aviso de pouco espaço e `cleanup.custom` nas ações do monitor (Agent.psm1).
-- **Segunda revisão do Desempenho:** `Get-WinForgePerformancePageStatus` com `Opens` (Programas pesando agora com a memória alta, Tempo ligado e energia com o PC ligado há 7 dias), `Get-WinForgeBoostTempState` (nova) para o resumo e a faixa do Acelerar agora, e os nomes amigáveis repetidos em `Add-WinForgeProcessDetails` (Performance.psm1); `Get-WinForgeStartupDisplayName` e `New-WinForgeStartupChoices` (novas) e o verbo nos botões (Startup.psm1); Gerenciar inicialização com as mesmas frases e palavras nas duas páginas (Navigation.psm1).
-- **Segunda revisão do Reparo:** `Get-WinForgeExternalDriveLetters` (nova) lê os discos de todas as unidades do CHKDSK de uma vez (saiu `Test-WinForgeDriveExternal`); `Get-WinForgeExitCodeResult` só com o código; a bateria e o verbo em `Invoke-WinForgeDismAndSfc` e o verbo nas outras perguntas; `Reset-WinForgePrintQueue` com o Spooler parado (Repair.psm1); `Start-WinForgeService` pelo `ServiceController`, com prazo e esperando um serviço que ainda está parando (WindowsUpdate.psm1); o ícone do Destravar a impressão (GuiDesign.psm1); a ordem do grupo Disco e dispositivos e a frase do Otimizar a unidade (Navigation.psm1).
-- **Segunda revisão do Diagnóstico:** `Get-WinForgePendingReboot` pela leitura de `Test-WinForgeServicingRebootPending` (com o pending.xml); `Test-WinForgeLongUptime`, `Get-WinForgePartitionLetters` e `Get-WinForgeLowDiskText` (novas); `Get-WinForgeDiskHealth` com `CountersTimedOut` e um prazo só para o armazenamento; Sobre este PC parando as leituras do WMI quando ele não responde; as faixas de Discos e espaço livre, Dispositivos com problema e Eventos críticos com o próximo passo; as Telas azuis por código; o verbo no Teste de memória e a oferta de reiniciar em Tempo ligado e energia (Diagnostics.psm1); a lista do CHKDSK por `Get-WinForgePartitionLetters` (Repair.psm1); a faixa do alto por `Test-WinForgeLongUptime` (Performance.psm1); a saúde de um disco sem resposta no relatório (Reports.psm1).
-- **Segunda revisão da Rede:** `Get-WinForgePingReplies` (o ping de todos os endereços juntos, pela classe Ping do .NET, no lugar do `Test-Connection`) e `ConvertTo-WinForgePingStats` (no lugar de `Get-WinForgePingStats`); `Get-WinForgeInternetConnection` (o que o Windows diz da conexão, pela API de conectividade), `Get-WinForgeNetworkPageStatus` (a faixa) e `Set-WinForgeNoNetworkView` (novas); `Get-WinForgePingVerdict -Limited`; os comandos do reparo com `Id`, a lista montada uma vez, o aviso da rede que pede login e a oferta de reiniciar em `Invoke-WinForgeNetworkRepair`; o teste de velocidade sem rede; o provedor em `Write-WinForgeNetworkConfig` (Network.psm1). `Get-WinForgeDnsProviderName` e `Test-WinForgeDnsAlready` (novas), o provedor em `Get-WinForgeDnsModeText`, o DNS já em uso em `Set-WinForgeDnsProvider`, cada rede uma vez em `Read-WinForgeWifiProfiles` e os botões do Relatório de Wi-Fi e do relógio (NetworkTools.psm1). A faixa da Rede em `New-GuiPageStatus` (WinForge.Gui.ps1).
-- **Segunda revisão da Segurança:** `Start-WinForgeInBackground`, `Receive-WinForgeInBackground` e `Stop-WinForgeInBackground` (as duas metades do `Invoke-WinForgeInBackground`, que passou a usá-las, e a parada de uma tarefa que não vai ser recebida) (Core.psm1). `Start-WinForgePendingUpdatesSearch` (a procura do Windows Update começada antes) e `Get-WinForgePendingWindowsUpdates -Search` (Diagnostics.psm1). `Request-WinForgeScanRestart`, `Get-WinForgeRemovableDrives` e `Get-WinForgeMissingDriveNote` (novas); `Get-WinForgeThreatName` (saiu); o Windows Update em paralelo em `Show-WinForgeSecurityStatus` e `Show-WinForgeSecurityAudit`; a política da Área de Trabalho Remota e as assinaturas nunca atualizadas em `Get-WinForgeSecurityAuditFacts` e `Get-WinForgeSecurityAuditChecks`; `RestartNeeded` em `Get-WinForgeScanOutcome`; os pendrives em `Select-WinForgeScanTarget`; a cópia que não grava e a unidade que não aparece em `Show-WinForgeBitLockerKey` e `Test-WinForgeScanPath` (Security.psm1). A Verificar uma pasta com os pendrives (Navigation.psm1).
-- **Segunda revisão das Atualizações:** `Get-WinForgeWindowsUpdatePause`, `Get-WinForgeUpdatePauseText`, `Test-WinForgeMeteredUpdateDownload`, `Get-WinForgeUpdatesPageStatus` e `Stop-WinForgeServices` (novas); `Confirm-WinForgeUpdateConditions` devolve o resultado com que a tela termina; `Invoke-WinForgeUpdateInstall` pelas tarefas em segundo plano do Core; `Get-WinForgeUpdateRunResult -Drivers` e `Get-WinForgeUpdateOutcome -Driver`; a instalação interrompida em `Set-WinForgeInstallView`; a pausa e a conexão limitada em `Install-WinForgePendingUpdates`; o `ClientApplicationID` da sessão (WindowsUpdate.psm1). `Install-WinForgeDriverUpdates` com o desfecho das atualizações (Drivers.psm1). `Read-WinForgePendingRebootChoice` (nova), que o Otimizar também usa (Maintenance.psm1). `Get-WinForgeWindowsSupportShortText` (nova), que o Início também usa (WindowsSupport.psm1 e Home.psm1). A Store sem os `try` à toa (Software.psm1). A faixa da página Atualizações (WinForge.Gui.ps1).
-- **A aparência fora da revisão do Otimizar:** a marca `-Cosmetic` em `New-WinForgeTweak` e `New-WinForgeRegistryTweak`, em 13 ajustes, e `Test-WinForgeTweakInReview` no lugar de `Get-WinForgeTweakReviewSkipped` (Tweaks.psm1).
-- **Segunda revisão dos Programas:** `Read-WinForgeWingetList`, `Register-WinForgeWinget`, `Request-WinForgeProgramsRestart` e `Get-WinForgeSoftwarePageStatus` (Software.psm1), `Test-WinForgeNestedAction` (Console.psm1) e `Test-WinForgeBackupOnSystemDrive` (Backup.psm1), novas; `Find-WinForgeBackups` procura na raiz das unidades fora a do Windows, com `CreatedAt` e `Where`; `Read-WinForgeBackupFolder` aceita a pasta de fora com um backup só; `Read-WinForgeBackupDestination` com `OnSystemDrive` (saiu `IsDefault`); `RebootStarted` no 0x8A15010B do winget; o Mapas e o Paint 3D em `Get-WinForgeAppCatalog`; a faixa `software` em `New-GuiPageStatus`; saíram as guardas `Get-Command` de `Clear-WinForgeInstalledWingetIdsCache` (Backup.psm1 e PreinstalledApps.psm1).
-- **Segunda revisão dos Ajustes do Windows:** `Get-WinForgeTweaksForSession` e `Get-WinForgeTweaksPageStatus` (Tweaks.psm1) e `Test-WinForgeModernStandby` (Core.psm1), novas; o índice por Id em `Get-WinForgeTweakById`; `NotOnModernStandby` no Alto desempenho; `OtherAccount` em `Get-WinForgeTweakOverview`; `Invoke-WinForgeRecommendedTweaks` sem Administrador e sem o modo de dentro do Otimizar (`-Ids`, `-Embedded`, `-PassThru`), e o lote sem o `-Unattended`; `Quiet` em `Set-WinForgeResultView` (Console.psm1); na janela, a chave na própria linha, o resumo e o esqueleto das páginas de ajustes (saiu `Get-GuiTweaksHintText`); o traço de outra conta no menu de texto (Menus.psm1).
-- **Segunda revisão da Personalização:** `Get-WinForgeChoiceSpec`, `Read-WinForgeChoiceValues`, `ConvertFrom-WinForgeChoiceValues`, `Write-WinForgeChoiceValues` e `Undo-WinForgeChoiceChange` (Tweaks.psm1), novas; o desfazer `keyboard-hotkeys` (Journal.psm1); `Short` nos ajustes e `Detail` na lista; na janela, as linhas de ação sem o ícone, o foco e a rolagem quando o tema refaz a página.
-- **Segunda revisão do Sobre o WinForge:** `Save-WinForgeUpdateCheck` e `Get-WinForgeKnownUpdate` (AppUpdate.psm1), novas, e a conferência `winforge` do monitor, com os avisos `Quiet` e o aviso de uma vez por leitura (Agent.psm1); `app.update` nas ações do monitor; `Get-WinForgeAboutShortcutRow` e `Read-WinForgeShortcutCached` (Launcher.psm1), no lugar de `Get-WinForgeShortcutAppIdCached`; o resumo de `Get-WinForgeAboutPageStatus`; os verbos nas perguntas de Verificar nova versão e do pacote de suporte (AppUpdate.psm1, Reports.psm1); `Set-GuiChoiceGroupKeyboard` na janela, para a Aparência, o Idioma e as amostras da cor; o título da pausa no `WinForge.Agent.ps1`.
-- **Segunda revisão da Busca:** o caminho recomendado da página achada pelo nome logo depois dela (`Accent` no índice e `WinForgeSearchHighlightBonus`); a página achada por qualquer palavra do título; o singular como palavra inteira; a categoria na linha de cima (`Get-WinForgeSearchContext`); a página de cada categoria procurada uma vez na montagem do índice; "winforge" nas palavras de Verificar nova versão e do Monitor na bandeja (Navigation.psm1); na janela, o caminho falado com vírgulas (`New-GuiActionRow`), a dica da caixa e o `AcceleratorKey` dela.
-- **Segunda revisão do Verificar o PC:** `ConvertTo-WinForgeCheckupProgramsFinding` (Checkup.psm1), nova; a consulta do winget em segundo plano (desde a segunda revisão do Otimizar, `Start-WinForgeWingetUpgradeRead`, em Software.psm1), começada antes das etapas, com prazo de 120 segundos e largada numa parada; a pausa do Windows Update na linha das atualizações; um ponto só para os discos falhando; a proteção lida pela metade como não lida; os atalhos do OneDrive; a inicialização no Desempenho; a linha da informação com orientação; sem o `-Skip` da varredura.
-- **Segunda revisão do Otimizar:** `Start-WinForgeWingetUpgradeRead` e `Receive-WinForgeWingetUpgradeRead` (Software.psm1, novas, a consulta com prazo que era do Verificar o PC) e `Get-WinForgeWingetUpgradePlan -Read`; `New-WinForgeMaintenanceDetails`, `Repair-WinForgeMaintenanceWinget` e `Skip-WinForgeMeteredStep` (Maintenance.psm1, novas), `Read-WinForgeMaintenanceDetails -WingetRead` e `Invoke-WinForgeMaintenanceClosing -OnlyWhenNeeded`; `Write-WinForgePhase` (Console.psm1, nova) e a parte (`Phase`, "[>>]") em `Get-WinForgeActivityEntry` e na janela.
-- **O site do WinForge:** `Get-WinForgeWebsiteUrl` (AppUpdate.psm1) e `Get-WinForgeInstallLinks` (Install.psm1), novas; o atalho `Website` (Shortcuts.psm1), aberto pelo explorer.exe; o item `app.website` (Navigation.psm1), com o globo (GuiDesign.psm1); `Register-WinForgeInstall` e `Update-WinForgeInstallVersion` gravam os três endereços; na janela, `Get-GuiOutsideNote` ("Abre no navegador" na dica e no leitor de tela) e o motivo próprio quando o site não abre.
-- **A cor de destaque e o que sobrou na inicialização:** saem `Set-WinForgeAccentColor` e as funções da cor (Tweaks.psm1), a linha das amostras (WinForge.Gui.ps1) e os estilos `ColorSwatch` (MainWindow.xaml); `personalize.accent-color` vira o atalho `Colors` (`ms-settings:colors`, Shortcuts.psm1); `ConvertTo-WinForgeRegistryDWord` e `ConvertTo-WinForgeRegistryQWord` (Core.psm1), novas, em `Set-WinForgeRegistryDWord` e `Set-WinForgeRegistryValue`; `Test-WinForgeStartupLauncherOrphan`, `Get-WinForgeStartupLeftoverReason`, `Test-WinForgeStartupUserVariable` e `Get-WinForgeStartupItems -Leftovers` (Diagnostics.psm1); `Remove-WinForgeStartupLeftover`, `Remove-WinForgeStartupLeftovers` e a opção L de `Read-WinForgeStartupSide` (Startup.psm1); `Test-WinForgeChangeUndoable` (Core.psm1) só oferece o desfazer dos tipos que o `Undo-WinForgeChange` conhece.
-- **lang/en.po e lang/es.po:** 5.786 textos.
+**Ainda não conferido num PC:** como as builds anteriores, esta versão foi conferida fora do Windows, com o Windows simulado onde precisava. Achou um problema? [Abra uma issue](https://github.com/guilhermehenn/winforge/issues/new).
 
 ## Build 3.70
 
@@ -380,23 +313,6 @@ Esta build traz o WinForge em três idiomas: **português, inglês e espanhol**.
 - **Primeira versão:** as traduções são desta build e pedem a revisão de quem fala inglês e espanhol. Elas ficam em `lang/en.po` e `lang/es.po`, que editores de tradução (como o Poedit) abrem; um texto sem tradução aparece em português.
 - **O changelog continua em português.** O README ganhou as versões em inglês e em espanhol.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a janela em inglês e em espanhol em vários tamanhos (textos mais longos podem cortar em botões, cartões e menus); a troca de idioma pelo cartão e a reabertura na mesma página; o menu do terminal, o monitor na bandeja e as notificações em cada idioma; um Windows em espanhol rodando **Reparo > Reparar o Windows (DISM + SFC)**, a verificação de disco e a atualização de programas, para conferir a leitura das mensagens; um Windows em outro idioma (francês, por exemplo), que deve abrir em inglês; e o relatório HTML em inglês e em espanhol.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Core.psm1:** `Get-WinForgeText` (o texto em português é a chave, como no gettext; a tabela do idioma é lida uma vez por processo e dividida entre os runspaces) e `Get-WinForgeContextText` (o mesmo texto em português com traduções diferentes, como o `msgctxt`); `Read-WinForgeTextCatalog` lê os `.po`; `Get-WinForgeLanguage`, `Resolve-WinForgeLanguage` e `Get-WinForgeLanguageFor` (WINFORGE_LANG, depois a escolha guardada, depois o idioma do Windows); `Format-WinForgeDateTime`, `Format-WinForgeNumber`, `Format-WinForgeBytes` e `Join-WinForgeList` no idioma; `Convert-WinForgeXamlText` traduz o XAML antes de montar a janela; `Test-WinForgeTextMatch`, `Test-WinForgeCanceledText` e `Test-WinForgeRestartingText` comparam textos em qualquer idioma.
-- **Todos os módulos:** os textos da interface passam por `Get-WinForgeText`; frases montadas por pedaços viraram frases inteiras (a ordem das palavras e a concordância mudam de um idioma para outro); comparações com textos da interface passaram a usar códigos ou o texto traduzido; os estados gravados (inicialização, ajustes, Windows Update, ferramentas de rede) guardam códigos em português.
-- **Navigation.psm1:** tabelas da busca por idioma (`Get-WinForgeSearchTable`); uma palavra em dois grupos de sinônimos fica com os dois; o item `app.language`.
-- **WinForge.Gui.ps1:** o cartão Idioma (`New-GuiLanguageCard`, `Set-GuiLanguagePreference`); o andamento das etapas lido pelo modelo traduzido.
-- **GuiHost.psm1:** a classe `GuiText`, com os textos que o próprio host escreve.
-- **Launcher.psm1 e WinForge.Console.ps1:** `Set-WinForgeInterfaceLanguage` (o menu do terminal) e o parâmetro `-Language`.
-- **Repair, Software, WindowsUpdate, Console, Diagnostics e Core:** leitura das saídas do Windows em espanhol.
-- **Schedule.psm1:** a conferência de quem pode alterar os arquivos do WinForge inclui a pasta `lang`.
-- **Journal.psm1:** o nome da ação traduzido na tela; **Catalog.psm1:** a contagem dos dados online por `Join-WinForgeList`.
-- **lang/en.po e lang/es.po:** 4.816 textos. **tools/Update-WinForgeTranslations.ps1** extrai os textos do código, grava o modelo `tools/WinForge.pot` e junta nos `.po` (textos novos sem tradução, os removidos como obsoletos e um aviso para marcadores diferentes do português).
-- **README.en.md e README.es.md.**
-
 ## Build 3.69
 
 Esta build revisa a **Busca** (Ctrl+K) de ponta a ponta: o desenho da caixa e dos resultados, o código por trás do índice e da pontuação, o que cada resultado abre e uma bateria de buscas como as pessoas digitam. "Wi-Fi", como se escreve, deixa de trazer uma lista de resultados sem relação, e a caixa ganha o botão de limpar.
@@ -422,14 +338,6 @@ Esta build revisa a **Busca** (Ctrl+K) de ponta a ponta: o desenho da caixa e do
 - **"pausar atualizações" e "desativar atualizações":** levam ao **Windows Update**, onde se pausam as atualizações.
 - **Nomes dos programas do Windows e em inglês:** "task manager", "msconfig", "cleanmgr", "disk cleanup" e "uninstall" acham o item certo; "superaquecendo" acha **Programas pesando agora**.
 - **"rede":** deixa de trazer **Criar ponto de restauração**, que tinha "rede de segurança" entre as palavras de busca.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o botão de limpar na caixa de busca, nos dois temas e com o mouse sobre ele, e um texto longo na caixa com o botão à vista.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Navigation.psm1:** `Join-WinForgeSearchHyphens` (uma palavra com hífen vira uma só); `Get-WinForgeSearchQuery` junta as palavras com hífen e separa as partes com `-SplitHyphens`; `New-WinForgeSearchSpecs` e `Find-WinForgeSearchHits` com a regra das palavras curtas no meio da frase; `Search-WinForgeNavigation` tenta as partes separadas quando a palavra junta não acha nada; "app", "apps", "aplicativo" e "aplicativos" como sinônimos; "melhorar" e "aumentar" entre as palavras de ligação; palavras de busca novas em oito itens e uma a menos no ponto de restauração.
-- **MainWindow.xaml e WinForge.Gui.ps1:** o botão **SearchClear**, que aparece com texto na caixa e chama a mesma função do Esc.
 
 ### Preparação para publicação
 
@@ -463,16 +371,6 @@ Esta build revisa a página **Sobre o WinForge** de ponta a ponta: o desenho em 
 **Monitor na bandeja**
 - **A faixa:** "Monitor ligado" (com onde achar o ícone), "Monitor desligado", "Monitor aberto" e "Avisos retomados". Desligar com o ícone já fechado não diz mais que ele fechou agora. Quando algo fica pela metade, o título diz o quê: "Monitor ligado, mas não abriu agora", "O ícone do monitor não fechou", com o que fazer.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a faixa de cada item desta página na janela, com textos longos (uma pasta do WinForge com caminho comprido); e a opção **Fixar na barra de tarefas** no menu do atalho no Windows 11.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **AppUpdate.psm1:** `Invoke-WinForgeUpdateFlow` com a faixa da versão em dia, da cópia mais nova e do download conferido (com a pasta para onde copiar).
-- **Launcher.psm1:** `New-WinForgeShortcutFiles` com a faixa do atalho e o caminho da opção de fixar no Windows 11.
-- **Catalog.psm1:** `Update-WinForgeOnlineData` com a faixa dos dados atualizados, em dia ou não atualizados.
-- **Agent.psm1:** `Set-WinForgeMonitor` com a faixa de cada escolha.
-
 ## Build 3.67
 
 Esta build revisa a página **Personalização** de ponta a ponta: o desenho em vários tamanhos de janela, o código por trás de cada item e de cada chave, o que cada ajuste e a cor de destaque gravam no Windows e uma bateria de casos típicos e fora do comum. A cor de destaque diz o que falta para pintar o Iniciar e a barra de tarefas (e só oferece reiniciar o Explorador quando isso muda algo), a faixa diz a cor escolhida, e uma gravação que falha não desliga mais a cor automática.
@@ -493,13 +391,6 @@ Esta build revisa a página **Personalização** de ponta a ponta: o desenho em 
 
 **Cor de destaque no Iniciar e na barra de tarefas**
 - **Com o modo claro:** ligar a chave gravava a opção e dizia que deu certo, mas nada aparecia, porque ela só vale com o modo escuro. Agora a tela e a faixa avisam: "Só aparece com o Modo escuro: ative-o também, aqui na Personalização."
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a cor de destaque com o modo escuro e a cor no Iniciar e na barra ligados, com o Explorador reiniciado e sem reiniciar; e o botão **Abrir a Personalização do Windows** depois da cor automática.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Tweaks.psm1:** `Get-WinForgeAccentTaskbarGaps` (o que falta para a cor pintar o Iniciar e a barra) e `Get-WinForgeTweakApplyHint` (o aviso do modo escuro ao ligar a cor no Iniciar e na barra); `Set-WinForgeAccentColor` com a faixa, o reinício do Explorador só quando muda algo, o Explorador que não reinicia como ressalva e a cor automática desligada por último; `Invoke-WinForgeTweakToggle` com o aviso.
 
 ## Build 3.66
 
@@ -533,13 +424,6 @@ Esta build revisa a página **Ajustes do Windows** de ponta a ponta: o desenho e
 **Desativar Xbox Game Bar e Game DVR**
 - **O que a tela promete:** a descrição dizia que a barra do Windows + G parava. O ajuste grava a gravação de jogos desligada (a política do Windows e as opções do usuário) e desliga o botão Xbox do controle que abre a barra, mas a Microsoft não documenta que esses valores fechem o atalho Windows + G no Windows 11. Agora a descrição e a chave dizem só o que eles fazem: param a gravação de jogos em segundo plano e o botão do controle que abre a Game Bar. O que o ajuste grava não mudou.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a faixa das chaves e dos recomendados com o Explorador reiniciado e sem reiniciar; e, no Windows 11, se o Windows + G ainda abre a Game Bar depois do ajuste (se não abrir, a descrição pode voltar a dizer isso).
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Tweaks.psm1:** `Invoke-WinForgeTweakToggle`, `Invoke-WinForgeTweakBatch` (usada pelos recomendados, pelos perfis e pela importação), `Export-WinForgeTweaks`, `Invoke-WinForgeRevertAllTweaks` e `Set-WinForgeKeyboardLanguageHotkey` com a faixa; o que acontece no pedido de reiniciar o Explorador entra na frase; a descrição e a chave da Game Bar, sem o Windows + G; a pergunta de desfazer tudo no padrão.
-
 ## Build 3.65
 
 Esta build revisa a página **Rede** de ponta a ponta: o desenho em vários tamanhos de janela, o código por trás de cada item, o que cada um pede ao Windows e uma bateria de casos típicos e fora do comum. As faixas dizem no título o que foi encontrado ou feito, com o botão para o que resolve; sem nenhuma rede conectada, o ping e o reparo dizem isso em vez de culpar a internet; e o teste de velocidade deixa de subestimar as conexões rápidas.
@@ -569,15 +453,6 @@ Esta build revisa a página **Rede** de ponta a ponta: o desenho em vários tama
 
 **Trocar o servidor DNS, Desfazer a troca de DNS e Relatório de Wi-Fi**
 - **A faixa:** "DNS trocado para Cloudflare" (e como voltar ao de antes), "DNS automático", "O novo DNS não funcionou" (o de antes foi restaurado), "DNS de antes restaurado", "Relatório do Wi-Fi gerado" (com onde ele ficou) e, num PC sem Wi-Fi, "Relatório não gerado", com o motivo provável.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o teste de velocidade numa internet rápida (de 300 Mbps para cima), comparado ao teste da operadora ou ao speed.cloudflare.com; o ping e o reparo com o Wi-Fi desligado e com o modo avião ligado; e o botão **Abrir as configurações de rede** abrindo a página **Rede e Internet** no Windows 10 e no 11.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Network.psm1:** `Get-WinForgePingVerdict` devolve também o título, a frase e o botão da faixa; `Test-WinForgePing` confere antes se há alguma rede conectada; `Get-WinForgeSteadyMbps` (a velocidade depois do arranque da conexão), usada por `Measure-WinForgeDownload`, que guarda o andamento do download e não passa do limite de bytes; `Test-WinForgeInternetSpeed` e `Invoke-WinForgeNetworkRepair` com a faixa e as perguntas no padrão.
-- **NetworkTools.psm1:** `Set-WinForgeDnsProvider`, `Undo-WinForgeDnsChange` e `Show-WinForgeWifiReport` com a faixa.
-- **Shortcuts.psm1:** o atalho `NetworkSettings` (`ms-settings:network-status`, a página Rede e Internet), usado pelo botão da faixa.
 
 ## Build 3.64
 
@@ -611,17 +486,6 @@ Esta build revisa a página **Programas** de ponta a ponta: o desenho em vários
 - **Nada salvo:** quando o que foi marcado estava vazio (nenhum ajuste aplicado, nenhuma rede salva) ou falhou, a pasta criada para o backup ficava em **Documentos > WinForge > Backups** só com o `backup.json` e o `LEIA-ME`, e a tela mostrava **Onde está o backup** e mandava copiá-la para um pendrive. Agora a pasta é apagada e a tela não manda copiar nada; o desfecho continua "Nada a fazer" ou "Não foi concluído". A soma do tamanho das pastas pessoais, que pode levar minutos, também deixa de rodar nesse caso.
 - **A faixa da restauração:** "4 itens restaurados", com o lembrete de reiniciar e de copiar de volta as pastas pessoais. Quando nada voltou, esse lembrete sai da tela.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a instalação do Python 3.15 pelos essenciais (`Python.Python.3.15`); os botões **Procurar restos** e **Atualizar programas** abrindo as telas certas; e, num PC com programas de versão desconhecida, a conta de "com versão nova" da lista batendo com a tela de atualizar.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Software.psm1:** `Set-WinForgeWingetPackagesView` (a faixa de instalar e desinstalar pelo winget: instalados, atualizados, já em dia e os que falharam, com o botão de restos); `Show-WinForgeInstalledSoftware`, `Find-WinForgeSoftware`, `Install-WinForgeEssentialSoftware` e `Uninstall-WinForgeSoftware` com a faixa; `Get-WinForgeInstalledSoftwareCounts` não conta como atualização o programa de versão desconhecida.
-- **Core.psm1:** `Join-WinForgeShortList` (até quatro nomes; com mais, três e quantos faltam), usada nas faixas para a frase não esticar, inclusive na de **Atualizar programas (winget)**.
-- **PreinstalledApps.psm1 e WindowsFeatures.psm1:** `Remove-WinForgePreinstalledApps` e `Set-WinForgeWindowsFeatures` com a faixa.
-- **Backup.psm1:** `Invoke-WinForgeBackupBeforeFormat` apaga a pasta quando nada foi salvo e monta a faixa; `Restore-WinForgeFromBackup` com a faixa e o lembrete só quando algo voltou.
-- **Catalog.psm1 e catalog/catalog.json:** Python 3.15 no lugar do 3.14 (dados de 15/11/2026).
-
 ## Build 3.63
 
 Esta build revisa a página **Atualizações** de ponta a ponta: o desenho em vários tamanhos de janela, o código por trás de cada item, o que cada um pede ao Windows e uma bateria de casos típicos e fora do comum. As faixas dizem no título o que aconteceu, com o botão para o que resolve; o cartão da Microsoft Store passa a pedir as atualizações, e as ferramentas da AMD e da Lenovo abrem no lugar certo.
@@ -652,16 +516,6 @@ Esta build revisa a página **Atualizações** de ponta a ponta: o desenho em v�
 - **AMD:** o botão abria um artigo que só explica o detector automático da AMD; agora abre a página de drivers da AMD, onde o detector é baixado.
 - **Lenovo Vantage:** abre a página do aplicativo na Microsoft Store, em vez de uma busca por ele.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o pedido de atualização à Microsoft Store pelo cartão (e a lista de downloads abrindo em seguida); a página do Lenovo Vantage abrindo na Store; e os botões da faixa abrindo as telas certas.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **WindowsUpdate.psm1:** `Get-WinForgeUpdateFixStep` (o item que resolve um erro, pelo motivo), `Set-WinForgeInstallView` (a faixa de uma instalação, usada nas atualizações e nos drivers), `Set-WinForgeInstallErrorView` e `Set-WinForgeUpdateSearchView`; `Get-WinForgeUpdateRunResult` guarda as contas e os motivos (`Installed`, `Failed`, `Warned`, `Problems`); `Install-WinForgeWindowsUpdates` e `Repair-WinForgeWindowsUpdate` com a faixa.
-- **Drivers.psm1:** `Install-WinForgeDriverUpdates` com a faixa; no catálogo de `Get-WinForgeVendorToolCatalog`, a página de drivers da AMD e a página do Lenovo Vantage na Store (`ProductId=9WZDNCRFJ4MV`).
-- **Software.psm1:** `Update-WinForgeStoreApps`, pedida sozinha, abre a lista de downloads da Store e monta a faixa; `Invoke-WinForgeWingetUpgradePlan` com a faixa.
-- **Navigation.psm1:** `updates.store` passa de atalho a ação (`Update-WinForgeStoreApps`), com o nome **Atualizar aplicativos da Microsoft Store**.
-
 ## Build 3.62
 
 Esta build revisa a página **Reparo** de ponta a ponta: o desenho em vários tamanhos de janela, o código por trás de cada item, o que cada um pede ao Windows e uma bateria de casos típicos e fora do comum. O DISM e o SFC deixam de rodar à toa quando o Windows espera um reinício, as faixas das seis ações dizem no título o que concluíram, e o próximo passo vira um botão.
@@ -690,13 +544,6 @@ Esta build revisa a página **Reparo** de ponta a ponta: o desenho em vários ta
 - **Dispositivos:** "Nenhum dispositivo com problema"; ou "2 dispositivos ainda com problema", com os nomes e o problema de cada um embaixo e o botão **Ver os dispositivos com problema**; sem conseguir ler os dispositivos depois da busca, "Busca concluída", sem afirmar nada sobre eles.
 - **Otimizar:** "Unidade C: otimizada", com o que o Windows fez conforme o disco (o TRIM num SSD, a desfragmentação num HD).
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o DISM e o SFC pedidos sozinhos num PC com uma atualização esperando o reinício (e a oferta de reiniciar); os botões da faixa abrindo as telas certas; e o reparo completo de ponta a ponta num Windows com arquivos danificados.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Repair.psm1:** `Request-WinForgeRepairRestart` (o reinício pendente antes do DISM e do SFC, com `Test-WinForgeServicingRebootPending`); `Invoke-WinForgeTool` ganha `-NeedsServicing` e `-ResultView` (a faixa de cada ferramenta, só quando ela roda sozinha); `Set-WinForgeRepairView` (a faixa do reparo completo) e `Set-WinForgeDismServiceView` (o Windows Update desativado); `Get-WinForgeSfcResult` marca o que o SFC concluiu (`Sfc`: `Clean` ou `Repaired`) e `Get-WinForgeDeviceScanRemaining`, quantos e quais dispositivos continuam com problema (`Remaining`, `Problems`); `Start-WinForgeChkdsk`, `Start-WinForgeDriveOptimization` e `Invoke-WinForgeDeviceScan` com a faixa; as perguntas no padrão das outras telas.
-
 ## Build 3.61
 
 Esta build revisa a página **Desempenho** de ponta a ponta: o desenho em vários tamanhos de janela, o código por trás de cada item, o que cada um pede ao Windows e uma bateria de casos típicos e fora do comum. O **Acelerar agora** e o **Liberar memória** param de chamar de leve um PC com a memória cheia, as faixas das quatro ações dizem no título o que aconteceu, e os aplicativos da Microsoft Store passam a fechar como no X.
@@ -723,15 +570,6 @@ Esta build revisa a página **Desempenho** de ponta a ponta: o desenho em vário
 
 **Gerenciar inicialização** (também em **Programas**)
 - **A faixa:** o título diz o que mudou ("Spotify desativado", "3 itens desativados", "1 desativado e 1 reativado"), e a frase, que vale a partir da próxima entrada no Windows.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: fechar um aplicativo da Store aberto (Calculadora, Configurações) por **Programas pesando agora**, inclusive minimizado, e a parte nova que acha a moldura compilando no Windows PowerShell 5.1; o Acelerar agora e o Liberar memória num PC com a memória cheia; e o botão **Ver o que está pesando**.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Performance.psm1:** `Test-WinForgeMemoryStillHigh`, `Write-WinForgeMemoryStillHighNotice` e `Set-WinForgeMemoryStillHighView` (a memória que continua alta, no resumo e na faixa); `Format-WinForgeMemoryFreedText` e `Write-WinForgeMemoryFacts` só dizem "folgada" com a memória de fato folgada; `Set-WinForgeMemoryOptimizationView` e `Set-WinForgeBoostView` montam as faixas com `Set-WinForgeResultView`; `Initialize-WinForgeWindowNative`, `Get-WinForgeAppFrameWindows` e `Close-WinForgeAppFrameWindow` (as molduras dos aplicativos da Store), usadas por `Test-WinForgeProcessGroupWindowless` e `Stop-WinForgeProcessGroup`; `Get-WinForgeProtectedProcessReason` com "pode ser o WinForge"; `Show-WinForgeHeavyProcesses` com a faixa de quantos fechou; `Get-WinForgePerformancePageStatus` sem a linha do tempo ligado quando ele não se pode dizer.
-- **Startup.psm1:** `Set-WinForgeStartupItems` com a faixa do que mudou.
-- **Navigation.psm1:** a descrição do Gerenciador de Tarefas.
 
 ## Build 3.60
 
@@ -767,14 +605,6 @@ Esta build revisa a página **Limpeza** de ponta a ponta: o desenho em vários t
 **Apagar o espaço livre**
 - **O PC fica acordado:** o `cipher /w` grava por horas, e com o PC suspenso no meio ele para com o disco cheio até o PC voltar. Enquanto ele roda, o WinForge pede ao Windows para não suspender, como na Manutenção, e devolve o controle ao terminar, ao ser parado ou com erro.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: quanto tempo a medição dos temporários leva antes da pergunta numa pasta Temp com dezenas de milhares de arquivos (ela lê a pasta inteira, e a limpeza lê de novo); os botões da faixa abrindo a Limpeza personalizada e o Esvaziar a Lixeira; e o Apagar o espaço livre num notebook com a suspensão automática ligada.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Cleanup.psm1:** `Measure-WinForgeTempCleanup` (o que a Limpeza rápida tiraria dos temporários, com as regras da limpeza: tempo mínimo, pastas seguras, a mesma pasta contada uma vez); `Invoke-WinForgeQuickCleanup` mostra as duas medidas antes da pergunta, termina em "Nada para limpar" sem perguntar e monta a faixa com `Set-WinForgeResultView`; `Show-WinForgeSpaceAnalysis` devolve um resultado (o espaço livre e `CleanableBytes`) com a faixa; `Set-WinForgeRecycleBinNext` (o título, a frase e o botão **Esvaziar a Lixeira**), usado por `Invoke-WinForgeDownloadsRemoval`; `Invoke-WinForgeCustomCleanup` com a faixa "Nada para limpar".
-- **CleanupTools.psm1:** `Find-WinForgeDuplicateFiles` e `Remove-WinForgeProgramLeftovers` passam por `Set-WinForgeRecycleBinNext` (os restos somam o tamanho das pastas enviadas); `Clear-WinForgeFreeSpace` usa `Set-WinForgeKeepAwake` em volta do `cipher /w`.
-
 ## Build 3.59
 
 Esta build revisa a página **Segurança** de ponta a ponta: o desenho em vários tamanhos de janela, o código por trás de cada item, o que cada um pede ao Windows e uma bateria de casos típicos e fora do comum. O resultado do **Estado da proteção** e da **Auditoria de segurança** passa a dizer o mais grave no título, na cor certa e com o botão para resolver; a auditoria confere o **SMB 1.0**; e as verificações completa e de uma pasta atualizam o antivírus antes, como o **Verificar vírus**.
@@ -806,14 +636,6 @@ Esta build revisa a página **Segurança** de ponta a ponta: o desenho em vário
 
 **O código**
 - A verificação rápida sozinha, sem atualizar o antivírus, ainda existia no código, sem cartão nem item no menu desde a 3.54. Saiu.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o `Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol` num Windows com o SMB 1.0 ligado e num instalado do zero (e quanto tempo a consulta leva); os botões da faixa abrindo as páginas certas da Segurança do Windows; e a verificação de uma pasta com o antivírus sendo atualizado antes, num PC sem internet.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Security.psm1:** `Get-WinForgeSecurityNextStep` (o botão de cada ponto) e `ConvertTo-WinForgeHeadline`; `Show-WinForgeSecurityStatus` e `Show-WinForgeSecurityAudit` montam a faixa com `Set-WinForgeResultView`; `Get-WinForgeSmb1State` e o fato `Smb1`, com o ponto `smb1` na auditoria (só quando foi lido); o fato `SmartScreenSet`; `Test-WinForgeScanPath` confere o caminho antes; `Start-WinForgeFullScan` e `Start-WinForgeFolderScan` passam por `Invoke-WinForgeSignatureUpdate` e `Join-WinForgeSecurityCheckResult`, que diz a frase de cada verificação; `Start-WinForgeQuickScan` saiu.
-- **Navigation.psm1:** as descrições da verificação completa e da de uma pasta.
 
 ## Build 3.58
 
@@ -851,16 +673,6 @@ Esta build revisa a página **Diagnóstico** de ponta a ponta: o desenho em vár
 **Conferido, sem mudança**
 - **O que cada item pede ao Windows:** os dois atalhos abrem o Monitor de Confiabilidade (`perfmon /rel`) e o Gerenciador de Dispositivos (`devmgmt.msc`); a saúde da bateria vem do relatório do `powercfg`, que não pede Administrador; a saúde dos discos pede Administrador porque os contadores de confiabilidade exigem; o Reinício pendente lê as chaves do Registro que o próprio Windows usa para isso. As datas do **Suporte do Windows** batem com as publicadas, inclusive as atualizações estendidas gratuitas do Windows 10 até 12/10/2027.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a página Diagnóstico com a janela no mínimo, no tamanho padrão e maximizada; **Saúde da bateria** num PC de mesa (o cartão sai depois de o Início ler) e num notebook (fica); **Sobre este PC** num notebook de marca, num Lenovo e num PC montado; **Dispositivos com problema** com o serviço Instrumentação de Gerenciamento do Windows parado; **Saúde dos discos** com um disco que o Windows marca com "Predictive Failure"; e **Eventos críticos** num PC com erros do DCOM ou do Windows Update.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Navigation.psm1:** os itens do Diagnóstico em quatro seções (Visão geral, Hardware, Funcionamento do Windows, Ferramentas do Windows), com a Saúde da bateria por último em Hardware.
-- **WinForge.Gui.ps1:** `$script:HasBattery`, preenchido por `Set-GuiHomeFact` com o que o cartão Bateria do Início leu; `Show-GuiListPage` tira `diagnostics.battery` da página quando ele é `$false`.
-- **Diagnostics.psm1:** `Get-WinForgeMachineModelText` (fabricante e modelo, também usado pelo relatório); `Show-WinForgeSystemInfo` lê o `Win32_ComputerSystem` sempre e avisa do adaptador básico; `Get-WinForgeDiskSummary` marca a unidade do Windows (`Sistema`), que `Show-WinForgeDiskSummary` usa na dica; `Get-WinForgeDiskHealth` ordena pelo número do disco e guarda `OperationalStatus`, que `Get-WinForgeDiskHealthNotes` lê; `Show-WinForgeProblemDevices` consulta com `-ErrorAction Stop`; `Get-WinForgeEventHint` explica o DCOM, o Schannel e o Windows Update 20, e `Get-WinForgeEventNote` diz o que vem depois de cada causa comum.
-- **Reports.psm1:** o fabricante e o modelo pela mesma função da tela.
-
 ## Build 3.57
 
 Esta build corrige as perguntas da tela de execução que passavam do fim da janela. Na etapa **Desinstalar programas** do **Otimizar**, com dezenas de programas, a lista não rolava e os botões ficavam fora da tela. A correção vale para toda pergunta da janela (listas de marcação, escolhas em linhas e perguntas de texto), em qualquer ação que as mostre.
@@ -877,15 +689,6 @@ Esta build corrige as perguntas da tela de execução que passavam do fim da jan
 
 **As outras telas**
 - **Revisão de rolagem:** todas as áreas da janela que crescem com o conteúdo foram revistas: as páginas, a barra lateral, o resumo da execução, as listas e as opções das perguntas e os detalhes técnicos. Todas já rolavam; o único lugar sem limite de altura era o cartão da pergunta.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e a causa exata do defeito no seu PC não foi reproduzida (as duas causas possíveis estão cobertas). Pedem conferência num PC: a etapa **Desinstalar programas** do Otimizar com mais de 50 programas, em 1366 x 768 com 125% de escala, em 1920 x 1080 e com a janela maximizada, rolando a lista com a roda do mouse e com o teclado até os botões; uma lista longa com os detalhes técnicos abertos; e mudar o tamanho da janela com uma pergunta na tela.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **MainWindow.xaml:** a tela de execução passa a ter três linhas; a pergunta e os detalhes técnicos ficam num `DockPanel` na linha de altura `*` (a pergunta encaixada no alto, os detalhes com o resto).
-- **WinForge.Gui.ps1:** `Get-GuiPromptLayoutNow` lê `Visibility` e `ExtentHeight` no lugar de `IsVisible` e mede o cartão com altura livre; `Update-GuiPromptFit` tira o contexto quando nem a pergunta sem a lista cabe e, se a conta falhar, limita o cartão ao fim da tela; `Request-GuiPromptFit` e o relógio `PromptFitTimer` refazem a conta depois de a pergunta aparecer e a cada linha nova do resumo.
-- **GuiHost.psm1:** `Get-WinForgePromptLayout` nunca devolve um limite além do fim da tela e diz quando nem a pergunta sem a lista cabe (`Cramped`).
 
 ## Build 3.56
 
@@ -941,22 +744,6 @@ Esta build revisa a página **Manutenção** de ponta a ponta: o desenho em vár
 - **Leituras que falham:** com as preferências presas por outro programa, a última verificação não vira mais "nunca verificou"; o cartão diz "Não foi possível ler", e o monitor na bandeja não avisa "Hora de cuidar do PC" sem ter lido.
 - **Restauração do Sistema:** recusar o aviso de Administrador dela (código 1223) não mostra mais "o recurso pode não existir nesta edição do Windows".
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a tarefa mensal criada no Windows 11 23H2 e 24H2 com o Terminal do Windows como padrão, rodando sem janela pelo `conhost.exe --headless` (e o Agendador mostrando o resultado dela), e no Windows 10 como antes; o `Checkpoint-Computer` com a Proteção do Sistema desligada devolvendo o código 0x80070422 num Windows em português; a política `DisableSR` e `DisableConfig` em `HKLM\SOFTWARE\Policies\Microsoft\Windows NT\SystemRestore`; o ponto que o Windows não renova com o mais novo de dias atrás; recusar o aviso de Administrador da Restauração do Sistema; o `Get-ScheduledTask` com o serviço Agendador de Tarefas parado e sem permissão; o cartão Última manutenção no alto da página e as duas seções em 900 x 600, 1180 x 760, 1366 x 768 com escala de 125% e 1920 x 1080, nos dois temas; e o Narrador lendo os cartões com a nota.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Navigation.psm1:** `-Unlisted` em `New-WinForgeNavItem` (a propriedade `Unlisted`); a Manutenção com as seções "Cuidar do PC" e "Se algo der errado", descrições novas e o histórico e o Agendador fora da grade.
-- **Core.psm1:** `Read-WinForgeStateFile` devolve a cópia `.bak` ao lugar e chama `Remove-WinForgeOldCorruptCopies`; `Get-WinForgeLastCheckup -Strict` (uma leitura só das preferências); `Format-WinForgeRelativeTime` com "com data no futuro"; `[void](...)` no lugar de `| Out-Null` (também em Backup, Tweaks, Agent, AppUpdate, NetworkTools e Reports).
-- **Home.psm1:** `Get-WinForgeLastCare -Strict` vale também para a verificação, com `CheckupInFuture`; `Read-WinForgeHomeMaintenance -Now`. **Agent.psm1:** o lembrete da manutenção com `-Strict`.
-- **Maintenance.psm1:** sem `Get-WinForgeMaintenancePageStatus`; `Write-WinForgeLastMaintenanceSteps` no começo de `Show-WinForgeMaintenanceHistory`, que devolve o resultado nas falhas.
-- **Checkup.psm1:** as etapas `disk` (`Get-WinForgeCheckupDisk`) e `updates` (em `Get-WinForgeCheckupWindows`); sem a correção `memory`; o registro desmarcado; `Set-WinForgeCheckupView`.
-- **Tweaks.psm1:** `Get-WinForgeRestorePolicy` e `Test-WinForgeRestoreProtectionOffError`; `New-WinForgeRestorePoint` sem o "já havia um ponto recente" para pontos de mais de um dia; `Invoke-WinForgeRestorePoint` com o título da faixa.
-- **Journal.psm1:** recurso e DNS sem Administrador recusados antes de tentar; a tela com as duas listas sem repetição. **NetworkTools.psm1:** `Restore-WinForgeDnsFromBackup` confere os endereços.
-- **Schedule.psm1:** `Get-WinForgeScheduleCommand -Build -SystemRoot` (o `conhost.exe --headless`); `QueryFailed` em `Get-WinForgeScheduleStatus`; a tela nova.
-- **Shortcuts.psm1:** `Test-WinForgeUserCancelled` e `Get-WinForgeShortcutLastError`. **GuiDesign.psm1:** o ícone `flag`.
-- **WinForge.Gui.ps1:** `New-GuiMaintenanceFact` e `Set-GuiFactCardText` (o preenchimento de `Set-GuiHomeFact`, agora reaproveitado); os itens `Unlisted` fora da grade; o nome dos cartões para o leitor de tela; `Set-GuiPromptContext` só com mensagens depois de uma lista longa; a atividade do andamento no alto da execução; "Executar de novo" escondido nos dois históricos sem veredito; o aviso de Administrador recusado num atalho sem mensagem.
-
 ## Build 3.55
 
 Esta build revisa o **Início** de ponta a ponta: o desenho da tela em vários tamanhos de janela, o código da leitura do PC e o que cada ponto da nota de saúde pede ao Windows. A tela fica mais limpa, com um botão principal só, e a nota passa a acusar o que antes passava em branco: um Windows sem as atualizações de segurança do mês e um disco grande demais para a regra dos 10%.
@@ -1001,17 +788,6 @@ Esta build revisa o **Início** de ponta a ponta: o desenho da tela em vários t
 - **Botões comuns** têm o contorno mais escuro (contraste acima de 3:1 nos dois temas): o claro fazia o botão parecer desligado.
 - **Diagnóstico > Discos e espaço livre**, a **Limpeza** e o **monitor na bandeja** usam os mesmos limites novos de espaço no disco do Windows; nas outras unidades continua a proporção (menos de 10% livres é pouco espaço, e menos de 5%, quase cheio).
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o `windowsdefender://network` abrindo a página Firewall e proteção de rede; a revisão da build (UBR) de um PC atualizado e de um parado em setembro de 2026, nas versões 19045, 22631 e 26100 (e um 24H2 Enterprise com hotpatch); o dono do Explorador pela Área de Trabalho Remota, com outra pessoa no console; a build pelo Registro com o serviço WMI parado; o `AntivirusSignatureAge` em 65535 num Defender recém-instalado; um desktop com nobreak USB; a grade dos cartões em 900 x 600, 1366 x 768 com escala de 125% e numa janela maximizada em 1920 x 1080, nos dois temas; o contorno novo dos botões no tema escuro; e o leitor de tela (Narrador) lendo a frase da nota ao fim da leitura.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Home.psm1:** sem os fatos `computer` e `schedule` (`Read-WinForgeHomeSchedule` devolve só o ponto); `Get-WinForgeHomeWindowsShortName`; o ponto `updates` (`Get-WinForgeWindowsUpdateLag`) e `$script:WinForgeHomeSupportLabel` no que fica sem leitura quando a sessão falha (também em `New-WinForgeHomeStepFailure`); `Get-WinForgeHomeAntivirusText -Full`; a proteção `Unavailable` sem ponto (só `Unread`); os destinos `WindowsSecurityThreats` e `WindowsSecurityFirewall`; `Get-WinForgeLastCare -Strict`; `Get-WinForgeHealthSummary -WithoutCount` e a frase pela nota, e não pela cor; `Test-WinForgeHealthKnown` com os pontos achados; os atalhos sem `performance.boost` e com `diagnostics.about`.
-- **Core.psm1:** `Get-WinForgeDiskSpaceLevel` com 10 GB e 20 GB no disco do Windows (`$script:WinForgeCriticalDiskBytes`); `Get-WinForgeSessionShellUser` antes do console em `Get-WinForgeInteractiveUser`; `Get-WinForgeRegistryWindowsBuild` em `Get-WinForgeSessionInfo` e `Get-WinForgeWindowsBuild`; `Get-WinForgeLastMaintenance -Strict`.
-- **WindowsSupport.psm1 e Catalog.psm1:** `Get-WinForgeWindowsUpdateLag`; `UpdateRevision` e `UpdateDate` no ciclo de vida (embutido, `catalog/catalog.json` e a conferência do baixado, que aceita o catálogo antigo sem eles); catálogo de 13/11/2026.
-- **Security.psm1:** `SignaturesNeverUpdated` em `Get-WinForgeAntivirusStatus`. **Shortcuts.psm1:** `WindowsSecurityFirewall`. **GuiHost.psm1:** `Watch` no leitor e `Get-WinForgeGuiReadSeconds`. **GuiDesign.psm1:** `ButtonLine` mais escuro.
-- **WinForge.Gui.ps1 e MainWindow.xaml:** os recursos `CardWidth` e `WideCardWidth`, `Get-GuiCardGrid` e `Set-GuiCardWidth`; o subtítulo que some sem texto; `Update-GuiHealthCard` sem o rótulo, com a hora embaixo da frase (`$script:HomeHeadline`) e o botão principal no primeiro ponto (`New-GuiHealthButtons -Primary`); `Invoke-GuiNextStep` (o botão da faixa de resultado e os dos pontos); `Get-GuiSavedAntivirusMode` e `Save-GuiAntivirusMode`; `Stop-GuiHomeRead`; a leitura guardada mesmo quando a nota falha (`Failed`).
-
 ## Build 3.54
 
 Esta build revisa o **Verificar vírus** de ponta a ponta: o desenho da tela, o código por trás dela e o que ele pede ao Windows Defender. O resultado passa a dizer o que importa, e as ameaças que pedem ação ficam em vermelho, com o botão para resolvê-las. A atualização do antivírus tem um segundo caminho quando o Windows Update falha, e o WinForge confere se a verificação chegou ao fim.
@@ -1053,17 +829,6 @@ Esta build revisa o **Verificar vírus** de ponta a ponta: o desenho da tela, o 
 - **Executar de novo** não aparece mais depois de "Nada a fazer" (outro antivírus no lugar, nada para limpar), quando rodar de novo daria o mesmo; depois de "Cancelado", continua.
 - A barra sem porcentagem corre no mesmo ritmo e fica à vista o mesmo tempo em qualquer largura de janela (antes, numa janela estreita, a faixa passava mais da metade do tempo fora da barra).
 - No Otimizar, quando a etapa não informa porcentagem (a verificação de vírus, a busca do Windows Update), a faixa corre por cima da barra da execução inteira, que antes ficava parada por minutos.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a atualização direto da Microsoft com o Windows Update desligado (o serviço desativado) e com um servidor WSUS; o registro do fim da verificação rápida (`QuickScanEndTime`) logo depois do `Start-MpScan`, e a verificação cancelada pela Segurança do Windows no meio; a mensagem do Windows em português para "verificação já em andamento" (o WinForge reconhece a frase em inglês e uma tradução provável); o `windowsdefender://threat` abrindo a página Proteção contra vírus e ameaças; os bits de `ComputerState` e `AdditionalActionsBitMask` com uma ameaça que pede reinício (o arquivo EICAR não pede); a faixa com o botão em 900 x 600, em 1366 x 768 com escala de 125% e no tema escuro; a barra sem porcentagem e a faixa por cima da barra do Otimizar; o Início e a página Segurança com outro antivírus instalado (Avast, Kaspersky); e o Parar seguido de fechar a janela no meio de uma verificação completa.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Security.psm1:** `Test-WinForgeDefenderReady` devolve o resultado com a faixa (Off falha; Passive e Unavailable ressalva; `DefenderRead` separa os dois Unavailable); `Invoke-WinForgeSignatureUpdate` com a segunda tentativa (`Test-WinForgeMmpcFallback`) e `Data.Caveat`; `Get-WinForgeDetectionIds` e `Get-WinForgeScanDetections -Known` (Found e Leftover); `Get-WinForgeScanFinish`, `Get-WinForgeDefenderNeeds` e `Get-WinForgeDefenderNeedText`; `Get-WinForgeScanOutcome`, `Write-WinForgeThreatLine` e `Get-WinForgeThreatShortName`; `ConvertTo-WinForgeScanFailure` e `Write-WinForgeScanStopped`; `Get-WinForgeDefenderErrorInfo`; `Join-WinForgeSecurityCheckResult`.
-- **Console.psm1:** `Set-WinForgeResultView` (Headline, Note, Tone, Next, NextLabel e HideSummary em Data), lidos por `Set-WinForgeOutcome` e devolvidos por `Get-WinForgeOutcome`.
-- **GuiHost.psm1:** `Get-WinForgeRunView` com o título, a cor e o próximo passo do resultado; `Get-WinForgeResultSentence` com a Note; `MpCmdRun.exe` fora de `Get-WinForgeDescendantProcesses`.
-- **WinForge.Gui.ps1 e MainWindow.xaml:** `ResultAction` na faixa de resultado e `Invoke-GuiResultAction`; o resumo escondido com `HideSummary`; `$script:AntivirusMode` (da leitura do Início) no Início e na página Segurança; a faixa da barra pela origem relativa da escala, e `Tag="busy"` na barra do Otimizar.
-- **Navigation.psm1:** sem `security.quick-scan`. **Shortcuts.psm1:** `WindowsSecurityThreats`. **Home.psm1:** `AntivirusMode` no cartão Proteção.
 
 ## Build 3.53
 
@@ -1108,18 +873,6 @@ Esta build revisa a tela do **Otimizar** de ponta a ponta: o desenho, o código 
 - Na janela, o log da sessão (`%LOCALAPPDATA%\WinForge\logs`, botão Abrir log) passa a ter cada linha que as ações escrevem, com a hora; antes, o log das ações da janela ficava praticamente vazio.
 - Durações: 59,6 segundos aparecem como "1min 00s", e não "60s". A última etapa que falha não diz mais que o WinForge "continuará para a próxima etapa", e tudo falhando termina em vermelho também no resumo do menu de texto.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a tela do Otimizar em 1366 x 768 com escala de 125%, em 1920 x 1080 e maximizada, com uma lista longa, com os detalhes técnicos abertos e no tema escuro (o cartão do andamento saindo e voltando, a etapa no alto da pergunta, as linhas dentro do cartão); a barra do Otimizar inteiro na janela e na barra de tarefas; o Parar no meio do DISM e do winget (o DismHost e o instalador encerrados, e outra ação logo depois); a lista de programas abertos com aplicativos da Microsoft Store e com o Explorador aberto; o log da sessão da janela depois de um Otimizar inteiro; o reparo de rede com uma VPN ligada; e o ponto de restauração novo com outro de poucas horas atrás.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Maintenance.psm1:** a ordem do plano (`cleanup` antes de `shortcuts`, `leftovers` e `registry`); o ponto de restauração numa fase própria, com a pergunta quando o resultado traz `NotCreated`; `Set-WinForgeLastMaintenance` no fim da parte automática, com o `RunId` da execução; a parte automática cancelada com `Show-WinForgeMaintenanceSummary -NoRecord -Verdict`; `Get-WinForgeTopLevelWindows` (EnumWindows, com os aplicativos da Store pelo título) e `Get-WinForgeFrameAppName`; `Test-WinForgeServicingRebootPending` nos componentes e no reparo.
-- **Core.psm1:** `Start-WinForgeLogging` grava pelo host da janela (`Get-WinForgeGuiHostUI`); `RunId` em `Set-WinForgeLastMaintenance` e no histórico, que substitui a entrada da mesma execução; `Format-WinForgeDuration` arredonda antes; sem o `chcp`.
-- **GuiHost.psm1:** `GuiHostUI.OpenLog` e `CloseLog`; `ConfirmLabel` e `CancelLabel` nas listas; `Get-WinForgeDescendantProcesses` e `Stop-WinForgeChildTools` pela árvore de processos; `Get-WinForgePromptLayout -DetailsMinHeight`; um destaque por pergunta em `Get-WinForgePromptPlan`.
-- **Console.psm1:** `Confirm-WinForgeAction -YesLabel -NoLabel`; `Read-WinForgeMultiSelect -AllowNone -ConfirmLabel -CancelLabel`.
-- **WinForge.Gui.ps1 e MainWindow.xaml:** `PromptStep` e `PromptContext` no cartão da pergunta, `Set-GuiPromptContext`, `Restore-GuiAroundPrompt` e o novo `Update-GuiPromptFit`; `Update-GuiOverallProgress` com `Get-WinForgeOverallProgress` (GuiDesign.psm1); `DetailsActions`.
-- **Network.psm1:** `Get-WinForgeNetworkHoldReason`. **Software.psm1:** `Get-WinForgeWingetUpgradePlan -SkipBrowsers` e `Test-WinForgeWingetBrowserId`. **Diagnostics.psm1:** `Test-WinForgeServicingRebootPending`.
-
 ## Build 3.52
 
 Esta build deixa o **Otimizar** sempre inteiro, sem a lista do que fazer, e começa com a sugestão forte de fechar os programas. As telas ficam mais curtas, os botões das perguntas não somem mais em janelas pequenas, os navegadores Chrome e Firefox entram nas atualizações, e as telas de desinstalar e de inicialização só oferecem o que o WinForge consegue mudar de verdade.
@@ -1163,18 +916,6 @@ Esta build deixa o **Otimizar** sempre inteiro, sem a lista do que fazer, e come
 **Menos texto nas outras telas**
 - Cerca de 180 mensagens ficaram mais curtas ou saíram, em Reparo, Segurança, Limpeza, Rede, Atualizações, Desempenho, Agendamento, Backup e nas demais telas: uma linha de introdução no lugar dos parágrafos, e o porquê de cada coisa só no código. Continuam inteiros os avisos de segurança: o reparo do disco na reinicialização e o disco que pode estar falhando, a atualização de firmware, o DNS público bloqueado, o antivírus em modo passivo, a redefinição de rede com VPN, as senhas do Wi-Fi em texto e as cópias antes de formatar.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a janela pequena (1366 x 768 com escala de 125%) numa lista longa, com os botões da pergunta à vista; a lista dos programas abertos contra o que a barra de tarefas mostra; o Chrome e o Firefox sendo atualizados (abertos e fechados) e o Firefox em outro idioma; a desinstalação de um programa cujo desinstalador abre a própria janela, e a conferência depois dela; os aplicativos da Microsoft Store na inicialização, desligados e religados, contra o Gerenciador de Tarefas; e os cinco ajustes novos contra as telas do Windows.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Maintenance.psm1:** sem `Read-WinForgeMaintenancePlan` e sem as orientações (`Hint`) do plano; `Get-WinForgeOpenPrograms`, `Format-WinForgeOpenPrograms` e `Confirm-WinForgeProgramsClosed`; `Confirm-WinForgeAutomaticPhase` sem parâmetros; o fim sem o relatório.
-- **Software.psm1:** `Update-WinForgeBrowsers` (com `Update-WinForgeEdgeBrowser`, `Update-WinForgeChromeBrowser`, `Update-WinForgeFirefoxBrowser`, `Get-WinForgeChromeInstall`, `Get-WinForgeGoogleUpdaterCommand`, `Get-WinForgeFirefoxInstall`, `Get-WinForgeFirefoxPackageId` e `Get-WinForgeBrowserOutcome`) no lugar de `Update-WinForgeEdge`. A desinstalação usa `Get-WinForgeUninstallCandidates`, `Test-WinForgeWingetUninstallBlocked` e `Wait-WinForgeUninstallResults`; **PreinstalledApps.psm1**, `Get-WinForgeCheckedAppResults`.
-- **GuiHost.psm1:** `Get-WinForgePromptLayout` no lugar de `Get-WinForgePromptFit`. **MainWindow.xaml:** o cartão da pergunta é uma grade com a linha da lista em "*". **WinForge.Gui.ps1:** `Update-GuiPromptFit` limita a altura do cartão.
-- **Tweaks.psm1:** os ajustes `explorer-recent`, `explorer-sync-ads`, `search-highlights`, `storage-sense` e `background-apps`.
-- **Startup.psm1 e Diagnostics.psm1:** os aplicativos da Store na inicialização (`Get-WinForgeStartupPackagedApps` e `Get-WinForgeStartupAppStates`), `Test-WinForgeStartupTargetMissing` e a conferência de cada mudança. **Journal.psm1:** o desfazer aceita os aplicativos da Store.
-- Nos demais módulos, só os textos mudaram: a lógica, as respostas padrão e os resultados ficaram como estavam.
-
 ## Build 3.51
 
 Esta build troca os botões do Início por **Otimizar** e **Verificar vírus**, e a Manutenção recomendada vira o **Otimizar**: sempre a manutenção mais completa, na ordem pedida, com as telas do WinForge onde é preciso escolher.
@@ -1207,18 +948,6 @@ Esta build troca os botões do Início por **Otimizar** e **Verificar vírus**, 
 
 **Rede**
 - **Reparar rede e DNS** (sozinho e no Otimizar) deixa de fora o reset de TCP/IP quando um adaptador Ethernet ou Wi-Fi tem DNS posto à mão (um Pi-hole, um DNS de filtro, o que Trocar o servidor DNS gravou), porque o reset apagaria esses servidores; a tela diz em qual adaptador. Liberar e renovar o IP continuam, porque não mexem nele. Um adaptador cujo DNS não pôde ser lido conta junto.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: o Otimizar inteiro, do começo ao fim; o Windows Update com atualizações opcionais e drivers pendentes; a atualização do Edge com o Edge fechado e aberto; o pedido de atualização à Microsoft Store (há relatos de PCs em que o Windows recusa o pedido feito por um Administrador); a chave Receber as atualizações assim que saem contra a tela do Windows Update; as prévias reconhecidas como opcionais que não são drivers; o reparo de rede rodando com a internet boa (Wi-Fi, cabo e VPN) e com DNS posto à mão (o DNS tem de continuar o mesmo depois de reiniciar); e as pastas Documentos e Imagens levadas para o OneDrive.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Maintenance.psm1:** o plano tem as fases Before, Auto e After e o tipo "Com você" (`New-WinForgePlanItem -WithYou`), com `components` e `repair` antes de `windows-update` e as duas etapas ignoradas com reinício pendente; `Invoke-WinForgeMaintenancePhase` roda uma fase com a numeração do Otimizar inteiro e `-KeepAwake` na parte automática; `Read-WinForgeMaintenanceDetails` pergunta o winget, os restos e a Lixeira; `Invoke-WinForgeMaintenanceShortcuts` e `Invoke-WinForgeMaintenanceRegistry` usam as correções de Verificar o PC; `ConvertTo-WinForgeStepResult` troca a desistência de uma tela por "nada mudou"; `Get-WinForgeMaintenanceProfileLabel` dá o nome das execuções antigas. Saíram os perfis, `Set-WinForgeMaintenanceOptions`, as etapas manuais e `Invoke-WinForgeAutomaticPhase`.
-- **Console.psm1:** `Invoke-WinForgeNestedAction` roda uma ação inteira dentro de um fluxo; `Enter-WinForgeAction` e `Exit-WinForgeAction` sabem quando estão aninhados (seção no lugar do cabeçalho, sem a pausa do fim e sem mudar o desfecho de fora).
-- **Startup.psm1:** `Set-WinForgeStartupItems -Review` (`Read-WinForgeStartupReview`); o jeito de sempre ficou em `Read-WinForgeStartupSide`.
-- **Cleanup.psm1:** `Invoke-WinForgeFolderReview`, `Get-WinForgeReviewFolders` e `Get-WinForgeKnownFolderPath`. **CleanupTools.psm1:** `Find-WinForgeDuplicateFiles -Path`; os restos de programas em `Select-WinForgeProgramLeftovers` e `Remove-WinForgeProgramLeftovers`. **Shortcuts.psm1:** os atalhos Documents e Pictures (`Get-WinForgeShortcutFolderPath`).
-- **WindowsUpdate.psm1:** `Install-WinForgePendingUpdates`, `Get-WinForgeAllUpdatesCriteria`, `Get-WinForgeUpdateRunResult` (o fim da instalação, também usado pela tela de sempre) e o campo `Upgrade` na busca. **Software.psm1:** `Update-WinForgeEdge`, `Get-WinForgeEdgeVersion`, `Get-WinForgeEdgeUpdaterPath` e `Update-WinForgeStoreApps`.
-- **Tweaks.psm1:** o ajuste `early-updates`, `Disable-WinForgeEarlyUpdates`, `Invoke-WinForgeTweakReview`, `Invoke-WinForgeTweakReviewChanges`, `Get-WinForgeTweakReviewSkipped` e `Invoke-WinForgeRestorePoint -OfferProtection`. **Network.psm1:** `Invoke-WinForgeNetworkRepair -Force`, `Get-WinForgeManualDnsAdapters` e `Get-WinForgeNetworkRepairCommands -HasManualDns`. **Security.psm1:** `Invoke-WinForgeSecurityCheck` com o título Verificar vírus. **Navigation.psm1:** `security.scan`, o Otimizar no lugar da Manutenção recomendada e sem `maintenance.options`.
 
 ## Build 3.50
 
@@ -1256,14 +985,6 @@ Esta build faz cada chave dos Ajustes do Windows e da Personalização mostrar c
 - No menu de texto, cada item aparece como [ativado] ou [desativado], e a legenda diz que é o estado de agora.
 - O relatório do PC lista cada recurso como Ativado ou Desativado.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: cada chave das duas páginas contra a tela correspondente das Configurações do Windows, mudando dos dois lados (no WinForge e nas Configurações) e usando Atualizar estado; o Modo de Jogo num Windows de fábrica; as Teclas de Aderência com opções personalizadas; os planos de energia num desktop e num notebook; e a Inicialização Rápida com a hibernação desligada.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Tweaks.psm1:** `Get-WinForgeTweakSwitchLabels` dá a cada ajuste o recurso que a chave mostra (Feature), o que ele é (About) e se o ajuste o desativa (Inverted); o catálogo os acrescenta a cada ajuste. `Get-WinForgeTweakSwitchState -Inverted` diz Ativado ou Desativado. A visão geral traz Name (o recurso), Description (About), Action (o nome do ajuste) e Inverted. `New-WinForgeTweak -OnByDefault` marca o ajuste que já é o padrão do Windows (o Modo de Jogo), e `Get-WinForgeTweakBackupIds` lista os ajustes com o valor de antes guardado. `Invoke-WinForgeTweakToggle` pergunta e responde pelo recurso e ganha `-Want`; enquanto ele desfaz, `Test-WinForgeTweakSwitchRevert` é verdadeiro. Os valores do catálogo aceitam `Also`, `AbsentIsTarget`, `AbsentUnknown` e `State` (`Test-WinForgeTweakValueMatches`, `Test-WinForgeTweakChangeState`); as Teclas de Aderência e a Inicialização Rápida viraram ajustes próprios (`Get-WinForgeAccessibilityFlags`), os planos de energia leem com `Test-WinForgePowerValuesAtZero`, e `ConvertFrom-WinForgeLegacyGameModeBackup` trata o backup do Modo de Jogo da 3.49.
-- **Janela:** a linha mostra o recurso, a cor do estado e o balão "Ligue para ativar e desligue para desativar"; `Get-GuiTweakCommand -Ask` deixa a ação perguntar com o estado não identificado; `Get-GuiTweaksHintText -Changed`. **Menus.psm1**, **Reports.psm1** e a busca (**Navigation.psm1**) mostram o recurso.
-
 ## Build 3.49
 
 Esta build cria a página **Personalização**, com o visual do Windows que estava nos Ajustes do Windows e coisas novas, e acrescenta aos Ajustes do Windows notificações, teclado, mouse e Modo de Jogo.
@@ -1294,14 +1015,6 @@ Esta build cria a página **Personalização**, com o visual do Windows que esta
 - A Personalização, como os Ajustes do Windows, fica fora do Ctrl+número (Ctrl+1 a Ctrl+0 continuam abrindo o Início e as nove páginas seguintes).
 - No menu de texto, a Personalização tem o próprio menu, com as letras C (Cor de destaque), B (Tela de bloqueio do Windows) e P (Personalização do Windows); nos Ajustes do Windows, T são as teclas do idioma e N as notificações.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: a cor de destaque nas oito cores e na automática (Iniciar, barra, barras de título e Configurações, nos dois modos), os widgets da tela de bloqueio nas versões do Windows 11 (o ajuste grava o valor do usuário que a chave das Configurações usa), as notificações na tela de bloqueio, Nunca agrupar na 23H2 e na 24H2, a Lixeira e Este Computador depois de reiniciar o Explorador, o efeito na hora das Teclas de Aderência, da aceleração do mouse e das teclas do idioma, e se Desativar as notificações cala também os avisos do monitor do WinForge.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Tweaks.psm1:** `Get-WinForgeTweakPages` diz a página de cada categoria; `Get-WinForgeTweakCategories` e `Get-WinForgeTweakOverview` aceitam `-Page`, `Get-WinForgeTweakPageId` devolve a página de um ajuste, e o catálogo sai na ordem das páginas. Os valores do catálogo aceitam `Kind = "String"` (aplicar, conferir, desfazer e voltar ao padrão sem backup em texto). Entram `Sync-WinForgeAccessibilityKeys`, `Sync-WinForgeMouseSettings` e `Sync-WinForgeLanguageHotkey` (SystemParametersInfo), as funções da cor de destaque (`Get-WinForgeAccentColors`, `ConvertTo-WinForgeShade`, `Get-WinForgeAccentPalette`, `ConvertTo-WinForgeColorDWord`, `Set-WinForgeAccentColor`) as das teclas do idioma (`Get-WinForgeLanguageHotkeys`, `Get-WinForgeLanguageHotkeyState`, `Set-WinForgeKeyboardLanguageHotkey`) e `Test-WinForgeTweakOtherAccount`, que barra as duas ações com o WinForge elevado por outra conta.
-- **Navigation.psm1:** página `personalize` (do tipo Tweaks) e os itens novos dos Ajustes; a busca leva cada ajuste à página dele. **Shortcuts.psm1:** Personalization, LockScreen e Notifications. **Menus.psm1:** `Get-WinForgeTweaksMenuLetters` e `Show-WinForgeTweaksMenu -PageId`. **Janela:** a lista, o Atualizar estado e a volta da execução valem para as duas páginas. **GuiDesign.psm1:** ícones de paleta e de teclado.
-
 ## Build 3.48
 
 Esta build acerta dois detalhes de acabamento da janela: os contornos arredondados, que afinavam nas quinas, e o texto dos botões com ícone, que parecia fora do centro.
@@ -1314,14 +1027,6 @@ Esta build acerta dois detalhes de acabamento da janela: os contornos arredondad
 - Contornos arredondados: nas quinas, o contorno ficava fino e falhado, porque o WPF pinta o fundo de uma moldura depois do contorno, e a borda suavizada do fundo cobria metade dele. Agora o fundo e o contorno ficam em molduras separadas, com o contorno por cima, e as quinas têm a mesma espessura das retas. Vale para todos os cartões, botões, caixas de texto, a chave liga/desliga, as caixas de marcação, as dicas, a busca, a faixa de ação em andamento, os cartões da tela de execução, os avisos amarelos e o destaque do ajuste achado pela busca.
 - Botões com ícone (como **Atualizar**, no Início, e **Atualizar estado**, nos Ajustes do Windows): o texto subiu um pixel, porque a letra fica abaixo do meio da linha, e o lado do ícone perdeu dois pixels de espaçamento, porque o desenho do ícone já tem essa folga. O conteúdo fica no meio do botão.
 - O contorno da caixa de busca, com o foco do teclado, usa a mesma cor das outras caixas de texto.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC: as quinas dos contornos nos dois temas, com o mouse sobre os cartões e botões e com a escala de 100% e de 125%, e o centro do conteúdo dos botões com ícone.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **XAML:** cada moldura arredondada com contorno virou duas: a de fora com o fundo (raio do contorno mais meia espessura, para as curvas de fora coincidirem) e a de dentro com o contorno, o espaçamento e o conteúdo. Os gatilhos trocam o fundo em `Bd` e o contorno em `Line`.
-- **Janela:** entram `New-GuiOutlinedBorder`, `Set-GuiPanelContent` e `Set-GuiPanelOutline`; `New-GuiPanelBorder` passa a usá-las e ganha `-Radius`, `-Padding` e `-Content`. `New-GuiButton` compensa o espaçamento e a altura do texto quando há ícone.
 
 ## Build 3.47
 
@@ -1427,22 +1132,12 @@ Esta build é uma revisão completa da experiência de uso: cada tela, botão e 
 - Criar atalho: "Atalho criado na Área de Trabalho", com descrições do que é cada lugar.
 - README: "Primeiros passos" (baixar, desbloquear, extrair em Arquivos de Programas, abrir, o aviso do SmartScreen, o aviso do Windows PowerShell, por onde começar), "Como remover o WinForge" e uma resposta só para onde extrair.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC:
 - a chave liga/desliga, a barrinha da barra lateral, os contornos e o foco do teclado nos dois temas, a página em colunas inteiras maximizada e a janela num notebook de 1366 × 768 com escala de 125%;
 - o foco nas perguntas, a pergunta comprida encolhendo o resumo, o Cancelar das perguntas de texto, e o Narrador lendo a pergunta, o desfecho e "página aberta" (este último pede o .NET 4.7.1 ou mais novo);
 - a porcentagem do DISM e do SFC na barra, os pedidos de reinício reais, o PC acordado na verificação completa de vírus e o espaço liberado pelo WinSxS;
 - a Microsoft Store abrindo no Instalador de Aplicativo, os instaladores novos (Acrobat Reader, LibreOffice, Zoom), a lista de pendrives e HDs do backup e o "mostrar na pasta" do exportar;
 - o menu do ícone na bandeja refeito a cada abertura, os balões novos e a dica do ícone;
 - o menu de texto numa janela de 80 e de 120 colunas, e o aviso de arquivos faltando ao abrir o .cmd de dentro do zip.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **Cores:** a paleta ganha `SwitchLine`, `SwitchKnobOff`, `SwitchKnobOn`, `InputLine` e `ButtonLine`, e o contraste mínimo de cada uma é conferido nos dois temas.
-- **Janela:** entram `Update-GuiPromptFit` (com a conta em `Get-WinForgePromptFit`, no GuiHost), `Limit-GuiWindowToWorkArea` e `Update-GuiContentWidth`. `Show-GuiMessage` ganha `-Default`. `New-GuiIcon` calcula o traço pelo tamanho. As chamadas do leitor de tela que só existem no Windows ficam protegidas, como as outras.
-- **GuiHost:** `Get-WinForgePromptPlan` devolve `DefaultText` e tira do rótulo as dicas de teclado do console; o pedido de lista leva `NoSelectAll` (sobrecarga de `AskMulti`).
-- **Console:** `Read-WinForgeChoice`, `Confirm-WinForgeAction` e `Read-WinForgeMultiSelect` mudam o limite de respostas, a tecla 0 e a ajuda; `Read-WinForgeMultiSelect` ganha `-NoSelectAll`; `Confirm-WinForgeAction` passa à janela a resposta padrão como veio. Entram `Get-WinForgeUnelevatedHint`, o conselho de como abrir sem Administrador, certo para a janela e para o terminal, e `Get-WinForgeRebootSentence`, o que a janela e o console dizem do reinício no fim de uma ação.
-- **Módulos:** entram `Write-WinForgeOtherAccountNotice` (Cleanup), `Open-WinForgeSavedReport` (Reports), `Request-WinForgeRestart` (Maintenance), `Request-WinForgeRestartOffer` (WindowsUpdate), `Get-WinForgeSecurityGradeLabel` (Security) e `Get-WinForgeEssentialCategoryRank` (Software). `Invoke-WinForgeCapture` ganha `-ProgressActivity` (a porcentagem das ferramentas na barra), `Invoke-WinForgeTool` ganha `-Question`, e `Format-WinForgeCount` usa o separador de milhar. O catálogo embutido e `catalog/catalog.json` saem juntos, com a data nova. O JSON do `-Action Check` ganha `Version` (2): `Security.Grade` passou de letra à faixa da nota.
 
 ## Build 3.46
 
@@ -1488,16 +1183,9 @@ Esta build revisa a busca (Ctrl+K) e as teclas de atalho da janela nos sete pont
 - Na barra lateral, o Tab segue a ordem da tela: busca, páginas e, por último, o rodapé (antes, ia da busca para Sobre o WinForge). Durante a busca, nenhuma página fica marcada na barra lateral.
 - Trocar o tema com a busca na tela mantém a rolagem, e mais uma letra que não muda a lista não refaz os cartões. Montar o índice da busca, logo depois de a janela abrir, leva cerca de metade do tempo de antes, e o vocabulário da correção de digitação é montado junto, e não na primeira busca com erro.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC:
 - o Enter agindo ao soltar a tecla, as setas para baixo e para cima entre a caixa e os cartões, e o foco saindo da caixa quando a ação começa;
 - o leitor de tela (Narrador) lendo o número de resultados e a tecla de cada página;
 - o contorno da caixa de busca com o foco e a ordem do Tab na barra lateral.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Navigation`:** cada palavra é pontuada pelo melhor lugar em que aparece, em todas as formas (a própria, o singular e os sinônimos). Entram `Get-WinForgeSearchQuery`, `New-WinForgeSearchSpecs`, `Find-WinForgeSearchHits`, `Get-WinForgeSearchCorrection` (distância de Damerau contra as palavras do índice, de `Get-WinForgeSearchVocabulary`, com a resposta guardada por palavra), `Test-WinForgeSearchKnown`, `Test-WinForgeSearchInside`, `Test-WinForgeSearchEnterOpens`, `Get-WinForgeSearchBase`, `Get-WinForgeSearchSynonyms`, `Get-WinForgeSearchSections`, `Get-WinForgeSearchTweakEntries`, `Get-WinForgeSearchPageIndex`, `Test-WinForgeSearchTooShort`, `Format-WinForgeSearchQuote` e `Get-WinForgePageShortcutKey`. Cada resultado traz `Partial`, `Corrected`, `Section`, `Rank` e `Matched`. A normalização troca as letras acentuadas de uma vez por tabela, e não letra por letra, e cada entrada guarda um texto único para pular de uma vez o que não tem a palavra. Um ajuste com defeito fica fora da busca sozinho (a falha vai para `Write-Verbose`). `Resolve-WinForgeKeyAction` ganha `ClearSearch` e `FocusPromptFilter`.
-- **Janela:** o Enter da caixa de busca passa a agir no `PreviewKeyUp`. `Exit-GuiSearch` junta o que o Esc e a caixa esvaziada faziam em dois lugares, e `Hide-GuiRunView`, o que `Show-GuiPage` e a busca repetiam; `Add-GuiSearchSuggestions`, `Send-GuiAnnouncement` e `New-GuiKeyChip` são novas. Sai a variável `SuppressSearch`: a busca é dada como encerrada antes de a caixa ser esvaziada. `New-GuiBrush` guarda um pincel congelado por cor. O comentário do índice da busca estava em cima do temporizador errado, e o relógio da hora do Início não era parado ao fechar.
 
 ## Build 3.45
 
@@ -1549,21 +1237,10 @@ Esta build revisa a página Sobre o WinForge inteira, nos mesmos sete pontos das
 - A opção marcada ganha contorno na cor de destaque (o fundo quase não se distinguia do trilho), o leitor de tela diz "selecionada", e o foco do teclado volta para a opção escolhida depois da troca.
 - Com **Automático**, a janela acompanha o tema do Windows assim que uma ação termina (o ajuste Modo escuro, por exemplo).
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Pedem conferência num PC:
 - o monitor abrindo pelo Explorador com a janela como Administrador, e a entrada desativada no Gerenciador de Tarefas;
 - o download de uma versão nova e as mensagens de rede (sem internet, limite do GitHub);
 - o ícone do atalho atualizado depois de criá-lo de novo;
 - a linha da pasta com o WinForge em `C:\WinForge` num PC com mais de uma conta.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`AppUpdate`:** `ConvertTo-WinForgeWebErrorText`, `Get-WinForgeReleasePackageInfo`, `Show-WinForgeDownloadedRelease` e `Invoke-WinForgeUpdateFlow` (a tela abre e fecha a ação uma vez só). `Save-WinForgeRelease` devolve `NoHash` e `Reused` e apaga o parcial num `finally`. Saem `ConvertFrom-WinForgeHashText` e a leitura de um arquivo `.sha256` do release (o hash vem só do `digest`). `Format-WinForgeReleaseNotes` devolve `Lines` e `Truncated`.
-- **`Catalog`:** limites das datas em `Test-WinForgeCatalogDate`; `ConvertFrom-WinForgeCatalogDocument -Downloaded` (a data no futuro só vale para o baixado); `Update-WinForgeCatalog` devolve `Detail` e não troca a cópia guardada por uma mais antiga.
-- **`Launcher`:** `Get-WinForgeShortcutState`, `Get-WinForgeAppFolderWriters` e `Show-WinForgeFolderWritersNotice`.
-- **`Shell`:** `[WinForge.ShellIdentity]::RefreshIcons()`.
-- **`Agent`:** `Get-WinForgeAgentRunState`, `Get-WinForgeAgentPausedUntil`, `Remove-WinForgeAgentStaleEntry` e `Get-WinForgeAgentActionIds`; `Start-WinForgeAgent` devolve se o ícone apareceu e continuou aberto, e `Test-WinForgeAgentStartBlocked` passa a ser verdadeiro ou falso. O `WinForge.Agent.ps1` fecha quando abre elevado com o UAC ligado.
-- **Janela:** foco e nome acessível da Aparência; `Update-GuiTheme` ao fim de cada ação; saem os ícones `sun`, `moon` e `auto`, que não eram usados, e uma inicialização repetida do cache de pincéis.
 
 ## Build 3.44
 
@@ -1603,26 +1280,11 @@ Esta build atende quatro pedidos: explica e trata a falha de **Desativar os Widg
 - Sem o `.ico` na pasta, a janela desenha a mesma bigorna (antes, um "W" sobre o quadrado azul).
 - Um atalho criado antes pode continuar com o ícone antigo até o Windows atualizar o cache de ícones; criar o atalho de novo, em Sobre o WinForge, resolve.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. O motivo da falha dos Widgets vem da documentação pública do driver UCPD e da mensagem da sua captura de tela. Pedem conferência num PC:
 - abrir a janela aceitando e recusando o aviso do Windows, e pelo monitor na bandeja;
 - **Desativar os Widgets** num Windows 11 com a proteção ativa, o botão que abre as Configurações e o desfazer pelo Editor de Política de Grupo;
 - abrir o WinForge de uma unidade de rede mapeada;
 - o cursor e a dica da busca, e o anel de foco, nas escalas de tela de 100%, 125% e 150%;
 - o ícone novo na barra de tarefas, no Alt+Tab e na bandeja.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Tweaks`:** `New-WinForgeTweak` e `New-WinForgeRegistryTweak` ganham `-Protected` (a dica e o atalho das Configurações do Windows, com variantes para o Windows 10); `UndoShortcut` para o desfazer; `Test-WinForgeAccessDenied` (só recusas do registro, não de arquivos), `Get-WinForgeTweakProtectedHelp` e `Get-WinForgeTweakProtectedText`.
-- **`Journal`:** desfazer um ajuste protegido pelo Histórico de mudanças usa a mesma explicação.
-- **`Drivers`:** as páginas dos fabricantes abrem pelo `explorer.exe`.
-- **`Shortcuts`:** `Taskbar` (Configurações da barra de tarefas).
-- **`Console`:** `ConvertTo-WinForgeReadableError` traduz as mensagens de acesso negado do Windows.
-- **`Launcher`:** saem `Get-WinForgeAdminMode` e `Set-WinForgeAdminMode`; a linha Administrador do resumo diz só se a janela está com ele.
-- **`Navigation`:** sai o item `app.admin-mode`.
-- **`GuiDesign`:** `Get-WinForgeLogoDrawing`, o desenho do SVG para a reserva da janela.
-- **Janela:** a partida sempre pede o Administrador (menos quando já há uma janela aberta, reconhecida pela trava de `Enter-WinForgeWindowLock`) e sai `Get-GuiAdminModePreference`; `Start-GuiRelaunch` (sem console, com `-Handover` só para a reabertura pedida por uma janela aberta) e `Get-GuiLaunchScriptPath`; `Update-GuiHintPosition`; os modelos das caixas de texto não repetem o `Padding` no `PART_ContentHost`; `FocusRingSmall`, `FocusRingOption` e `FocusRingCard`.
-- **`assets`:** `WinForge.ico` e `WinForge.svg` novos.
 
 ## Build 3.43
 
@@ -1671,17 +1333,9 @@ Esta build revisa a tela de Ajustes do Windows inteira, nos mesmos sete pontos d
 **Criar ponto de restauração**
 - As explicações (Proteção do Sistema desativada, nenhum ponto no PC, limite de um por dia, aviso do Windows) viraram linhas de informação do resumo.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e a prévia da página foi desenhada a partir das medidas do código, e não capturada da janela. Pedem conferência num PC:
 - ocultar a pesquisa e o botão Visão de Tarefas no Windows 10 e no 11;
 - Finalizar tarefa numa 22H2 e numa 23H2, e o botão do Copilot numa 24H2;
 - desfazer depois de mudar o valor pelas Configurações do Windows.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Tweaks`:** `New-WinForgeTweak` e `New-WinForgeRegistryTweak` ganham `-MinBuild` e `-MaxBuild`, que `Test-WinForgeTweakAvailable` aplica quando a build é conhecida; `Test-WinForgeTweakValueAtTarget`; `New-WinForgeTweakRevertReport` (o que cada desfazer devolve: `Restored` e `Kept`); `Invoke-WinForgeTweakRevert -Detailed`; `Format-WinForgeTweakAppliedAt`; `Invoke-WinForgeTweakApply -Status`.
-- **`Navigation`:** o índice da busca só leva os ajustes disponíveis quando a build do Windows é conhecida.
-- **Janela:** `Get-GuiTweaksHintText`.
 
 ## Build 3.42
 
@@ -1728,18 +1382,11 @@ Esta build revisa a tela de Rede inteira, nos mesmos sete pontos das revisões a
 **Relatório de Wi-Fi**
 - A geração fica na barra de progresso, e o "Como ler" vira uma dica do resumo.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e a prévia da página foi desenhada a partir das medidas do código, e não capturada da janela. Pedem conferência num PC:
 - a saída do `netsh wlan show interfaces` em português e em inglês, com a acentuação que chega ao WinForge;
 - o tempo de resposta do `Resolve-DnsName` com servidor escolhido, numa rede comum e numa que bloqueia DNS externo;
 - a latência do teste de velocidade comparada à de um medidor conhecido;
 - o proxy lido das Configurações do Windows, manual e por script;
 - o aviso da Localização no Windows 11 e o cabeçalho `Server-Timing` do servidor do teste de velocidade.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Network`:** `Format-WinForgePingLine`, `Get-WinForgeProxySettings`, `Measure-WinForgeSpeedLatency` (chamada por `Measure-WinForgeDownload`, que devolve `LatencyMs`), `Get-WinForgeServerTimingMs`, `ConvertFrom-WinForgeWlanInterfaces`, `Get-WinForgeWifiLinkText`, `Get-WinForgeNetworkCategoryText`, `Test-WinForgeDnsPlaceholder` e `Write-WinForgeNetworkConfig`. O ping e as informações de rede não usam mais `Format-Table`.
-- **`NetworkTools`:** `Measure-WinForgeDnsLatency`, `Get-WinForgeDnsPrimaryServer`, `Get-WinForgeDnsLatencyText`, `Get-WinForgeDnsSuggestion` e `Format-WinForgeDnsModeLatency`; os provedores de DNS ganham `Filters`.
 
 ## Build 3.41
 
@@ -1788,21 +1435,11 @@ Esta build revisa a tela de Programas inteira, nos mesmos sete pontos das revis�
 **No console**
 - Nas listas de marcar, um nome com mais de 30 caracteres não gruda mais na descrição.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC:
 - as tabelas reais do `winget list` e do `winget search` com os componentes e a marca de já instalado;
 - a instalação pela fonte do resultado (`--source winget` e `--source msstore`);
 - os novos nomes de pacotes da lista de aplicativos, e se os aposentados ainda estão fora da Microsoft Store;
 - ligar o WSL com a plataforma no Windows 10 e no 11;
 - o modelo lido do PC para o backup.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Software`:** `Test-WinForgeWingetComponent`, `Get-WinForgeWingetPackageCaution`, `Get-WinForgeInstalledWingetIds` (com a leitura guardada em `$script:WinForgeInstalledIdsCache`, que `Clear-WinForgeInstalledWingetIdsCache` descarta), `Test-WinForgeWingetIdInstalled` e `Add-WinForgeInstalledProgramsChange`; `Get-WinForgeWingetArguments -Source`; o resultado de `Invoke-WinForgeWingetPackages` traz `ChangedIds`.
-- **`PreinstalledApps`:** sete aplicativos novos no catálogo e o campo `Reinstallable`.
-- **`WindowsFeatures`:** o campo `RiskOnDisable` no catálogo.
-- **`Backup`:** `Get-WinForgePcModel`; o campo `Model` no `backup.json` e em `Read-WinForgeBackupFolder`; `Get-WinForgeRestoreOptions -OtherModel`.
-- **Janela:** os ícones (`GuiDesign`).
 
 ## Build 3.40
 
@@ -1855,26 +1492,12 @@ Esta build revisa a tela de Atualizações inteira, nos mesmos sete pontos das r
 - **O winget por último:** o Instalador de Aplicativo, que é o próprio winget, é atualizado depois dos outros programas, que ainda precisam dele.
 - Os programas atualizados entram no **Histórico de mudanças**; os que o winget disse que já estavam na versão nova, não.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC:
 - **Corrigir o Windows Update** inteiro: parar e ligar os serviços, o `catroot2` (que o Windows costuma religar rápido), e um serviço desativado voltando ao padrão;
 - a pergunta ao Windows Update se ele está instalando (`IsBusy`);
 - a conexão limitada lida pelo Windows;
 - a classe e o aparelho dos drivers vindos do Windows Update;
 - as políticas de servidor de empresa e de acesso desligado;
 - a busca da Microsoft Store pelo Lenovo Vantage e as páginas da Dell e da AMD.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`WindowsUpdate`:**
-  - `Repair-WinForgeWindowsUpdate`, com `Get-WinForgeWindowsUpdateServices`, `Get-WinForgeWindowsUpdateCacheFolders`, `Get-WinForgeServiceState`, `Stop-WinForgeService`, `Start-WinForgeService`, `Set-WinForgeServiceStartType`, `Move-WinForgeUpdateCacheFolder`, `Remove-WinForgeUpdateCacheBackup`, `Get-WinForgeServiceNamesText` e `Test-WinForgeWindowsUpdateBusy`.
-  - `Get-WinForgeWindowsUpdatePolicy`, `Write-WinForgeWindowsUpdatePolicyNote` e `Write-WinForgeWindowsUpdateSearchHelp`.
-  - `Confirm-WinForgeUpdateConditions` (reinício pendente e bateria, para as atualizações e os drivers), `Get-WinForgeDriverClassText`, `Get-WinForgeDriverPurposeText`, `Test-WinForgeFirmwareUpdate`, `Write-WinForgeFirmwareWarning` e `Write-WinForgeMeteredWarning`.
-  - A busca devolve também `Driver`, `DriverClass` e `DriverModel`.
-- **`Drivers`:** `Test-WinForgeVendorText` e `Get-WinForgeHardwareModelText`; `Get-WinForgeHardwareVendors` lê também a família do PC (`Family`); o catálogo ganhou `dell-supportassist` e `lenovo-vantage` e os campos `Open` e `Store`.
-- **`Core`:** `Test-WinForgeMeteredConnection`.
-- **`Software`:** o plano do winget põe o Instalador de Aplicativo por último e anota no Histórico; o resultado de `Invoke-WinForgeWingetPackages` traz também `ChangedIds`.
-- **Janela:** o item `updates.repair` (`Navigation`) e os ícones (`GuiDesign`); o atalho `OptionalUpdates` com o título novo (`Shortcuts`).
 
 ## Build 3.39
 
@@ -1915,7 +1538,6 @@ Esta build revisa a tela de Reparo inteira, nos mesmos sete pontos das revisões
 - A unidade do Windows não depende mais só da variável `SystemDrive`: sem ela, sai da pasta do Windows e, sem nenhuma das duas, é `C:`, em vez de um comando sem unidade.
 - A leitura dos discos do CHKDSK tem limite de 15 segundos e mostra o progresso, em vez de deixar a tela parada se o WMI travar.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC:
 - o CHKDSK `/scan` numa unidade que não é a do Windows, e o reparo offline agendado nela;
 - o `Win32_LogicalDisk` de uma unidade trancada pelo BitLocker;
 - o reparo agendado num disco externo e a Inicialização Rápida ao Desligar;
@@ -1923,13 +1545,6 @@ Esta build revisa a tela de Reparo inteira, nos mesmos sete pontos das revisões
 - o tipo do disco lido para a otimização;
 - os códigos `0x800F0954`, `0x80070422`, `0x800F0806`, `0x800F082F` e `3017` do DISM;
 - a página `ms-settings:recovery` no Windows 10 e no 11.
-
-A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Repair`:** `Get-WinForgeSystemDriveLetter`, `Get-WinForgeChkdskDrives`, `Test-WinForgeDriveExternal`, `Select-WinForgeChkdskDrive`, `Get-WinForgeDriveMediaText` e `Get-WinForgeDeviceScanRemaining -NotesOnly -SettleSeconds`; `Invoke-WinForgeScheduleChkdskRepair -Drive`; a detecção de dispositivos tem um analisador próprio. O analisador de `Invoke-WinForgeTool` recebe um quarto argumento, se a ação roda dentro de um fluxo.
-- **`Shortcuts`:** o atalho `Recovery` (`ms-settings:recovery`); a mensagem ao abrir um atalho.
-- **Janela:** os itens `repair.system-restore` e `repair.recovery` (`Navigation`) e os ícones deles (`GuiDesign`).
 
 ## Build 3.38
 
@@ -1966,13 +1581,6 @@ Uma revisão da tela de Desempenho por inteiro, nos mesmos sete pontos das revis
 - **O efeito, medido:** depois de fechar, a tela mostra a memória em uso agora e quanto era antes.
 - **Mais rápido:** o nome amigável e o fabricante são lidos só dos programas que aparecem, e não de todos os processos abertos; a memória por processo é lida enquanto a medição do processador espera.
 - **Medição mais exata:** cada processo é medido no próprio intervalo, e não no intervalo de uma lista inteira até a outra (o uso saía maior que o real); os processos de outras sessões nem são lidos. Um número de processo reaproveitado pelo Windows no meio da medição não gera mais um uso acima de 100%, nem a soma de um programa.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC: a classe `Win32_PerfRawData_PerfProc_Process` (o tempo da primeira consulta e os números comparados com o Gerenciador de Tarefas), `EmptyWorkingSet` só na sessão da pessoa, `CloseMainWindow` num programa aberto como Administrador e com caixa de diálogo, programas que vão para perto do relógio, os processos pai pelo `Win32_Process` e o tempo que programas reais levam para fechar. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Performance`:** `Get-WinForgePrivateWorkingSets`, `Add-WinForgeProcessDetails`, `Get-WinForgeProcessParents`, `Test-WinForgeProcessGroupWindowless`, `Get-WinForgeProtectedProcessReason` e `Test-WinForgeMemoryHigh` (a regra dos 85%, uma só para a página, a lista e o Verificar o PC); a medição devolve `CpuUnread`; `Get-WinForgeMemoryUsage -OperatingSystem` (a página lê o Windows uma vez só); `Stop-WinForgeProcessGroup -WaitMilliseconds -AllowForce`. Saíram `Write-WinForgeStandbyNote`, `PurgeStandbyList` e o parâmetro `PurgeStandby`, e o resultado da liberação não traz mais `Purged` nem `Trimmed`.
-- **`Checkup`:** um resultado com `Data.Remaining` não conta como corrigido.
-- **Janela:** o item `performance.startup` (`Navigation`) e o ícone dele (`GuiDesign`).
 
 ## Build 3.37
 
@@ -2039,15 +1647,6 @@ Uma revisão da tela de Limpeza por inteiro, nos mesmos sete pontos das revisõe
 
 **Apagar o espaço livre:** o aviso diz que o disco fica cheio até o fim e pede para fechar os outros programas.
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC: o limite da Lixeira lido do registro (`BitBucket\Volume`, a política `RecycleBinSize` e o padrão do Windows) e o comportamento do Windows com um item maior que ele; o comando `Delete-DeliveryOptimizationCache`; os atributos dos arquivos do OneDrive só na nuvem; o `mountvol` e o `Win32_Volume` para achar a configuração da Lixeira; o cabeçalho dos atalhos anunciados do Office; a propriedade `Target` das junções no Windows PowerShell 5.1; e `Get-AppxPackage` sem Administrador. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Cleanup`:** `$script:WinForgeTempMinAgeHours` (24) e o parâmetro `MinAgeHours` em `Clear-WinForgeFolderContents`, `Invoke-WinForgeFolderCleanup` e nos alvos da personalizada (que também ganham `Files`); `Get-WinForgeMemoryDumpFile`; `Get-WinForgeRecycleBinCapacity` (Nuke e MaxBytes, guardado por dois minutos), `Get-WinForgeVolumeGuid` (mountvol e, sem ele, WMI com tempo limite) e `Move-WinForgeItemToRecycleBin -SizeBytes`; `Test-WinForgeOneDrivePath`, que o `Backup` passa a usar.
-- **`CleanupTools`:** `Get-WinForgeProgramFolderNames`, `Get-WinForgeFolderLinkTarget` e `Get-WinForgeFileDigest` (no lugar do `Get-FileHash`); os grupos de duplicados trazem `Stamps`, e a busca devolve `Links`; os atalhos trazem `Synced`; os restos trazem `Data`, e a busca lista cada raiz uma vez.
-- **`RegistryCleaner`:** `Get-WinForgeRegistryRoots` (as buscas e o desfazer usam a mesma lista), `Test-WinForgeInstallerCachePath`, `Get-WinForgeDisplayIconPath`, `Test-WinForgeRegistryIssuePresent` e `Remove-WinForgeRegistryValueExact`; cada referência traz `Wow64`, e `Clear-WinForgeRegistryIssues` devolve `Back` e `Gone`.
-- **`Shell`:** `Test-WinForgeAdvertisedShortcut`.
-- **Janela:** as seções e os ícones da Limpeza (`Navigation`, `GuiDesign`).
-
 ## Build 3.36
 
 Uma revisão da tela de Segurança por inteiro, nos mesmos sete pontos das revisões anteriores: se cada opção faz o que promete, segurança e robustez, interface e fluxos, código, desempenho e erros comuns e incomuns. As verificações passam a dizer o que o Windows Defender fez com cada ameaça, a auditoria enxerga o UAC no nível "Nunca notificar" e o BitLocker suspenso, e o perfil Domínio do firewall deixa de acusar problema em PCs de casa.
@@ -2082,14 +1681,6 @@ Uma revisão da tela de Segurança por inteiro, nos mesmos sete pontos das revis
 - **Secure Boot:** a mesma leitura de **Diagnóstico > Sobre este PC**; com o Windows no modo BIOS legado, "indisponível", com o caminho para o UEFI, em vez de "Desligada" (com "ligue na placa-mãe") ou "Não verificada".
 - **Sem leitura, à vista:** a Área de Trabalho Remota e a conta Convidado que não puderam ser lidas aparecem como não verificadas, e não somem da lista. Um Windows sem a conta Convidado conta como "desativada".
 - **O que pede ação primeiro:** os pontos verificados vêm com os de risco real no alto, depois os de atenção, os não verificados e, por último, os que estão em ordem.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC: o que o Defender devolve em `ThreatStatusID` e nos recursos de uma ameaça baixada, os estados do BitLocker (`Get-BitLockerVolume`, suspenso, criptografando e esperando ativação), os campos `ActionSuccess` e `AdditionalActionsBitMask` das detecções, o UAC no nível "Nunca notificar", o perfil Domínio num PC fora de domínio (`PartOfDomain`), as preferências do Defender (`Get-MpPreference`) e os códigos de erro reais. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Security`:** `Get-WinForgeFirewallGaps` e o dado `Applies` de cada perfil; `Get-WinForgeThreatStatusText`; `Get-WinForgeScanDetections` devolve `Status` e `Resolved`; `Get-WinForgeDefenderErrorText`, `Get-WinForgeDefenderPreference`, `Test-WinForgeNetworkPath` e `Test-WinForgeNetworkScanSkipped`; `Get-WinForgeBitLockerState` devolve "Suspended"; os fatos da auditoria trazem `UacNeverNotify`, e o `SecureBoot` pode ser "Legacy"; `Get-WinForgeBitLockerState` também devolve "Encrypting" e "Pending"; `Get-WinForgeDefenderErrorCode` e `Test-WinForgeDefenderNetworkError`; `ConvertTo-WinForgeScanPath` completa "E:" com a barra.
-- **`Diagnostics`:** `Get-WinForgeSecureBootState` (On, Off, Legacy, NoAdmin, Unknown), de onde saem o texto de Sobre este PC e o dado da auditoria. `Get-WinForgeMpValue` era cópia de `Get-WinForgeJsonValue` (Core) e saiu.
-- **`Home` e `Checkup`:** o firewall conta por `Get-WinForgeFirewallGaps`.
-- **Janela:** as seções (`Navigation`); os ícones `bolt` e `lock` (`GuiDesign`).
 
 ## Build 3.35
 
@@ -2153,17 +1744,6 @@ Uma revisão da tela de Diagnóstico por inteiro, nos mesmos sete pontos das rev
 - **Depois de salvar:** a escolha entre **Abrir o relatório**, **Mostrar na pasta** e **Agora não**, e o lembrete de que o relatório traz o nome do computador e do usuário.
 - **Sem perder relatório:** dois relatórios no mesmo segundo não se sobrescrevem (o segundo ganha "-2"). Se só a cópia em texto falha, o HTML salvo vale, com ressalvas, em vez de "o relatório não foi salvo".
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC: a leitura dos eventos (`EventLogReader`) com as consultas novas, as partições de cada disco (`Get-Partition`), os contadores de confiabilidade de um disco USB, o tipo de firmware (`PEFirmwareType`), a memória de vídeo de uma placa trocada, um nobreak USB num PC de mesa, um notebook com duas baterias (`root\wmi`), as chaves de reinício pendente da entrada num domínio, o erro do Windows Update sem internet e um Windows Server 2025. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Diagnostics`:** `Read-WinForgeEventLog` devolve os eventos soltos, com `RecordId`; `Get-WinForgeRecentCriticalEvents` desembrulha listas e faz a segunda leitura das origens conhecidas; `Test-WinForgeEventHintSerious` e `Get-WinForgeEventCause`; o resumo dos eventos ganha `Serious`. `Get-WinForgeDiskHealth` lê as partições uma vez e devolve `Drives`; `Get-WinForgeDiskSummary` devolve `LivrePercent`. `Get-WinForgeBatteryInfo` devolve `Ups`; `Get-WinForgeBatteryState`, `Count`; `New-WinForgeBatteryReading -Relative`; `Get-WinForgeBatteryAssessment -Missing`; `Format-WinForgeWattHours -MilliwattHours`. `Test-WinForgePnpDeviceHasProblem` usa `Get-WinForgeDeviceProblemCode`.
-- **`Core`:** `Get-WinForgeDiskSpaceLevel -System`.
-- **`Hardware`:** `Get-WinForgeGpuMemoryBytes` prefere o nome exato; `Get-WinForgeExpoXmpStatus` usa `Test-WinForgeLaptop`.
-- **`WindowsSupport`:** `Get-WinForgeSupportDaysText` e `Get-WinForgeEsuText`; `Get-WinForgeWindowsSupportStatus` devolve `IsServer` e perde o parâmetro `-LastUpdate`, que não decidia mais nada.
-- **`Catalog`:** o campo `EsuOrgEnd` (o fim do ESU de empresas e escolas), opcional: um catálogo sem ele continua válido.
-- **`Reports`:** `Export-WinForgeReport` devolve `TextProblem`; `Invoke-WinForgeReport` usa `Read-WinForgeChoice`.
-- **Janela:** as seções e a ordem dos itens (`Navigation`); os ícones `pulse`, `wrench` e `calendar` (`GuiDesign`).
-
 ## Build 3.34
 
 Uma revisão da tela de Manutenção por inteiro, nos mesmos sete pontos da revisão do Início: se cada opção faz o que promete, segurança e robustez, interface e fluxos, código, desempenho e erros comuns e incomuns. O que saiu dela são vereditos que escondiam o que ainda pedia atenção, uma Lixeira esvaziada sem pergunta, um reinício que podia fechar arquivos sem salvar e um agendamento que podia rodar o que outra conta pusesse na pasta do WinForge.
@@ -2215,20 +1795,6 @@ Uma revisão da tela de Manutenção por inteiro, nos mesmos sete pontos da revi
 - **DNS:** desfazer volta ao DNS de antes da primeira troca (como em **Rede > Desfazer a troca de DNS**) e tira todas as trocas da lista. Antes, a frase dizia "DNS de antes" e as outras trocas continuavam na lista, prometendo um DNS intermediário.
 - Desfazer vários itens de inicialização lê as tarefas do Agendador uma vez, e não uma por item (cada leitura leva segundos).
 
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade, e as prévias da página foram desenhadas a partir das medidas do código, e não capturadas da janela. Pedem conferência num PC: o reinício sem prazo (`shutdown /r /t 0`) com um programa segurando, o limite de pontos de restauração em zero (`SystemRestorePointCreationFrequency`), a leitura das permissões da pasta do WinForge (`Get-Acl`), a remoção da pasta vazia do Agendador de Tarefas, a detecção de nenhuma rede conectada (`Get-NetConnectionProfile`) e a limpeza dos componentes dentro da manutenção. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Maintenance`:** `Get-WinForgeMaintenancePageStatus` usa `Get-WinForgeLastCare` e `Get-WinForgeLastCheckup` (com `-Now`). Nova etapa `components` (`Invoke-WinForgeComponentCleanup`), só no perfil Profunda. `Read-WinForgeMaintenanceDetails` devolve `EmptyRecycleBin`; `Invoke-WinForgeMaintenanceStep -Standalone` roda o ponto de restauração antes da revisão manual; `Request-WinForgeRestart` reinicia sem prazo; `Test-WinForgeMaintenanceNeedsRestart` decide só pelo dado `RebootRequired` das etapas.
-- **`Cleanup`:** `Invoke-WinForgeQuickCleanup -SkipRecycleBin`.
-- **`Checkup`:** cada achado tem `Unread` e a etapa (`StepId`); o veredito conta o que continua pedindo atenção.
-- **`Tweaks`:** `Set-WinForgeRestorePointFrequency` e `Restore-WinForgeRestorePointFrequency`; `New-WinForgeRestorePoint -IgnoreFrequency` e o dado `ProtectionOff`.
-- **`Network`:** `Test-WinForgeNetworkConnected`.
-- **`Schedule`:** `Get-WinForgeScheduleUntrustedWriters`, `Get-WinForgePathWriteRules`, `ConvertTo-WinForgeScheduleAccountName`, `Test-WinForgeScheduleSameAccount` e `Remove-WinForgeScheduleFolder`; o estado da tarefa traz `Owner` e `OtherUser`.
-- **`Journal`:** `Test-WinForgeStartupUndoItem -Tasks`.
-- **`Core`:** o histórico de manutenções é lido e gravado na ordem da gravação, sem ordenar pela data.
-- **`RegistryCleaner`:** a pasta do desinstalador segura uma entrada sem pasta de instalação registrada.
-- **Janela:** o estilo `CardButton` (`gui/MainWindow.xaml`) tem 252 de largura; o Agendador de Tarefas usa o ícone `clock` (`GuiDesign`); a seção "Opções e agendamento" (`Navigation`).
-
 ## Build 3.33
 
 Uma revisão da tela de Início por inteiro: se cada parte faz o que promete, segurança e robustez, interface e fluxos, código, desempenho e erros comuns e incomuns. O Início ganhou um módulo próprio, os cartões vêm em ordem de relevância, a última leitura não some ao voltar à tela, e o ponto do reinício pendente leva a uma tela que resolve.
@@ -2254,14 +1820,6 @@ Uma revisão da tela de Início por inteiro: se cada parte faz o que promete, se
 
 **Desempenho**
 - O leitor do Início, que roda em segundo plano, importa só os 8 módulos que a leitura usa, e não os 34. No PowerShell 7 com o Windows simulado, a importação caiu de cerca de 0,65 s para 0,2 s.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. As prévias da tela foram desenhadas a partir das medidas do código, e não capturadas da janela. O corte da frase dos atalhos em duas linhas, o pedido de reinício pela tela de Reinício pendente (`shutdown.exe /r /t 30`) e o tempo de importação do leitor no Windows PowerShell 5.1 pedem conferência num PC. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Home` (novo):** o Início saiu de `Navigation`, que fica com a tabela, a busca e as teclas. Em `Home` ficam as leituras em etapas, a nota, os cartões, os atalhos e `Get-WinForgeHomeReaderModules`, a lista dos módulos que o leitor importa.
-- **`Home`:** `Get-WinForgeLastCare` faz a conta do último cuidado (manutenção ou verificação, sem as datas no futuro) para o Início e para o monitor (`Agent`). `ConvertTo-WinForgeHomeLine` deixa os textos dos cartões numa linha.
-- **`Maintenance`:** `Request-WinForgeRestart` recebe o motivo, o comentário do `shutdown.exe` e a mensagem de recusa, e é usado também pelo Reinício pendente.
-- **Janela:** `New-GuiHomeStampBar` monta a linha da hora a cada nota, a partir de `$script:HomeStamp` (antes, o mesmo controle era tirado de uma nota e posto na seguinte), e `Update-GuiHomeStampAge` refaz o texto a cada minuto. A última leitura (`$script:HomeLastSnapshot`) só é guardada depois de mostrada, e uma que não pode ser mostrada é descartada, com uma leitura nova no lugar. `New-GuiHealthButtons` e `New-GuiQuickActionCard` são novos, e `New-GuiActionCard` perdeu o parâmetro `-Highlight`.
 
 ## Build 3.32
 
@@ -2324,15 +1882,6 @@ Uma revisão de todos os fluxos: cada ação da janela e do console foi conferid
 **Janela**
 - O Início lido em segundo plano (Build 3.31) importa os módulos também quando a pasta do WinForge tem colchetes no nome. Antes, no Windows PowerShell 5.1, todos os cartões ficariam como "Não foi possível ler".
 - A trava dos arquivos de dados e a da janela única, quando o Windows recusa o acesso total a uma trava que a outra parte criou (a janela como Administrador e o monitor sem, por exemplo), abrem só com o acesso para esperar e soltar, em vez de seguir sem trava.
-
-**O que não foi visto:** como nas builds anteriores, nada disto rodou num Windows de verdade. Os fluxos rodaram no PowerShell 7 com o Windows simulado: as leituras do sistema falham ali, e o que se conferiu é se cada fluxo termina bem e com um veredito correto mesmo assim. A trava aberta só para esperar e soltar (`Mutex.OpenExisting` com Synchronize e Modify) e a importação com colchetes no Windows PowerShell 5.1 pedem conferência num PC. A lista da 3.31 do que pede conferência continua valendo.
-
-### Estrutura
-- **`Console`:** `ConvertTo-WinForgeReadableError` limpa o texto de um erro; `Write-WinForgeStatus` e `New-WinForgeResult` passam por ela.
-- **`Core`:** `Open-WinForgeNamedMutex` abre a trava compartilhada (cria com acesso do usuário; senão abre com Synchronize e Modify; senão uma trava simples). `Invoke-WinForgeNative` confere se o programa existe, como `Invoke-WinForgeCapture`.
-- **`GuiHost`:** o script do leitor em segundo plano importa os módulos com a mesma segunda tentativa (caminho escapado) da janela e do executor das ações.
-- **`Backup`:** o índice (`backup.json`) tem `Complete`, falso até o fim.
-- **`WinForge.Console.ps1`:** a ação é conferida no próprio script (a lista em `$knownActions`), sem `ValidateSet`.
 
 ## Build 3.31
 
@@ -2465,25 +2014,6 @@ Uma revisão de engenharia do projeto inteiro: consistência dos dados gravados,
 - A identidade do WinForge na barra de tarefas (o ícone e o agrupamento próprios) não falha mais ao ser aplicada à janela e ao atalho.
 - **Correção do texto da Build 3.29:** o ESU do Windows 10 para consumidores vai até **12/10/2027** (a Microsoft estendeu o programa), e não até 13/10/2026 como aquela entrada dizia. Os dados do WinForge já usavam a data certa.
 
-**O que não foi visto:** nada disto rodou num Windows de verdade. O código foi conferido no PowerShell 7 com o Windows simulado, e a janela e o XAML foram validados contra as bibliotecas do WPF. Pedem conferência num PC: a janela única e o pedido entre duas aberturas; a leitura do Início e a preparação das ações em runspaces à parte no Windows PowerShell 5.1; a busca do Windows Update no que ficou guardado (`Online = falso`) e os códigos 0x80240032 e 0x8024xxxx; o `Get-AppxPackage` sem nome, o `GetValueKind` e o `powercfg /delete`; o `Sysnative` dos iniciadores; o leitor de eventos do Windows, o `MediaType` dos discos e o `-PolicyStore ActiveStore` do firewall; o relatório aberto pelo Explorador; o tipo de unidade usado para decidir onde há Lixeira (unidades `SUBST` e o limite de tamanho da Lixeira de cada unidade não são conferidos); e as propriedades de acesso à internet do Windows usadas pelo reparo de rede. O nome do pacote do Instagram (`Facebook.InstagramBeta`) vem de listas conhecidas, não de um PC com ele instalado; se estiver errado, o aplicativo só não aparece.
-
-### Estrutura
-- **`Core`:** os arquivos de estado têm uma trava com nome (`Invoke-WinForgeStateLock`), leitura com estado (`Read-WinForgeStateFile`: Missing, Ok, Recovered, Unreadable) e gravação atômica (`Write-WinForgeStateFile`, `Write-WinForgeStateJson`). Os gravadores de registro param em acesso negado e guardam o tipo do valor (`Set-WinForgeRegistryValue`, `Get-WinForgeRegistryValueKind`). `Set-WinForgeKeepAwake` conta os pedidos por thread (`Set-WinForgeThreadExecutionState`). `Invoke-WinForgeCapture` lança erro quando o programa não existe.
-- **`GuiHost`:** leituras em segundo plano (`New-WinForgeGuiReader`, `Start-WinForgeGuiRead`, `Receive-WinForgeGuiRead`, `Close-WinForgeGuiReader`) e a janela única (`Enter-WinForgeWindowLock`, `Send-WinForgeWindowRequest`, `Receive-WinForgeWindowRequest`; o pedido fica em `window-request.json` e vale por um minuto). O host das ações tem `PendingCount`, `ClearQueue()` e `ResetProgress()`.
-- **`Navigation`:** `New-WinForgeHomeStepFailure` (o resultado de uma etapa que falhou ou passou do tempo); a nota tem o rótulo "Incompleta".
-- **`WindowsSupport` e `Catalog`:** campos opcionais `EsuFirstRevision` e `IotLtscEnd` no catálogo; `Get-WinForgeWindowsRevision` lê a revisão da build. `Get-WinForgeWindowsSupportEnd` saiu de `Security`, que usa `Get-WinForgeWindowsSupportStatus`.
-- **`Security`:** a nota da auditoria traz `NoGradeReason` (`Antivirus` ou `Coverage`); o modo do antivírus ganhou `Passive`.
-- **`Schedule`:** `Get-WinForgeScheduleStatus` devolve `ScriptPath`, `ScriptMissing`, `Stale`, `LastRunFailed`, `NeedsAttention` e `Problem`; `Clear-WinForgeScheduledTempFolder` limpa só o que tem mais de 7 dias.
-- **`Diagnostics`:** `Read-WinForgeEventLog` lê os eventos com o `EventLogReader` e uma consulta XPath.
-- **`WindowsUpdate`:** `Get-WinForgeUpdateSearchCode` é a busca única das duas pontas (lista e instalação).
-- **`Cleanup` e `CleanupTools`:** `Get-WinForgeRecycleBinProblem`, `Get-WinForgePathRelation`, `Test-WinForgeDownloadsFolderSafe`, `Test-WinForgeDuplicateFolderSafe`, `Test-WinForgeGenericLeftoverName` e `Remove-WinForgeCipherLeftover`.
-- **`RegistryCleaner`:** backup dos valores em `.json` (`Restore-WinForgeRegistryValues`), conferência das chaves de um `.reg` antes de importar e leitura das duas vistas do registro (64 e 32 bits).
-- **`Tweaks`:** os originais de energia por plano (`Merge-WinForgePowerOriginal`) e a cópia do Alto desempenho (`Remove-WinForgeCreatedPowerScheme`).
-- **`Performance`:** `Get-WinForgeSampledProcess` confere nome e hora de início do processo medido. **`Agent`:** `Test-WinForgeAgentStartBlocked`.
-- **Janela:** `Update-GuiHomeReader` (as etapas do Início), `Wait-GuiWarmup`, `Update-GuiPromptTheme`; a saída das ações passa por uma fila desenhada com orçamento de tempo por quadro.
-- **Iniciadores:** `WinForge.cmd` e `WinForge-Console.cmd` escolhem o PowerShell de 64 bits pelo `Sysnative`; o do console guarda a pasta de onde foi chamado em `WINFORGE_CALLER_DIR`.
-- As contas com `[Math]::Max`/`[Math]::Min` não misturam mais um número inteiro escrito no código com um valor fracionário (o PowerShell escolheria a versão para inteiros e cortaria as casas), e o projeto passou a recusar esse padrão.
-
 ## Build 3.30
 
 Uma revisão de design da janela e dos fluxos: páginas organizadas em seções, um resumo que se lê de relance e leva à próxima tela, filtro nas listas longas e um Início coerente com o Verificar o PC.
@@ -2530,17 +2060,6 @@ Uma revisão de design da janela e dos fluxos: páginas organizadas em seções,
 - **O alto da página mostra a memória em uso e há quanto tempo o PC está ligado.** Memória a partir de 85% fica em amarelo, com "veja Programas pesando agora"; uma semana ou mais ligado fica em amarelo, com "reiniciar deixa o Windows mais leve" (com a Inicialização Rápida, desligar não zera esse tempo).
 - **Ícone próprio na barra lateral,** um foguete, que também está no cartão Acelerar agora. Antes, o ícone parecia o da Manutenção.
 - **Correção:** com mais de 2 GB de memória em uso, a conta podia falhar, porque o PowerShell escolhia a versão para números inteiros pequenos de uma função de máximo. Afetava a linha Memória do Verificar o PC, Acelerar agora, Liberar memória e Programas pesando agora, que também perdia as casas decimais do uso do processador. Conferido no PowerShell 7; no Windows PowerShell 5.1, não.
-
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela e o XAML foram validados contra as bibliotecas do WPF. O link do resumo usa o `Hyperlink` do WPF dentro do texto da linha, e o filtro usa o evento de texto alterado da caixa; o clique no link e a digitação no filtro foram conferidos com controles simulados, não na tela.
-
-### Estrutura
-- **`Navigation`:** cada item tem `Group` (a seção), e um item da tabela mostra a seção com `New-WinForgeNavItem -Group`; os itens de uma seção ficam juntos na tabela. `Find-WinForgeNavReference` acha a referência "Página > Item" de um texto e o item que ela abre (o de nome mais longo, quando dois começam igual).
-- **`Console`:** `Write-WinForgeKeyValue -Level Ok|Warn|Bad` pinta o valor; **`GuiDesign`:** `Get-WinForgeFactEntry` devolve o `Level` pela cor do valor.
-- **`Core`:** `Get-WinForgeLastCheckup` lê a data do último Verificar o PC; o Início e o monitor usam essa função.
-- **`Performance`:** `Get-WinForgePerformancePageStatus`, o resumo do alto da página, de uma leitura só do `Win32_OperatingSystem`. As contas de memória e de processador usam `[Math]::Max([double]0, ...)`.
-- **`Security`:** as linhas do antivírus (`Get-WinForgeAntivirusRows`) trazem o nível de cada valor; o relatório continua usando só o texto.
-- **Janela:** `New-GuiGroupHeading` (o título de uma seção), `New-GuiActivityText` (o texto da linha do resumo, com os links) e `Update-GuiPromptFilter` (o filtro). O XAML ganhou o estilo `SummaryLink` e a linha do filtro (`PromptFilterRow`, `PromptFilter`, `PromptFilterHint` e `PromptFilterEmpty`).
-- **Ícones:** `rocket`, para a página Desempenho e o Acelerar agora.
 
 ## Build 3.29
 
@@ -2753,7 +2272,6 @@ Uma build grande, com o que faltava para o WinForge cuidar do PC de ponta a pont
 **Também em Atualizações** (o mesmo executor do winget)
 - Em "Atualizar tudo o que o winget oferecer", uma falha agora diz o motivo, por exemplo "o winget terminou com problemas: algum programa não foi atualizado — erro 0x8A15002C". Antes, a frase saía quebrada, como "o winget terminou com outra instalação está em andamento".
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. As respostas do Windows foram simuladas:
 - o winget, por uma função que responde o que cada cenário combinou, com tabelas alinhadas como as dele;
 - o Remove-AppxPackage, os cmdlets de recursos opcionais, o registro da inicialização, o pnputil e o netsh;
 - nas funções novas, o Windows Update (busca de drivers), as tarefas agendadas, o registro, os atalhos (.lnk), os processos, a memória, o Defender e o `cipher`.
@@ -2765,42 +2283,6 @@ As datas de suporte seguem as páginas de ciclo de vida da Microsoft, consultada
 Os significados dos códigos seguem as tabelas da Microsoft, consultadas em 25/10/2026: códigos de retorno do winget e do pnputil, e erros de implantação de aplicativos. Os IDs locais com espaço e os IDs cortados com reticências seguem saídas do winget publicadas por usuários.
 
 O catálogo de essenciais continua com o Python 3.14. O Python 3.15 saiu em 9/10/2026, mas não foi possível confirmar o pacote dele no winget.
-
-### Estrutura
-- **Módulos novos:**
-  - `Checkup` (Verificar o PC: cada leitura é uma função `Get-WinForgeCheckup*`, e `Invoke-WinForgeCheckupFix` aplica cada correção);
-  - `Performance` (memória, processos e Acelerar agora, com o C# de `EmptyWorkingSet` e da lista de espera);
-  - `RegistryCleaner` (as buscas por categoria, o backup em `.reg` e `Clear-WinForgeRegistryIssues`, sem perguntas, que a Verificação do PC usa);
-  - `Journal` (o desfazer de cada tipo de mudança e a tela do histórico);
-  - `CleanupTools` (atalhos quebrados, duplicados, restos de programas e o espaço livre);
-  - `Drivers` (a busca de drivers no Windows Update e as ferramentas dos fabricantes);
-  - `WindowsSupport` (o suporte por versão e edição e os requisitos do Windows 11);
-  - `Catalog` (o catálogo embutido, a conferência do arquivo baixado e o download);
-  - `Agent` (as regras do monitor na bandeja e o liga/desliga). O ícone é o `WinForge.Agent.ps1`, na raiz.
-- **`Core`:** o diário de mudanças (`Add-WinForgeChange`, `Get-WinForgeChanges`, `Set-WinForgeChangesUndone`...) e `Add-WinForgeUninstalledProgram` ficam aqui, para qualquer módulo anotar sem depender de outro.
-- **`WindowsUpdate`:** a busca e a instalação aceitam um critério (`-Criteria`), e cada atualização traz `BrowseOnly`.
-- **`Startup`:** novos `Get-WinForgeStartupTasks`, `Get-WinForgeStartupPublisher`, `Get-WinForgeStartupEntries` e `ConvertTo-WinForgeStartupUndoItem`; `Set-WinForgeStartupItemEnabled` liga e desliga tarefas agendadas.
-- **`Shell`:** novo `Get-WinForgeShortcutTarget`.
-- **`Cleanup`:** `Get-WinForgeShaderCachePaths`, `Get-WinForgeCrashDumpPaths`; `Invoke-WinForgeCleanupTargets -NoSummary`.
-- **`Tweaks`:** aplicar e desfazer anotam no Histórico de mudanças; 13 ajustes novos e o perfil Privacidade.
-- **`Navigation`:** a página Desempenho, 16 itens novos, o suporte do Windows na leitura do Início, e a busca dá um ponto a mais à palavra inteira no rótulo.
-- **Janela:** o parâmetro `-Action` roda um item da navegação ao abrir (o monitor usa); os botões da nota de saúde são dois.
-- **`catalog/catalog.json`** (só no repositório): a cópia publicada do catálogo, que Conferir dados online baixa.
-- **`Core`:** novos `Get-WinForgeSelectionQuestion` (a confirmação com os nomes marcados) e `Get-WinForgeErrorCode`.
-- **`Software`:**
-  - `ConvertFrom-WinForgeWingetTable` aceita IDs `ARP\` e `MSIX\` com espaço.
-  - Novos `Test-WinForgeWingetIdTruncated`, `Get-WinForgeWingetSourceLabel`, `Format-WinForgeWingetPackageDescription` e `Get-WinForgeInstalledSoftwareCounts`.
-  - `Get-WinForgeWingetExitResult` conhece 0x8A15002C, 0x8A150034 e 0x8A150035.
-  - `Invoke-WinForgeWingetPackages` não chama o winget com um ID cortado. A dica de cada operação vem de `Get-WinForgeWingetVerbs`.
-  - `Show-WinForgeInstalledSoftware` lê a tabela com `Invoke-WinForgeCapture -Echo` em vez de `Invoke-WinForgeNative`.
-  - O catálogo de essenciais ganhou `Descricao` e passou a vir de `Get-WinForgeCatalog`.
-- **`PreinstalledApps`:** novo `Get-WinForgeAppRemovalResult`.
-- **`WindowsFeatures`:** novos `Get-WinForgeFeaturePendingLabels` e `Get-WinForgeFeatureErrorText`.
-- **`Backup`:**
-  - `Read-WinForgeBackupDestination` devolve `Path`, `IsDefault` e `Missing`.
-  - Novos `Write-WinForgeBackupUserFolders`, `Get-WinForgeBackupProblemText`, `Format-WinForgeBackupDate`, `Get-WinForgeBackupChoiceDescription`, `Get-WinForgeRestoreOptions` e `Get-WinForgeWifiProfileName`.
-  - As mensagens de `Read-WinForgeBackupFolder` foram escritas para entrar no meio de uma frase.
-- As linhas soltas de `Write-Host` deram lugar a `Write-WinForgeStatus`. As linhas "executando" e a barra de texto do backup deram lugar a `Write-Progress`.
 
 ## Build 3.27
 
@@ -2859,28 +2341,10 @@ Revisão da tela de Atualizações.
   - "1 de 2 não foi desinstalado: Alfa App".
 - Antes eram "Concluído com sucesso", "nenhum pacote foi processado: 7-Zip" e "1 de 2 com falha".
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. As respostas do Windows foram simuladas:
 - o Windows Update, por uma API de mentira com os mesmos métodos;
 - o winget, por uma função que responde o que cada cenário combinou.
 
 As telas rodaram no mesmo executor da janela. Os significados dos códigos seguem as tabelas da Microsoft (códigos do Windows Update Agent e códigos de retorno do winget), consultadas em 25/10/2026.
-
-### Estrutura
-- **`WindowsUpdate`:**
-  - Consulta:
-    - `Get-WinForgeWindowsUpdateList` deu lugar a `Find-WinForgeWindowsUpdates`, que devolve `Updates` e `Problem`, o motivo de a consulta não ter funcionado. O tempo limite passou para 300 s.
-    - Novo `Get-WinForgeWindowsUpdateProblem`.
-  - Novos `Get-WinForgeWindowsUpdateHResultText`, `Format-WinForgeUpdateError`, `Get-WinForgeUpdateDownloadError` e `Get-WinForgeUpdateSizeText`.
-  - Andamento: `Wait-WinForgeUpdateJob` usa `Write-Progress` com a porcentagem, e o script do outro runspace guarda o código do download que falhou (`DownloadCode`, `DownloadHResult`).
-- **`Software`:**
-  - Novos `Write-WinForgeWingetUpgradeList` (o que tem atualização, no resumo) e `Get-WinForgeWingetVerbs`.
-  - `Get-WinForgeWingetExitResult` traduz os códigos conhecidos do winget.
-  - `Invoke-WinForgeWingetPackages`:
-    - anda pela barra de progresso;
-    - trata o pedido de reinício como feito;
-    - no fim, escreve a tabela só no console.
-  - "Todos" com a lista lida é atualizado programa por programa.
-  - As linhas soltas de `Write-Host` deram lugar a `Write-WinForgeStatus`, e as linhas "executando" a `Write-Progress`.
 
 ## Build 3.26
 
@@ -2942,30 +2406,11 @@ Revisão da tela de Reparo.
   - Agora a tela diz o que a função exige e indica a opção "Verificar se há alterações de hardware" do Gerenciador de Dispositivos.
   - Na Manutenção, a etapa aparece como ignorada.
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. As respostas do Windows foram simuladas:
 - o DISM, o SFC e o CBS.log;
 - o CHKDSK, o fsutil e o chkntfs;
 - o defrag e o pnputil.
 
 As telas rodaram no mesmo executor da janela. Os formatos de linha do CBS.log e os códigos de erro do DISM seguem a documentação da Microsoft e registros publicados por usuários, consultados em 24/10/2026. O texto exato pode variar entre versões do Windows.
-
-### Estrutura
-- **`Repair`:**
-  - `Invoke-WinForgeTool`:
-    - O andamento usa `Write-Progress`.
-    - O analisador recebe também a hora em que a ferramenta começou.
-    - Novos parâmetros `-SuccessDetail`, `-MinimumBuild`, `-MinimumVersion` e `-UnavailableHint`.
-    - A linha final vem do novo `Write-WinForgeToolOutcome`, que também escreve as observações (`Notes`) do resultado.
-    - Dentro de um fluxo (`-Embedded`), a descrição não vira mensagem.
-  - Novos `Get-WinForgeDismResult` (códigos conhecidos do DISM) e `Test-WinForgeWindowsBuildBelow`.
-  - SFC:
-    - `Get-WinForgeSfcLogSummary` conta arquivos únicos e lê os dois formatos de nome e as linhas "Could not reproject" (novo `Get-WinForgeSfcLogFileName`). A margem de tempo é de 2 segundos.
-    - O novo `Get-WinForgeSfcUnrepairedResult` monta a ressalva.
-    - O analisador deixou de ser uma closure.
-  - `Invoke-WinForgeDismAndSfc` usa mensagens em vez de texto solto. O novo `Get-WinForgeRepairFailureText` escreve a faixa de falha.
-  - CHKDSK: `Set-WinForgeChkdskStartupRepair` roda `chkntfs /C` antes de `fsutil dirty set`.
-  - `Get-WinForgeCbsLogPath` monta o caminho como texto (ele também aparece na tela) e usa `C:\Windows` quando `SystemRoot` está vazio.
-- **`Maintenance`:** a explicação do reparo offline no fim da manutenção é uma mensagem.
 
 ## Build 3.25
 
@@ -3014,29 +2459,11 @@ Revisão da tela de Segurança.
 - **Cada ameaça encontrada aparece no resumo com onde estava:** "Trojan:Win32/Wacatac.B!ml: C:\Users\ana\Downloads\crack.exe". Antes, os nomes e os arquivos ficavam só nos detalhes, e o arquivo vinha com o prefixo do Defender ("file:_C:\...").
 - As faixas: "nenhuma ameaça encontrada", "1 ameaça encontrada" ou "nenhuma ameaça nova; 1 ameaça ativa de antes".
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. As respostas do Windows foram simuladas:
 - o Windows Defender (estado, assinaturas, verificações e ameaças);
 - o firewall, a Central de Segurança e o Windows Update;
 - o Registro (UAC, Área de Trabalho Remota, edição do Windows) e o BitLocker.
 
 As telas rodaram no mesmo executor da janela. As datas de suporte do Windows são as das páginas de ciclo de vida da Microsoft, consultadas em 24/10/2026.
-
-### Estrutura
-- **`Security`:**
-  - Pontos de atenção: `New-WinForgeSecurityFinding` ganhou `Short`, o nome curto que a faixa usa.
-  - Estado da proteção:
-    - O novo `Get-WinForgeAntivirusRows` monta as linhas do antivírus para a tela e para o relatório (`Reports`).
-    - `Show-WinForgeSecurityStatus` termina com `Exit-WinForgeAction -Result`.
-  - Verificações:
-    - Novos `Write-WinForgeScanIntro` e `ConvertTo-WinForgeThreatResourceText`.
-    - `Invoke-WinForgeDefenderScan` ganhou `-SkipIntro`.
-  - Auditoria:
-    - `Get-WinForgeWindows11Retired` deu lugar a `Get-WinForgeWindowsSupportEnd` (versão e edição) e `Get-WinForgeWindowsSupportCheck`.
-    - `Get-WinForgeSecurityAuditFacts` lê também a edição e a versão do Windows.
-    - `Get-WinForgeSecurityGrade` devolve `Verified` e `Total`, e não dá nota com menos da metade do peso verificado.
-  - As datas usam `Format-WinForgeDateTime`, e as listas, `Join-WinForgeList`.
-  - As linhas soltas de `Write-Host` deram lugar a `Write-WinForgeStatus`, e as linhas "Consultando..." a `Write-Progress`.
-- **`Reports`:** a seção Segurança usa `Get-WinForgeAntivirusRows`.
 
 ## Build 3.24
 
@@ -3117,40 +2544,12 @@ Revisão da tela de Limpeza.
 **Na janela, em outras páginas**
 - A explicação das ferramentas que perguntam "Deseja continuar?" também aparece no resumo: o que a ferramenta faz e quanto pode demorar. Vale para Limpar componentes do Windows (WinSxS) e, no Reparo, para Reparar imagem e componentes (DISM), Verificar arquivos do sistema (SFC), Otimizar a unidade do sistema e Detectar dispositivos e drivers. Antes eram linhas amarelas e azuis, só nos detalhes.
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho da página e das telas foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. As respostas do Windows foram simuladas:
 - a Lixeira (as pastas `$Recycle.Bin` de cada unidade e o esvaziamento);
 - a janela "Arquivo em uso" do Windows, que a tela agora evita;
 - o envio para a Lixeira e o acesso negado;
 - a data de criação dos arquivos, que fora do Windows acompanha a de alteração.
 
 As telas rodaram no mesmo executor da janela, com pastas e arquivos de verdade. A detecção de arquivo aberto foi conferida com arquivos abertos de verdade.
-
-### Estrutura
-- **`Cleanup`:**
-  - **Lixeira:**
-    - Novos `Get-WinForgeRecycleBinFolders`, `Get-WinForgeRecycleBinContents` e `Format-WinForgeRecycleBinText`.
-    - Saíram `Get-WinForgeRecycleBinItemCount` e `Get-WinForgeRecycleBinSize`, que usavam o Shell.
-    - `Clear-WinForgeRecycleBin` recebe `-Contents` (o que já foi medido) no lugar de `-SkipCount` e devolve `FreedBytes`.
-  - **Temporários:**
-    - Novos `Get-WinForgePersonalFolders` e `Test-WinForgeTempFolderSafe`, usados por `Invoke-WinForgeFolderCleanup` e pela Limpeza personalizada.
-    - Os resultados de pasta não encontrada e de nada a limpar levam `FreedBytes = 0`.
-  - **Downloads:**
-    - `Clear-WinForgeDownloads` tem uma saída só, com `Exit-WinForgeAction -Result`.
-    - A remoção foi para o novo `Invoke-WinForgeDownloadsRemoval`, com `Test-WinForgeItemInUse` antes de enviar à Lixeira e a conferência de que o item saiu.
-    - Novo `Get-WinForgeFreedFromPartial`, usado também por `Clear-WinForgeFolderContents`.
-    - `Show-WinForgeDownloadsPreview` escreve `Write-WinForgeKeyValue`.
-    - `Measure-WinForgeFolderItems` usa a data mais recente entre alteração e criação.
-  - **Limpeza rápida:** as partes têm nome para a frase do total.
-  - **Análise e Limpeza personalizada:**
-    - Novos `Measure-WinForgeCleanupTargets` (com a barra de progresso) e `Test-WinForgeCleanupTargetAvailable`.
-    - `New-WinForgeCleanupTarget` ganhou `BinContents`.
-    - A limpeza dos alvos foi para o novo `Invoke-WinForgeCleanupTargets`.
-    - `Invoke-WinForgeCustomCleanup` tem uma saída só.
-    - `Get-WinForgeUserFolderSizes` mostra o andamento.
-  - **Página:** novo `Get-WinForgeCleanupPageStatus`.
-- **`Console`:** `Write-WinForgeStatus -Notice` escreve o aviso sem contar no desfecho da ação.
-- **`Repair`:** `Invoke-WinForgeTool` escreve a descrição e os avisos com `Write-WinForgeStatus -Type Info`.
-- **`WinForge.Gui.ps1`:** `New-GuiPageStatus` escolhe a função de resumo pela página e atende também a Limpeza.
 
 ## Build 3.23
 
@@ -3255,37 +2654,12 @@ Revisão da tela de Diagnóstico.
   - Antes, essas telas escondiam o resumo e abriam os detalhes técnicos, em fonte de terminal.
   - Quando há algo que o resumo não mostra (uma tabela, o texto de um programa), os detalhes continuam se abrindo. É o caso de Informações de rede e de Inicialização e energia.
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. A altura do resumo é calculada a partir do layout do WPF, que só a janela real faz. As respostas do Windows também foram simuladas:
 - WMI;
 - dispositivos;
 - discos e seus contadores;
 - Secure Boot;
 - log de eventos;
 - powercfg.
-
-### Estrutura
-- **`Core`:** novos `Format-WinForgeNumber`, `Join-WinForgeList`, `Get-WinForgeWindowsName` e `Get-WinForgeWindowsDisplayVersion`. Os dois últimos são usados também por `Get-WinForgeSessionInfo`.
-- **`Diagnostics`:**
-  - `Get-WinForgeDiskSummary` deixa só a consulta no `try` e ganhou `UsoPercent`. O novo `Get-WinForgeDiskSummaryText` monta a linha da tela e do relatório.
-  - `Show-WinForgeDiskSummary` escreve `Write-WinForgeKeyValue` e ganhou `-PassThru`.
-  - Novas funções:
-    - `Get-WinForgeSecureBootText` e `Get-WinForgeMemoryModulesText`;
-    - `Get-WinForgeDeviceProblemCode`, `Get-WinForgeDeviceProblemText` e `Get-WinForgeDeviceName`;
-    - `Get-WinForgeHibernationText`, usado também por `Get-WinForgeFastStartupText`;
-    - `Get-WinForgeDiskHealthStatusText` e `ConvertTo-WinForgeBatteryPercent`;
-    - `Get-WinForgeEventProviderText` e `Format-WinForgeEventOccurrences`.
-  - As tabelas (`Format-Table | Out-Host`) e as linhas soltas de `Write-Host` deram lugar a `Write-WinForgeStatus` e `Write-WinForgeKeyValue`.
-  - As telas com veredito terminam com `Exit-WinForgeAction -Result`, e `Show-WinForgeBatteryHealth` tem uma saída só.
-- **`Hardware`:** `Get-WinForgeExpoXmpStatus` escreve MT/s e reconhece a memória acima do que o módulo anuncia.
-- **`Reports`:** as seções usam os textos das telas e `Format-WinForgeDateTime`; `Invoke-WinForgeReport` termina com `-Result`.
-- **`Navigation`:** `Read-WinForgeHomeBattery` usa `ConvertTo-WinForgeBatteryPercent`, e a descrição de Sobre este PC cita o Windows e o Secure Boot.
-- **`GuiDesign`:** novo `Get-WinForgeSummaryMaxHeight`.
-- **`WinForge.Gui.ps1` e `MainWindow.xaml`:**
-  - `Add-GuiActivityFromLine` conta as linhas que o resumo não mostra.
-  - Novos `Test-GuiSummaryIsContent` e `Update-GuiSummaryHeight`.
-  - `Complete-GuiRun` e `Set-GuiResultView` usam o resumo como conteúdo da tela quando ele diz tudo.
-  - A linha que separa o resumo da faixa ganhou nome (`ActivitySeparator`) e some quando não há faixa.
-  - A altura do resumo acompanha o tamanho da tela de execução.
 
 ## Build 3.22
 
@@ -3361,33 +2735,6 @@ Revisão da tela de Manutenção.
 - **As tabelas de resultados de etapas viram linhas do resumo** ("etapa · desfecho · duração"), também no Reparo. Antes viravam linhas cheias de espaços, e as etapas ignoradas não apareciam. No terminal, as tabelas continuam alinhadas em colunas.
 - Na tela de execução, o título que uma etapa escreve logo depois da marca "Etapa N de M" não aparece repetido.
 
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF. A criação do ponto de restauração e o Agendador de Tarefas foram simulados.
-
-### Estrutura
-
-- **`Maintenance`:**
-  - Novo `Save-WinForgeMaintenanceProfileChoice`; `Read-WinForgeMaintenanceProfile` não grava mais a escolha.
-  - `Set-WinForgeMaintenanceOptions` termina com `-Result`.
-  - `Invoke-WinForgeManualStep` olha o retorno de `Open-WinForgeShortcut`.
-  - As orientações das fases viraram `Write-WinForgeStatus -Type Info` (o aviso da fase automática, `Warning`).
-  - `Invoke-WinForgeMaintenanceStep` escreve `Write-WinForgeSubStep "Etapa N de M: …"` na janela e a barra de texto no terminal.
-  - `Format-WinForgeHistoryLine` monta a linha nova, e o histórico é escrito com `Write-WinForgeKeyValue`.
-  - `Format-WinForgeHistoryDate` deu lugar a `Format-WinForgeDateTime` (`Core`).
-  - A frase de `Get-WinForgeMaintenanceResult` foi corrigida ("1 etapa terminou com ressalvas").
-- **`Schedule`:**
-  - `Show-WinForgeScheduledMaintenance` termina com `-Result` (o de `Register`/`Unregister`, ou `Skipped`).
-  - As opções da tela têm `Description`.
-  - Os resultados das limpezas são filtrados por `WinForge.Result`.
-  - As datas usam `Format-WinForgeDateTime`.
-- **`Tweaks`:** `Invoke-WinForgeRestorePoint` e `Request-WinForgeRestorePoint` recebem `-Description`. O ponto não criado vira `Failed` quando a ação é pedida sozinha. A falta do `Checkpoint-Computer` marca `NotCreated` e `Unavailable`.
-- **`Console`:** `Write-WinForgeResultTable` escreve linhas compactas dentro da janela.
-- **`Core`:** novo `Format-WinForgeDateTime`.
-- **`GuiDesign`:** `Get-WinForgeActivityEntry` reconhece `[-]` (`Skip`), e o novo `Get-WinForgeFactEntry` reconhece as linhas de `Write-WinForgeKeyValue` pelas cores dos pedaços.
-- **`WinForge.Gui.ps1`:**
-  - `Add-GuiActivityFromLine` recebe as cores de todos os pedaços da linha.
-  - `New-GuiActivityRow` desenha `Fact` e `Skip`.
-  - `Add-GuiActivity` não repete o título de seção logo depois da marca da etapa.
-
 ## Build 3.21
 
 Revisão da tela de Início. A nota de saúde agora diz quando parte do PC não pôde ser lida, em vez de mostrar uma nota cheia. Ela também não some mais quando falha, e uma manutenção antiga e com problemas não desconta menos que uma antiga sem problemas. Os cartões de Seu PC ganharam duas linhas de mesma altura, e os tamanhos saem com vírgula decimal em todas as telas. Os atalhos de Por onde começar não repetem mais o que a página já oferece. Uma leitura que cruza o fim de uma ação não fica guardada, e trocar o tema não lê o PC de novo.
@@ -3445,31 +2792,6 @@ Revisão da tela de Início. A nota de saúde agora diz quando parte do PC não 
 **Verificação rápida (`-Action Check`)**
 - **Corrigido: sem nenhuma leitura da nota, o resultado era "Tudo em dia" (código 0).** Agora é "não foi possível avaliar" (código 3), com o motivo em `Error`, a não ser que a auditoria tenha achado algo grave.
 - O JSON traz `Health.Unread`, com o que não pôde ser lido. Quando falta alguma parte, o texto diz "Nenhum ponto de atenção no que foi lido".
-
-**O que não foi visto:** a janela não foi aberta num Windows de verdade. O desenho foi conferido numa prévia em HTML com as mesmas medidas e cores, e o script da janela foi validado contra as bibliotecas do WPF.
-
-### Estrutura
-
-- **`Core`:**
-  - `Format-WinForgeBytes` usa vírgula decimal e três algarismos significativos (`Get-WinForgeNumberFormat`).
-  - Novo `Format-WinForgeCount`, para singular e plural.
-  - `Get-WinForgeSessionInfo` traz `WindowsName` (do `Win32_OperatingSystem`) e `WindowsVersion` (`DisplayVersion` do Registro).
-- **`Navigation`:**
-  - Os fatos do Início têm `Value` e `Detail`, e os pontos de atenção têm `Severe`.
-  - `Get-WinForgeHealthScore -Unread` mantém a ordem dos empates e devolve `Unread`.
-  - Cada etapa devolve `Unread`.
-  - Novas funções: `Get-WinForgeHealthSummary`, `Test-WinForgeHealthKnown`, `Get-WinForgeUserDisplayName`, `Get-WinForgeHomeAntivirusText`, `Get-WinForgeHomeScoredFacts` e `Get-WinForgeHomeOptionalFacts`.
-  - A bateria passou a ser o último cartão e a última etapa.
-  - O cartão de manutenção leva a `maintenance.history`, e os atalhos do Início mudaram.
-- **`GuiDesign`:** `Get-WinForgeHealthHeadline` considera a leitura parcial.
-- **`Reports`:** a verificação rápida inclui `Health.Unread`, uma nota quando falta alguma parte e `Unknown` quando nada da nota foi lido.
-- **`Maintenance`:** `Get-WinForgeMaintenancePageStatus` mostra a atenção e o atraso juntos.
-- **`WinForge.Gui.ps1`:**
-  - `New-GuiFactCard` faz cartões de duas linhas com altura fixa; `Set-GuiHomeFact` preenche o complemento e o balão.
-  - `Update-GuiHealthCard` ganhou `-Failed` e o estado "sem avaliação"; a hora e o Atualizar foram para a primeira linha.
-  - Novas funções `Add-GuiHomeNotices` e `Get-GuiHomeReadingText`, e o contador `$script:HomeCacheVersion`.
-  - `Show-GuiHomePage -Rerender` e `Show-GuiPage -Rerender` refazem a página no lugar.
-  - `New-GuiActionCard -Highlight` permite tirar o destaque dos atalhos.
 
 ## Build 3.20
 
@@ -3537,32 +2859,10 @@ Interface nova. A janela ganhou um visual mais limpo e atual, em temas claro e e
   - Enquanto o WinForge espera a resposta, a barra de progresso para e o estado diz "Esperando a sua resposta".
 - **A barra de execução** (a que aparece no alto quando você está em outra página) mostra o tempo e a etapa: "Em execução · 01:15 · Limpeza do Windows". Quando o WinForge espera uma resposta, ela diz "Precisa da sua resposta". Quando a ação termina sem você ver, o ponto fica na cor do resultado e o botão vira "Ver resultado".
 
-**O que não foi visto:** a janela nova não foi aberta num Windows de verdade durante este trabalho. Para conferir o desenho, usei uma prévia em HTML com as mesmas cores, ícones e medidas. O XAML e o script da janela foram validados contra as bibliotecas do WPF. Os pontos abaixo ainda precisam de uma conferência no Windows:
 - o desenho final com a fonte Segoe UI;
 - as animações;
 - a cor da barra de título;
 - a troca automática de tema ao mudar o Windows.
-
-### Estrutura
-
-- Novo módulo `GuiDesign` (na lista `Gui` de `Modules.psd1`). Ele guarda:
-  - as paletas clara e escura da janela e da saída técnica (`Get-WinForgePalette`, `Get-WinForgeConsolePalette`, `Get-WinForgeLevelColors`);
-  - os ícones, como geometrias de traço numa grade 24 × 24 (`Get-WinForgeIconData`), e o ícone de cada página, item e cartão do Início (`Get-WinForgeIconName`);
-  - a preferência de tema, na chave `Theme` de `settings.json` (`Get-WinForgeThemePreference`, `Resolve-WinForgeTheme`, `ConvertTo-WinForgeColorRef`);
-  - a frase da nota (`Get-WinForgeHealthHeadline`);
-  - a leitura das linhas da saída para o resumo (`Get-WinForgeActivityEntry`, `Test-WinForgeRuleLine`, `Get-WinForgeSectionTitle`).
-- `gui/MainWindow.xaml` foi refeito:
-  - as cores são pincéis `DynamicResource`, trocados na hora pelo tema;
-  - estilos novos: `PillButton`, `PrimaryButton`, `DangerButton`, `GhostButton`, `NavButton`, `NavButtonSelected`, `OptionButton`, `ListCheckBox`, `SlimProgress`, a chave e as barras de rolagem;
-  - a tela de execução tem a etapa, o resumo, o resultado, as perguntas e os detalhes técnicos.
-- `WinForge.Gui.ps1`:
-  - Novas funções de tema: `Set-GuiTheme`, `Update-GuiTheme` (chamada quando a janela é ativada), `Set-GuiThemePreference` e `Set-GuiTitleBarTheme` (atributos do DWM).
-  - Novas funções de ícone e de construção de controles: `New-GuiIcon`, `New-GuiButton -Kind -Icon`, `New-GuiChip`, `New-GuiNote`, `New-GuiNotice`, `New-GuiScoreRing`.
-  - O resumo da execução usa `Add-GuiActivityFromLine` e `Add-GuiActivity` (últimas 300 linhas). Os detalhes técnicos usam `Set-GuiDetailsOpen`, e o estado da pergunta, `Set-GuiPromptState`.
-  - A saída guarda o nome da cor de cada trecho, para ser recolorida quando o tema muda.
-  - Não sobrou nenhuma cor escrita à mão no script.
-- `GuiHost`: `Get-WinForgeRunView` devolve `ResultText`, montado pelo novo `Get-WinForgeResultSentence` (a frase do resultado com a duração).
-- `Repair`: os textos de falha e ressalva do DISM/SFC não falam mais em "saída acima".
 
 ## Build 3.19
 
@@ -3601,13 +2901,6 @@ Revisão da tela Sobre o WinForge: o endereço de download da nova versão passa
 **Desempenho** (medido em Linux, com leituras simuladas; no Windows não foi medido)
 - O resumo do alto da página lê só as preferências, duas pastas e o cabeçalho do ícone; na simulação, leva cerca de 4 ms (mediana), e abrir a tela "Versão e pastas" no console, cerca de 7 ms. Nenhuma consulta à internet acontece ao abrir a página: a verificação de nova versão continua só quando você a pede.
 
-### Estrutura
-
-- `AppUpdate`: `Test-WinForgeReleaseDownloadUrl` passa a validar o endereço como `Uri` (esquema https, host github.com, porta padrão, sem credenciais, sem `..`/`.` nem `%2e` no caminho, sem espaços nem `\`, com um nome de arquivo depois de `/<repositório>/releases/download/`); `Invoke-WinForgeUpdateCheck` leva a versão para os detalhes das faixas e usa a lista de releases do projeto quando a resposta não traz `PageUrl`.
-- `Launcher`: `New-WinForgeShortcutFiles` devolve `Warning` quando falta o ícone ou o `AppId`, e o texto de `Ok` diz onde o atalho ficou; `New-WinForgeAppShortcut` separa "nenhuma escolha" (`Skipped`, cancelado) de "lugar indisponível" (`Failed`); `Set-WinForgeAdminMode` termina sempre com um resultado explícito; `Show-WinForgeAbout` devolve `Warning` quando falta o ícone; novo `Get-WinForgeAboutPageStatus` (linhas `Label`, `Text`, `Level` do resumo da página).
-- `WinForge.Gui.ps1`: `New-GuiPageStatus` atende também a página `app`; `Open-GuiShortcut` troca o motivo da falha para as pastas de logs e de Downloads.
-- `Navigation`: descrição da página Sobre o WinForge e palavras de busca de três itens.
-
 ## Build 3.18
 
 Revisão da tela de Ajustes do Windows: a faixa de resultado da chave de cada ajuste passa a dizer o que aconteceu (aplicar em notebook deixa de sair amarelo, sem Administrador fica vermelho), o Explorador que não reinicia vira um aviso com o que fazer em vez de uma falha do ajuste, aplicar recomendados, perfis ou importar sem que nenhum ajuste funcione deixa de sair "com ressalvas", a lista reabre no ajuste que acabou de mudar, os ajustes de sistema avisam que pedem Administrador antes do clique e a busca reconhece "pastas ocultas", "gamer" e "lock screen".
@@ -3637,12 +2930,6 @@ Revisão da tela de Ajustes do Windows: a faixa de resultado da chave de cada aj
 
 **Desempenho** (medido em Linux, com um powercfg simulado que gasta 60 ms por chamada; no Windows o ganho depende do tempo real do powercfg e não foi medido)
 - **Ler o estado da página de Ajustes consulta o powercfg uma vez a menos** (de 4 para 3 processos) quando o plano de energia ativo não é o Alto desempenho, que é o caso comum: o ajuste "Plano de energia Alto desempenho" chamava `powercfg /getactivescheme` duas vezes. Na simulação, a leitura caiu de cerca de 250 ms para cerca de 195 ms.
-
-### Estrutura
-
-- `Tweaks`: `Get-WinForgeActivePowerScheme` devolve o GUID e o texto do plano ativo numa consulta só (`Get-WinForgeActivePowerSchemeGuid` usa a mesma); `Get-WinForgeTweakOverview` leva `RequiresAdmin`; `Request-WinForgeExplorerRestart` pergunta e reinicia o Explorador devolvendo `Restarted`, `Declined` ou `Failed`, usada pelo alternar, pelo lote e pelo desfazer tudo; `Invoke-WinForgeTweakToggle` e `Invoke-WinForgeRevertAllTweaks` entregam o desfecho a `Exit-WinForgeAction -Result`; `Invoke-WinForgeTweakBatch` devolve `Failed` quando nada foi aplicado; `Read-WinForgeTweakExport` não repete Ids; `Invoke-WinForgeTweakImportFile` separa "arquivo sem ajustes conhecidos" de "tudo já aplicado"; `Invoke-WinForgeTweakRevert` lê o original do backup sem depender de a propriedade existir.
-- `WinForge.Gui.ps1`: `Start-GuiAction -FocusTweak` guarda o ajuste na última ação; `Show-GuiRunBack` e "Executar de novo" o repassam à página de Ajustes; `New-GuiTweakRow` mostra a nota de Administrador.
-- `Navigation`: novas palavras de busca dos ajustes e dos perfis.
 
 ## Build 3.17
 
@@ -3690,13 +2977,6 @@ Revisão da tela de Rede: o reparo que não funciona deixa de sair amarelo e de 
 - **Teste de velocidade:** numa conexão simulada de cerca de 8 Mbps, a versão antiga marcava 6,6 a 6,8 Mbps e a nova marca 7,9; numa de cerca de 130 Mbps, a antiga marcava 86 a 94 Mbps e a nova 122 a 133. A diferença é o tempo de abrir a conexão, que antes entrava na conta.
 - **Menos espera, por conta feita a partir dos limites do código (não medida no Windows):** o reparo em que nenhum comando funciona deixa de esperar a conexão voltar (4 tentativas de 3 s, pelo menos 12 s); a espera por resposta do ping no PowerShell 7 cai de 5 s para 3 s; a consulta do IP público espera até 5 s em vez de 8 s.
 
-### Estrutura
-
-- `Network`: `Test-WinForgeIpAddressText` (um endereço IP de verdade, em vez de qualquer texto) usado pelo veredito do ping e pela consulta do IP público; `Get-WinForgePingVerdict` considera `Resolved` (o DNS do PC resolve o nome); `Get-WinForgeNetworkRepairCommands` marca `NeedsRestart`; o reparo devolve `Failed` quando todos os comandos falham e leva `RebootRequired` ao resultado; `Measure-WinForgeDownload` (`-BaseUrl`) e `Measure-WinForgeUpload` (`-Url`) aceitam outro endereço e tratam a queda no meio da transferência; o teste de velocidade entrega o resultado a `Exit-WinForgeAction -Result` com download e upload separados.
-- `NetworkTools`: trocar e desfazer o DNS e o relatório de Wi-Fi entregam o desfecho a `Exit-WinForgeAction -Result`, com singular e plural nas frases.
-- `GuiHost`: `Get-WinForgePromptPlan` não promove a opção de sair (`Exit`) a botão de destaque só porque ela é a padrão do ENTER.
-- `Navigation`: nova ordem da página Rede e novas palavras de busca.
-
 ## Build 3.16
 
 Revisão da tela de Programas: instalar, buscar e desinstalar passam a terminar com o desfecho certo (o programa que falha deixa a faixa vermelha; nada marcado e recusar a confirmação ficam cinza), o código de erro do winget aparece também em hexadecimal, a leitura da lista do winget deixa de demorar alguns segundos quando os nomes têm "…", "™" ou "–", o backup deixa de sair verde quando não havia nada a guardar e a página ganha uma ordem em grupos e uma busca que reconhece o nome dos programas.
@@ -3735,14 +3015,6 @@ Revisão da tela de Programas: instalar, buscar e desinstalar passam a terminar 
 **Desempenho** (medido em Linux, com uma tabela de 400 programas gerada para o teste; no Windows os números mudam, e quem domina o tempo é o próprio winget)
 - **Ler a lista do winget** com nomes que têm "…", "™" ou "–" passou de 2,9 s para 0,1 s (com "…", de 1,4 s para 0,08 s): antes, qualquer caractere acima de U+1100 mandava a linha pela leitura lenta, mesmo sendo de uma coluna só. Com ideogramas ou hangul, de 1,2 s para 0,7 s; tabelas só com ASCII continuam em cerca de 0,2 s.
 
-### Estrutura
-
-- `Software`: instalar os essenciais, buscar, desinstalar e listar entregam o resultado a `Exit-WinForgeAction -Result` (novo `Get-WinForgeLastResult`, que pega o último resultado entre as saídas); `Get-WinForgeSafeSubstring` usa o caminho rápido para tudo o que não é largo nem combinado e conta as colunas dos caracteres abaixo de U+0300 sem chamar `Get-WinForgeCharWidth`.
-- `WindowsFeatures`: o resultado final não leva mais o detalhe "reinício necessário" (a marca `RebootRequired` já pede o reinício).
-- `Startup`: o resultado final leva a contagem de itens desativados ou reativados.
-- `Backup`: backup vazio vira `Skipped`; a restauração interpreta o código do `winget import` com `Get-WinForgeWingetExitResult`, distingue `Skipped` e leva `RebootRequired` ao resultado final; removido o dado `Folder` dos resultados do backup, que nenhuma tela lia.
-- `Navigation`: nova ordem da página Programas e novas palavras de busca.
-
 ## Build 3.15
 
 Revisão da tela de Atualizações: "Windows em dia" deixa de aparecer como "nada feito", uma atualização que sumiu da lista ou que não foi baixada deixa de passar em silêncio, o pedido de reinício aparece uma vez só, os erros do winget ficam vermelhos e a tela deixa de despejar centenas de linhas do indicador de espera e das barras de download.
@@ -3774,13 +3046,6 @@ Revisão da tela de Atualizações: "Windows em dia" deixa de aparecer como "nad
 **Desempenho** (medido em Linux, com um winget simulado; no Windows os números mudam, e quem domina o tempo é o próprio Windows Update/winget)
 - Decidir se uma linha de progresso aparece custa cerca de 0,1 ms; linhas sem "%" nem " / " nem são examinadas. Conferido, sem mudança: cada instalação consulta o Windows Update duas vezes (uma para montar a lista e outra dentro do instalador, porque os objetos da consulta não podem ser passados de uma execução interna para a outra); não alterei isso sem poder testar no Windows.
 
-### Estrutura
-
-- `Core`: `Get-WinForgeProgressPercent` passa a ler também as barras do winget (blocos com percentual ou com "tamanho / total"); novo `Test-WinForgeEchoLine` (esconde os quadros do indicador e limita as barras), usado por `Invoke-WinForgeCapture -Echo` e por `Invoke-WinForgeNative` na janela.
-- `WindowsUpdate`: o instalador devolve também `Missing` e `NotDownloaded`; novos `Get-WinForgeUpdateRunDetail` e `Get-WinForgeUpdateTitleById`; `Get-WinForgeUpdateOutcome` reconhece os códigos 0 e 1.
-- `Software`: `Update-WinForgeSoftware` entrega o resultado do plano a `Exit-WinForgeAction -Result`; o ramo "Atualizar todos" interpreta o código de saída com `Get-WinForgeWingetExitResult`.
-- `Navigation`: nova ordem e novo destaque na página Atualizações; palavras de busca.
-
 ## Build 3.14
 
 Revisão da tela de Reparo: um SFC que não chegou a rodar e um CHKDSK interrompido deixam de terminar como "concluído", os códigos de erro ficam legíveis, a tela deixa de despejar centenas de linhas de progresso e o resumo diz quanto cada etapa levou e por que é preciso reiniciar.
@@ -3805,13 +3070,6 @@ Revisão da tela de Reparo: um SFC que não chegou a rodar e um CHKDSK interromp
 
 **Desempenho** (medido em Linux, com ferramentas simuladas; no Windows os números mudam, e quem domina o tempo é o próprio DISM/SFC)
 - Reconhecer uma linha de progresso custa cerca de 0,2 ms; linhas sem "%" nem são examinadas. Conferido, sem mudança: o reparo completo com verificação prévia consulta o estado da imagem uma vez e cada ferramenta roda uma vez só.
-
-### Estrutura
-
-- `Core`: novos `Get-WinForgeProgressPercent` (lê o percentual das barras do DISM e do SFC) e `Test-WinForgeProgressStepShown` (decide quais linhas aparecem); `Invoke-WinForgeCapture` passa a usá-los na saída ao vivo, sem alterar `Lines` nem `Text`.
-- `Repair`: novos `Format-WinForgeExitCode` e `Invoke-WinForgeTimedRepairStep`; `Invoke-WinForgeTool` aceita `-AfterResult`; `Get-WinForgeSfcResult` reconhece o SFC que não rodou; `Start-WinForgeChkdsk` trata o código negativo como interrupção.
-- `Console`: `Format-WinForgeOutcomeSummary` resume o cancelamento como "Operação cancelada.".
-- `Navigation`: palavras de busca da página Reparo.
 
 ## Build 3.13
 
@@ -3848,11 +3106,6 @@ Revisão da tela de Limpeza: pasta que o Windows não deixa ler deixa de parecer
 **Busca**
 - Novas palavras levam à tela certa: "windows.old", "hiberfil", "hibernação", "pagefile", "memória virtual" e "swapfile" (Analisar uso de espaço); "otimização de entrega" e "delivery optimization" (Limpeza personalizada); "apagar", "excluir" e "remover" (Downloads). As descrições dos cartões de Analisar uso de espaço, Limpeza personalizada e Downloads ficaram mais curtas.
 
-### Estrutura
-
-- `Cleanup`: novos `Get-WinForgeFolderListing` (diz se a pasta pôde ser lida), `Measure-WinForgeFolderItems` (mede os itens numa passada só, sem seguir atalhos) e `Get-WinForgeFolderSize` (nulo quando a pasta não pôde ser lida); `Clear-WinForgeFolderContents` devolve `Removed`, `Skipped`, `SizeBefore` e `Freed` (saíram `Remaining` e `SizeAfter`) e aceita `-Entries`; `Clear-WinForgeRecycleBin` aceita `-SkipCount`; `Get-WinForgeDownloadsItems` saiu, no lugar da listagem e da medição novas; os alvos da limpeza e os arquivos do sistema ganham `Unreadable`.
-- `Navigation`: palavras de busca e descrições da página Limpeza.
-
 ## Build 3.12
 
 Revisão da tela de Segurança: o "tudo em ordem" deixa de aparecer quando parte da proteção não pôde ser lida, a auditoria deixa de dar nota A sem ter lido o antivírus, e as verificações conferem o Defender antes de fazer perguntas à toa.
@@ -3881,11 +3134,6 @@ Revisão da tela de Segurança: o "tudo em ordem" deixa de aparecer quando parte
 
 **Busca**
 - Novas palavras levam à tela certa: "criptografia", "secure boot", "senha" e "entrada automática" (Auditoria), "ransomware" e "trojan" (verificações), "pasta suspeita" (Verificar uma pasta) e "quarentena" e "windows security" (Segurança do Windows).
-
-### Estrutura
-
-- `Security`: novos `New-WinForgeSecurityFinding` (os pontos de atenção ganham `Id`), `ConvertTo-WinForgeScanPath` e `Get-WinForgeWindows11Retired`; `Test-WinForgeDefenderReady` devolve também o `Antivirus` lido; `Invoke-WinForgeSignatureUpdate` aceita `-Current`; `Get-WinForgeSecurityGrade` informa `Unverified`; `Get-WinForgeAntivirusStatus` só consulta a Central de Segurança quando o Defender não protege.
-- `Navigation`: palavras de busca da página Segurança; cartão Proteção do Início. `Reports`: linha "Ameaças ativas" quando o Defender ativo não responde.
 
 ## Build 3.11
 
@@ -3918,11 +3166,6 @@ Revisão da tela de Diagnóstico: o log de eventos que não pode ser lido deixa 
 **Reinício pendente**
 - A tela lia o Registro duas vezes para chegar à mesma conclusão; agora usa os motivos já lidos.
 
-### Estrutura
-
-- `Diagnostics`: novo `Get-WinForgeFastStartupText`; `Get-WinForgeRecentCriticalEvents` devolve lista vazia só para "não há eventos" e lança os outros erros; `ConvertTo-WinForgeEventSummary` agrupa em uma passada; `Get-WinForgeDiskHealth` informa `CountersAvailable`; `New-WinForgeBatteryReading` normaliza os ciclos. A soma da RAM e o tipo de memória não dependem mais de haver módulos de memória na resposta do Windows (máquinas virtuais).
-- `Reports`: a linha de saúde do disco no relatório usa `CountersAvailable`.
-
 ## Build 3.10
 
 Revisão da tela de Manutenção: o desfecho da Manutenção recomendada passa a refletir as etapas, a página ganha um resumo no alto e a Manutenção agendada e o ponto de restauração deixam de dar falsos avisos.
@@ -3948,14 +3191,6 @@ Revisão da tela de Manutenção: o desfecho da Manutenção recomendada passa a
 **Ponto de restauração**
 - **Já havia um ponto recente deixa de ser ressalva.** O Windows cria no máximo um ponto a cada 24 horas; se existe um de menos de 24 horas, o WinForge diz isso e a etapa fica *Ignorada*, não "Concluído com ressalvas" na Manutenção recomendada nem ponto de atenção no Início. Se a data do ponto não puder ser lida, continua sendo um aviso, como antes.
 
-### Estrutura
-
-- `Maintenance`: novos `Get-WinForgeMaintenanceResult` (o desfecho a partir das etapas) e `Get-WinForgeMaintenancePageStatus` (o resumo). `Invoke-WinForgeMaintenanceClosing` devolve se o reinício ficou pendente. `Get-WinForgeDefaultMaintenanceProfile` substitui três cópias da mesma leitura do perfil padrão.
-- `Tweaks`: `ConvertFrom-WinForgeWmiDate` e `Get-WinForgeLatestRestorePointTime` (a data do ponto mais recente).
-- `Schedule`: a limpeza e o relatório isolados por `try/catch`; `Failed` quando nada funcionou.
-- `Navigation`: `maintenance.schedule` marcado como Administrador.
-- `WinForge.Gui.ps1`: `New-GuiPageStatus` desenha o resumo; `Show-GuiListPage` o coloca antes dos cartões.
-
 ## Build 3.9
 
 Revisão da tela de Início: uma nota de saúde mais fiel, a janela respondendo enquanto o PC é lido e o botão Atualizar.
@@ -3974,12 +3209,6 @@ Revisão da tela de Início: uma nota de saúde mais fiel, a janela respondendo 
 - Um erro no meio da leitura da proteção deixava dois cartões "Proteção" e pontos de atenção pela metade; agora o cartão vira "Não foi possível ler" e nenhum ponto é contado.
 - Sem a variável de ambiente `COMPUTERNAME`, o cartão do computador não começa mais com "·": usa o nome da máquina.
 
-### Estrutura
-
-- `Navigation`: `Get-WinForgeHomeStatus` virou a soma de etapas (`Get-WinForgeHomeSteps`, `Read-WinForgeHomeStep` e um leitor por etapa, cada um sem deixar erro escapar); a saída é a mesma de antes. A regra do limite da nota ficou em `Get-WinForgeHealthScore`.
-- `WinForge.Gui.ps1`: `Update-GuiHomeFacts` (lia tudo de uma vez) deu lugar a `Start-GuiHomeRead`, `Step-GuiHomeRead`, `Complete-GuiHomeRead`, `Show-GuiHomeResult`, `Request-GuiHomeRefresh` e ao cache (`Get-GuiHomeSnapshot`, `Clear-GuiHomeCache`). `Set-GuiAutomationName` e `Set-GuiDock` substituem as chamadas diretas ao WPF.
-- O aviso do Início usa as cores do nível Warn da própria janela, em vez de repetir os valores.
-
 ## Build 3.8
 
 Revisão da busca (Ctrl+K) e dos atalhos de teclado da janela: resultados mais certeiros, digitação mais leve e o teclado completo.
@@ -3997,11 +3226,6 @@ Revisão da busca (Ctrl+K) e dos atalhos de teclado da janela: resultados mais c
 **Teclas de atalho**
 - **Ctrl+1 a Ctrl+9, Ctrl+0, Ctrl+K, Ctrl+F e F5 só valem com a tecla sozinha:** Ctrl+Alt (o AltGr do teclado ABNT2, que digita ¹ ² ³ com AltGr+1/2/3) e Ctrl+Shift não disparam mais nada.
 - **Enter com a caixa vazia** depois de um Esc não reabre mais o primeiro resultado da busca anterior.
-
-### Estrutura
-
-- `Navigation`: a busca foi reescrita sobre um índice (`Get-WinForgeSearchIndex`) com pontuação por começo de palavra, palavras de ligação, radical (`Get-WinForgeSearchStem`) e palavras extras por item e por ajuste; as regras das teclas ficam em `Resolve-WinForgeKeyAction` e os dados dos cartões em `Get-WinForgeSearchCardItem`, `Get-WinForgeSearchContext`, `Get-WinForgeSearchSummary`, `Get-WinForgeSearchFocus` e `Get-WinForgeSearchSuggestions`. A tabela de acentos tinha uma letra a mais, e `ç`, `ñ`, `ý` e `ú` eram trocados pela letra errada (a busca ainda funcionava porque o texto digitado e o índice sofriam a mesma troca); corrigida.
-- Removidos o estilo `GhostButton` (nunca usado) da janela e a função `Get-WinForgeShortcutNames` (nenhuma tela a chamava).
 
 ## Build 3.7
 
@@ -4057,13 +3281,6 @@ Avaliação da 3.6 página por página (interface, fluxos, possíveis falhas) e 
 - **Instalar atualizações do Windows:** a soma do tamanho a baixar falhava quando todas as atualizações já estavam baixadas e o PowerShell estava em modo estrito.
 - **Trocar o DNS:** desfazer com um adaptador do backup que não está mais ativo podia falhar no modo estrito (índice em lista vazia).
 
-### Estrutura
-
-- Módulos novos: `Startup`, `Backup`, `NetworkTools`, `WindowsUpdate`, `WindowsFeatures`, `PreinstalledApps` e `AppUpdate`, todos em `modules/Modules.psd1`.
-- Dados novos em `%LOCALAPPDATA%\WinForge`: `maintenance-history.json`, `dns-backup.json` e `settings.json`. Backups, ajustes exportados e relatórios de Wi-Fi vão para `Documentos\WinForge`.
-- `Reports`: `Get-WinForgeCheckReport`, `Get-WinForgeCheckLevel`, `Get-WinForgeCheckExitCode`, `ConvertTo-WinForgeCheckJson` e `Show-WinForgeCheckReport`.
-- `Navigation`: nota de saúde do Início (`Get-WinForgeHealthScore`, `Get-WinForgeHomeStatus`) e itens novos nas páginas Manutenção, Segurança, Limpeza, Atualizações, Programas, Rede, Ajustes do Windows e Sobre o WinForge.
-
 ## Build 3.6
 
 Revisão da 3.5 página por página, a partir de um caso real: o reparo da Manutenção sempre pulava o DISM.
@@ -4074,11 +3291,6 @@ Revisão da 3.5 página por página, a partir de um caso real: o reparo da Manut
 - **Reparo > Reparar o Windows (DISM + SFC)** continua rodando o DISM completo sempre, antes do SFC.
 - **Verificar arquivos do sistema (SFC)** sozinho: a tela avisa que, se sobrar algo que ele não consiga reparar, o caminho é **Reparar o Windows (DISM + SFC)**, que corrige a imagem antes.
 - **Testar velocidade da internet:** o resultado não aparece mais duas vezes (uma linha "medido" e o quadro "Resultado" com os mesmos números).
-
-### Estrutura
-
-- `Repair`: o resultado do SFC leva o fato `Unrepaired`, que `Invoke-WinForgeDismAndSfc` lê para decidir o DISM de recuperação (nunca o texto da mensagem).
-- Removidas `Test-WinForgeNavigation` e `Get-WinForgeShortcutTitle`, funções de conferência que nada no programa chamava.
 
 ## Build 3.5
 
@@ -4099,11 +3311,6 @@ Revisão da 3.4, página por página (nomes, dados mostrados, interação, códi
 - Host gráfico: a leitura da versão do progresso usa `Volatile.Read` no lugar da API obsoleta, mantendo compatibilidade com Windows PowerShell 5.1 e PowerShell 7.
 - Publicação: normalização das quebras de linha do README e da licença para evitar falhas de formatação e avisos do Git.
 
-### Estrutura
-
-- `Core`: `Invoke-WinForgeInBackground` (executa um bloco em outro runspace, com tempo limite, esperando em fatias curtas para o Parar continuar funcionando). Removidas `Get-WinForgeFolderSize` e `Get-WinForgeRegistryDWord`, sem nenhum uso.
-- `Security`: `Get-WinForgeSecurityStatus` não consulta mais o Windows Update (a tela o faz à parte, e o relatório nunca esperou por ele); `Select-WinForgeScanTarget`. `Diagnostics`: `Get-WinForgePendingWindowsUpdates` roda a consulta COM em segundo plano. `Cleanup`: `Get-WinForgeWindowsTempPath`.
-
 ## Build 3.4
 
 Cinco ideias novas e a verificação do antivírus do Windows na Manutenção.
@@ -4121,13 +3328,6 @@ Cinco ideias novas e a verificação do antivírus do Windows na Manutenção.
 - **Saúde da bateria** (Diagnóstico, só leitura, para notebooks): carga e situação atuais, capacidade de fábrica, capacidade atual com a carga completa, saúde em porcentagem e ciclos de carga, a partir do relatório do próprio Windows (`powercfg /batteryreport`), com a leitura direta do WMI como alternativa quando o relatório não vem. Em um computador sem bateria, a tela diz isso. O relatório HTML do WinForge ganha a seção **Bateria** em notebooks e a seção **Segurança** em qualquer computador.
 - Versão **3.4** em **Sobre o WinForge** e no relatório.
 
-### Estrutura
-
-- Módulos novos: `Security` (estado, verificação, assinaturas, ameaças) e `Schedule` (XML da tarefa, registro, remoção, execução e tela), ambos na lista de `modules/Modules.psd1`.
-- `Diagnostics`: leitura da bateria (XML do `powercfg` com WMI como alternativa), `Get-WinForgeStartupItems` e `Get-WinForgePendingWindowsUpdates`.
-- `Core`: `Get-WinForgeRegistryValues`; `last-maintenance.json` guarda o instantâneo de antes e de depois (arquivos antigos continuam legíveis; um arquivo corrompido é ignorado).
-- `WinForge.Console.ps1` aceita `-Action ScheduledMaintenance`, que é o que a tarefa agendada executa.
-- `Navigation`: nova página `security`; os itens `maintenance.restore`, `maintenance.schedule`, `maintenance.task-scheduler` e `diagnostics.battery`; `Shortcuts`: `SystemRestore`, `WindowsSecurity` e `TaskScheduler`.
 ## Build 3.3
 
 ### Mudou para quem usa
@@ -4153,13 +3353,6 @@ Revisão página por página da barra lateral: nomes, ordem, o que cada tela mos
 - **Atualizações e Programas:** o texto do winget aponta para os outros itens da página Atualizações (Windows Update, drivers opcionais, Microsoft Store); "Listar programas instalados" aponta para "Programas > Desinstalar programas". Um plano de atualização com ação desconhecida agora é falha, nunca sucesso silencioso.
 - **Ajustes do Windows:** em **Aplicar ajustes recomendados**, se o ponto de restauração não puder ser criado o WinForge oferece ativar a Proteção do Sistema e, sem o ponto, **só aplica se você confirmar** (padrão: não). **Desfazer ajustes do WinForge** avisa quando os backups são de ajustes que esta versão não conhece (e não finge desfazer) e mostra o total desfeito; a mensagem de "Ajuste aplicado" explica como desfazer.
 
-### Estrutura
-
-- `Core`: `Get-WinForgeSystemDriveSpace` e `Test-WinForgeDnsResolution`; `Get-WinForgeDiskSpaceLevel` deixou de ler um valor inválido como "0 bytes livres" (o `TryParse` zera a saída quando falha).
-- `Console`: `New-WinForgeResult` ganhou `-Data` (fatos para quem decide, como `RebootRequired` e `FreedBytes`), com `Get-WinForgeResultData` e `Test-WinForgeResultFlag`.
-- `Navigation`: os fatos da tela inicial vêm de `Get-WinForgeHomeStatus` (testável, sem WPF); `Launcher`: `Show-WinForgeAbout`; `Tweaks`: `Request-WinForgeRestorePoint` (ponto de restauração + oferta de ativar a proteção) compartilhado pelas telas.
-- Código removido ou unificado: leituras de disco/reinício/manutenção que estavam repetidas na janela, uma atribuição sem uso na Manutenção, `LogsButton` (agora é um item da tabela), título duplicado na janela.
-
 ## Build 3.1
 
 Ícone próprio e atalho na Área de Trabalho.
@@ -4172,10 +3365,6 @@ Revisão página por página da barra lateral: nomes, ordem, o que cada tela mos
 - `WinForge-Console.cmd -Action Shortcut` cria o atalho na Área de Trabalho sem abrir a janela e sem pedir Administrador.
 - A pasta de logs e relatórios também está na nova página (e, portanto, no menu de texto).
 - O WinForge confere o arquivo do ícone (vazio, cortado ou que não é ícone vira "sem ícone") e confere se o atalho realmente apareceu depois de gravar (a proteção contra ransomware do Windows pode bloquear a Área de Trabalho sem avisar).
-
-### Estrutura
-
-- Novos módulos: `Shell` (COM e API do shell: gravar `.lnk`, pastas especiais, AppUserModelID) e `Launcher` (o que o atalho executa e onde é criado). Novos arquivos `assets/WinForge.ico` e `assets/WinForge.svg` (fonte editável).
 
 ## Build 3.0
 
@@ -4206,13 +3395,6 @@ Reorganização completa do projeto. A interface com janela passa a ser a princi
 - Perguntas: opções passadas em formatos diferentes (tabela de hash com chaves opcionais ou objeto) são normalizadas em um único lugar (`ConvertTo-WinForgeOptionList`); chaves ausentes não quebram mais.
 - O modo janela é consultado só por `Test-WinForgeGuiMode`, que não falha com `Set-StrictMode`.
 - Importação dos módulos tolera colchetes no caminho da pasta (o `Import-Module` os lê como curinga), no menu de texto, na janela e na execução das ações.
-
-### Estrutura
-
-- Módulos reorganizados e listados em um único lugar (`modules/Modules.psd1`).
-- Tabela única de navegação (`modules/Navigation.psm1`) alimenta a barra lateral e os menus de texto.
-- Convenções do projeto: programas nativos só por `Invoke-WinForgeNative`/`Invoke-WinForgeCapture`; `Read-Host` só no módulo Console; resultado de etapa padronizado (`WinForge.Result`); ações com `-Embedded`/`-PassThru`.
-- `README.md`, `CHANGELOG.md`, `.editorconfig`, `.gitattributes` e `.gitignore` adicionados/atualizados.
 
 ## Builds anteriores
 
