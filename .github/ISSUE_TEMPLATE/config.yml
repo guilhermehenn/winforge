@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Falha de segurança / Security vulnerability
+    url: https://github.com/guilhermehenn/winforge/security/advisories/new
+    about: Relate em particular, sem abrir uma issue pública. / Report privately, without a public issue.
