@@ -286,11 +286,11 @@ function Update-WinForgeCatalog {
     }
     catch {
         $friendly = ""
-        if (Get-Command -Name ConvertTo-WinForgeWebErrorText -ErrorAction SilentlyContinue) { $friendly = ConvertTo-WinForgeWebErrorText -Exception $_.Exception -NotFound "o arquivo de dados não foi encontrado no site do WinForge" }
+        if (Get-Command -Name ConvertTo-WinForgeWebErrorText -ErrorAction SilentlyContinue) { $friendly = ConvertTo-WinForgeWebErrorText -Exception $_.Exception -NotFound (Get-WinForgeText 'o arquivo de dados não foi encontrado no site do WinForge') }
 
         return [PSCustomObject]@{
             Changed = $false
-            Problem = $(if ($friendly) { $friendly } else { "não foi possível baixar os dados agora; tente de novo mais tarde" })
+            Problem = $(if ($friendly) { $friendly } else { (Get-WinForgeText 'não foi possível baixar os dados agora; tente de novo mais tarde') })
             Detail  = $(if ($friendly) { "" } else { $_.Exception.Message.TrimEnd('.') })
             Catalog = $before
         }
@@ -300,13 +300,13 @@ function Update-WinForgeCatalog {
         $document = $text | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
-        return [PSCustomObject]@{ Changed = $false; Problem = "os dados baixados não são um catálogo do WinForge"; Detail = ""; Catalog = $before }
+        return [PSCustomObject]@{ Changed = $false; Problem = (Get-WinForgeText 'os dados baixados não são um catálogo do WinForge'); Detail = ""; Catalog = $before }
     }
 
     $downloaded = ConvertFrom-WinForgeCatalogDocument -Document $document -Downloaded
 
     if ($null -eq $downloaded) {
-        return [PSCustomObject]@{ Changed = $false; Problem = "os dados baixados não passaram na conferência"; Detail = ""; Catalog = $before }
+        return [PSCustomObject]@{ Changed = $false; Problem = (Get-WinForgeText 'os dados baixados não passaram na conferência'); Detail = ""; Catalog = $before }
     }
 
     # Uma publicação mais antiga que a cópia guardada (o arquivo do site voltou atrás) não substitui a mais nova.
@@ -323,7 +323,7 @@ function Update-WinForgeCatalog {
         Invoke-WinForgeStateLock -ScriptBlock { Write-WinForgeStateFile -Path (Get-WinForgeCatalogCachePath) -Text $text }
     }
     catch {
-        return [PSCustomObject]@{ Changed = $false; Problem = "não foi possível guardar os dados na pasta do WinForge"; Detail = $_.Exception.Message.TrimEnd('.'); Catalog = $before }
+        return [PSCustomObject]@{ Changed = $false; Problem = (Get-WinForgeText 'não foi possível guardar os dados na pasta do WinForge'); Detail = $_.Exception.Message.TrimEnd('.'); Catalog = $before }
     }
 
     [void](Set-WinForgeSetting -Name "CatalogCheckedAt" -Value ((Get-Date).ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)))
@@ -353,14 +353,14 @@ function Test-WinForgeCatalogStale {
 
 
 function Update-WinForgeOnlineData {
-    $title = "Conferir dados online"
+    $title = (Get-WinForgeText 'Conferir dados online')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-Progress -Activity $title -Status "baixando a lista de programas e as datas de suporte do Windows"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'baixando a lista de programas e as datas de suporte do Windows')
 
         try {
             $update = Update-WinForgeCatalog
@@ -374,36 +374,40 @@ function Update-WinForgeOnlineData {
         $essentials = @($catalog.Essentials).Count
         $versions = @($catalog.WindowsLifecycle).Count
 
-        Write-WinForgeKeyValue -Label "Dados de" -Value $dated
-        Write-WinForgeKeyValue -Label "Origem" -Value $(if ($catalog.Source -eq "online") { "baixados do site do WinForge" } else { "os que vêm com o WinForge" })
-        Write-WinForgeKeyValue -Label "Programas essenciais" -Value (Format-WinForgeCount -Count $essentials -One "programa" -Many "programas")
-        Write-WinForgeKeyValue -Label "Versões do Windows" -Value (Format-WinForgeCount -Count $versions -One "versão" -Many "versões")
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Dados de') -Value $dated
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Origem') -Value $(if ($catalog.Source -eq "online") { (Get-WinForgeText 'baixados do site do WinForge') } else { (Get-WinForgeText 'os que vêm com o WinForge') })
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Programas essenciais') -Value (Format-WinForgeCount -Count $essentials -One (Get-WinForgeText 'programa') -Many (Get-WinForgeText 'programas'))
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Versões do Windows') -Value (Format-WinForgeCount -Count $versions -One (Get-WinForgeText 'versão') -Many (Get-WinForgeText 'versões'))
         Write-Host ""
 
         if ($update.Problem) {
-            Write-WinForgeStatus -Type Warning -Message "Não foi possível atualizar: $($update.Problem). O WinForge continua com os dados acima."
-            if ($update.Detail) { Write-WinForgeStatus -Type Info -Notice -Message "Detalhe: $($update.Detail)" }
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível atualizar: {0}. O WinForge continua com os dados acima.' "$($update.Problem)")
+            if ($update.Detail) { Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Detalhe: {0}' "$($update.Detail)") }
             $problem = $update.Problem.Substring(0, 1).ToUpperInvariant() + $update.Problem.Substring(1)
             $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail $update.Problem -Title $title) `
-                -Headline "Dados não atualizados" -Note "$problem. O WinForge segue com os dados de $dated."
+                -Headline (Get-WinForgeText 'Dados não atualizados') -Note (Get-WinForgeText '{0}. O WinForge segue com os dados de {1}.' "$problem" "$dated")
         }
         elseif ($update.Changed) {
-            Write-WinForgeStatus -Type Success -Message "Dados atualizados."
-            $contents = "$(Format-WinForgeCount -Count $essentials -One 'programa essencial' -Many 'programas essenciais') e $(Format-WinForgeCount -Count $versions -One 'versão do Windows' -Many 'versões do Windows')"
-            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "dados atualizados" -Title $title) `
-                -Headline "Dados atualizados" -Note "Dados de ${dated}: $contents."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Dados atualizados.')
+            $contents = Join-WinForgeList -Items @(
+                (Format-WinForgeCount -Count $essentials -One (Get-WinForgeText 'programa essencial') -Many (Get-WinForgeText 'programas essenciais')),
+                (Format-WinForgeCount -Count $versions -One (Get-WinForgeText 'versão do Windows') -Many (Get-WinForgeText 'versões do Windows'))
+            )
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'dados atualizados') -Title $title) `
+                -Headline (Get-WinForgeText 'Dados atualizados') -Note (Get-WinForgeText 'Dados de {0}: {1}.' "${dated}" "$contents")
         }
         else {
-            Write-WinForgeStatus -Type Success -Message "Os dados já estavam em dia."
-            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "os dados já estavam em dia" -Title $title) `
-                -Headline "Dados em dia" -Note "Não há dados publicados mais novos que os de $dated."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Os dados já estavam em dia.')
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'os dados já estavam em dia') -Title $title) `
+                -Headline (Get-WinForgeText 'Dados em dia') -Note (Get-WinForgeText 'Não há dados publicados mais novos que os de {0}.' "$dated")
         }
 
-        Write-WinForgeStatus -Type Info -Message "Só a lista é baixada: o WinForge não envia nenhum dado do PC."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Só a lista é baixada: o WinForge não envia nenhum dado do PC.')
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível atualizar os dados: $($_.Exception.Message)"
-        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível atualizar os dados: {0}' "$($_.Exception.Message)")
+        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title) `
+            -Headline (Get-WinForgeText 'Dados não atualizados') -Note (Format-WinForgeReasonNote -Text $_.Exception.Message)
     }
 
     Exit-WinForgeAction -Result $final

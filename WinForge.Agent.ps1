@@ -3,9 +3,11 @@
     Monitor do WinForge na bandeja do Windows (perto do relógio).
 
 .DESCRIPTION
-    Fica de olho no PC e mostra um aviso quando algo pede atenção: pouco espaço no disco, proteção desligada, reinício
-    pendente, manutenção atrasada, Windows sem suporte e programas desatualizados. Só lê; o menu do ícone abre o WinForge
-    para acelerar, limpar ou verificar o PC. Ligue e desligue em Sobre o WinForge > Monitor na bandeja.
+    Fica de olho no PC e mostra um aviso quando algo pede atenção (as conferências de Get-WinForgeAgentChecks): pouco
+    espaço ou um disco que pode falhar, proteção desligada, reinício pendente, manutenção atrasada, Windows sem suporte,
+    programas desatualizados, uma tela azul, o resultado do teste de memória e uma versão nova do WinForge. Só lê; o menu
+    do ícone abre o WinForge para acelerar, limpar ou verificar o PC. Ligue e desligue em Sobre o WinForge > Monitor na
+    bandeja.
 #>
 [CmdletBinding()]
 param ()
@@ -79,6 +81,9 @@ $script:Closing = $false
 # podem ficar esperando por ela.
 $script:WorkerTimeout = [TimeSpan]::FromMinutes(5)
 
+# As leituras abandonadas, à espera de terminar de parar para serem descartadas (Clear-AgentAbandonedWorkers).
+$script:AbandonedWorkers = New-Object System.Collections.ArrayList
+
 
 function Open-AgentWindow {
     # Abre a janela do WinForge, opcionalmente já rodando uma ação (Id da navegação).
@@ -88,7 +93,7 @@ function Open-AgentWindow {
 
     if (-not (Test-Path -LiteralPath $gui -PathType Leaf)) {
         $script:LastAction = $null
-        $script:Notify.ShowBalloonTip(8000, "WinForge", "A pasta do WinForge mudou de lugar ou foi apagada. Abra o WinForge na pasta nova e ligue o monitor em Sobre o WinForge > Monitor na bandeja.", [System.Windows.Forms.ToolTipIcon]::Warning)
+        $script:Notify.ShowBalloonTip(8000, "WinForge", (Get-WinForgeText 'A pasta do WinForge mudou de lugar ou foi apagada. Abra o WinForge na pasta nova e ligue o monitor em Sobre o WinForge > Monitor na bandeja.'), [System.Windows.Forms.ToolTipIcon]::Warning)
         return
     }
 
@@ -101,7 +106,7 @@ function Open-AgentWindow {
     catch {
         # O clique neste balão não pode repetir o aviso anterior.
         $script:LastAction = $null
-        $script:Notify.ShowBalloonTip(5000, "WinForge", "O Windows não deixou abrir o WinForge agora. Tente de novo pelo atalho do WinForge.", [System.Windows.Forms.ToolTipIcon]::Error)
+        $script:Notify.ShowBalloonTip(5000, "WinForge", (Get-WinForgeText 'O Windows não deixou abrir o WinForge agora. Tente de novo pelo atalho do WinForge.'), [System.Windows.Forms.ToolTipIcon]::Error)
     }
 }
 
@@ -123,7 +128,7 @@ function Switch-AgentPause {
 
         if ($null -ne $until) {
             $script:LastAction = $null
-            $script:Notify.ShowBalloonTip(8000, "Avisos pausados", (Get-WinForgeAgentPauseNotice -Until $until), [System.Windows.Forms.ToolTipIcon]::Info)
+            $script:Notify.ShowBalloonTip(8000, (Get-WinForgeText 'Avisos pausados'), (Get-WinForgeAgentPauseNotice -Until $until), [System.Windows.Forms.ToolTipIcon]::Info)
         }
     }
 
@@ -176,7 +181,7 @@ function Stop-AgentIfFolderGone {
     }
 
     $script:LastAction = $null
-    $script:Notify.ShowBalloonTip(8000, "WinForge", "A pasta do WinForge mudou de lugar ou foi apagada, e o monitor vai fechar. Para ligá-lo de novo, abra o WinForge na pasta nova e use Sobre o WinForge > Monitor na bandeja.", [System.Windows.Forms.ToolTipIcon]::Warning)
+    $script:Notify.ShowBalloonTip(8000, "WinForge", (Get-WinForgeText 'A pasta do WinForge mudou de lugar ou foi apagada, e o monitor vai fechar. Para ligá-lo de novo, abra o WinForge na pasta nova e use Sobre o WinForge > Monitor na bandeja.'), [System.Windows.Forms.ToolTipIcon]::Warning)
 
     $script:ExitTimer = New-Object System.Windows.Forms.Timer
     $script:ExitTimer.Interval = 8000
@@ -244,9 +249,10 @@ function Start-AgentHeavyChecks {
 
 function Stop-AgentHeavyChecks {
     # Abandona a leitura em segundo plano e conta as conferências dela como feitas: a próxima tentativa só vem no
-    # intervalo normal de cada uma, em vez de a cada volta do relógio.
+    # intervalo normal de cada uma, em vez de a cada volta do relógio. Sem esperar por ela: o Dispose de uma leitura
+    # presa (uma consulta do Windows que não responde) travaria o ícone na bandeja; ela é descartada depois de parar.
     try { [void]$script:Worker.BeginStop($null, $null) } catch { Write-Verbose "Monitor: $($_.Exception.Message)" }
-    try { $script:Worker.Dispose() } catch { Write-Verbose "Monitor: $($_.Exception.Message)" }
+    [void]$script:AbandonedWorkers.Add($script:Worker)
 
     $ids = @($script:WorkerIds)
     $script:Worker = $null
@@ -257,7 +263,20 @@ function Stop-AgentHeavyChecks {
 }
 
 
+function Clear-AgentAbandonedWorkers {
+    # Descarta as leituras abandonadas que já terminaram de parar.
+    foreach ($shell in @($script:AbandonedWorkers)) {
+        if ([string]$shell.InvocationStateInfo.State -notin @("Stopped", "Completed", "Failed")) { continue }
+
+        try { $shell.Dispose() } catch { Write-Verbose "Monitor: $($_.Exception.Message)" }
+        [void]$script:AbandonedWorkers.Remove($shell)
+    }
+}
+
+
 function Invoke-AgentTick {
+    Clear-AgentAbandonedWorkers
+
     if ($script:StopSignal.WaitOne(0)) {
         [System.Windows.Forms.Application]::Exit()
         return
@@ -361,15 +380,15 @@ function Update-AgentMenu {
     $script:Menu.Items.Clear()
     foreach ($entry in $old) { $entry.Dispose() }
 
-    Add-AgentMenuItem -Text "Abrir o WinForge" -Bold
+    Add-AgentMenuItem -Text (Get-WinForgeText 'Abrir o WinForge') -Bold
 
     $alerts = @(Get-WinForgeAgentSortedAlerts -Alerts @($script:Alerts.Values))
 
     if (-not $script:FirstReading) {
-        Add-AgentMenuItem -Text "Conferindo o PC..." -Disabled
+        Add-AgentMenuItem -Text (Get-WinForgeText 'Conferindo o PC...') -Disabled
     }
     elseif ($alerts.Count -eq 0) {
-        Add-AgentMenuItem -Text "Nada pedindo atenção" -Disabled
+        Add-AgentMenuItem -Text (Get-WinForgeText 'Nada pedindo atenção') -Disabled
     }
     else {
         foreach ($alert in $alerts) {
@@ -378,19 +397,19 @@ function Update-AgentMenu {
     }
 
     [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    Add-AgentMenuItem -Text "Verificar o PC" -Action "maintenance.checkup"
-    Add-AgentMenuItem -Text "Acelerar agora" -Action "performance.boost"
-    Add-AgentMenuItem -Text "Limpeza rápida" -Action "cleanup.quick"
+    Add-AgentMenuItem -Text (Get-WinForgeText 'Verificar o PC') -Action "maintenance.checkup"
+    Add-AgentMenuItem -Text (Get-WinForgeText 'Acelerar agora') -Action "performance.boost"
+    Add-AgentMenuItem -Text (Get-WinForgeText 'Limpeza rápida') -Action "cleanup.quick"
     [void]$script:Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-    Add-AgentMenuItem -Text $(if (Test-WinForgeAgentPaused) { "Retomar os avisos" } else { "Pausar avisos por 24 horas" }) -OnClick { Switch-AgentPause }
-    Add-AgentMenuItem -Text "Configurar o monitor..." -Action "app.monitor"
+    Add-AgentMenuItem -Text $(if (Test-WinForgeAgentPaused) { (Get-WinForgeText 'Retomar os avisos') } else { (Get-WinForgeText 'Pausar avisos por 24 horas') }) -OnClick { Switch-AgentPause }
+    Add-AgentMenuItem -Text (Get-WinForgeText 'Configurar o monitor...') -Action "app.monitor"
 
     # Fechar só vale até a próxima entrada no Windows quando o monitor está ligado para abrir com ele.
     $enabled = $false
     try { $enabled = Test-WinForgeAgentEnabled } catch { Write-Verbose "Monitor: $($_.Exception.Message)" }
 
-    Add-AgentMenuItem -Text $(if ($enabled) { "Fechar até a próxima entrada no Windows" } else { "Fechar o monitor" }) -OnClick { [System.Windows.Forms.Application]::Exit() }
+    Add-AgentMenuItem -Text $(if ($enabled) { (Get-WinForgeText 'Fechar até a próxima entrada no Windows') } else { (Get-WinForgeText 'Fechar o monitor') }) -OnClick { [System.Windows.Forms.Application]::Exit() }
 }
 
 
@@ -419,7 +438,7 @@ Update-AgentTooltip
 # A primeira vez: o ícone costuma ir para a área dos ocultos, e o monitor ficaria calado até algo pedir atenção.
 if ($script:FirstRun) {
     $script:LastAction = $null
-    $script:Notify.ShowBalloonTip(10000, "Monitor do WinForge ligado", "O WinForge vai avisar aqui quando algo pedir atenção. Clique com o botão direito no ícone para ver as opções.", [System.Windows.Forms.ToolTipIcon]::Info)
+    $script:Notify.ShowBalloonTip(10000, (Get-WinForgeText 'Monitor do WinForge ligado'), (Get-WinForgeText 'O WinForge vai avisar aqui quando algo pedir atenção. Clique com o botão direito no ícone para ver as opções.'), [System.Windows.Forms.ToolTipIcon]::Info)
     Save-WinForgeAgentState -State $script:State
 }
 

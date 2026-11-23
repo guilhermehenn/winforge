@@ -25,7 +25,7 @@ function Get-WinForgeMemoryUsage {
 
     if ($null -eq $os) {
         try {
-            $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+            $os = Get-CimInstance -ClassName Win32_OperatingSystem -OperationTimeoutSec 15 -ErrorAction Stop
         }
         catch {
             return $null
@@ -57,35 +57,38 @@ function Test-WinForgeMemoryHigh {
 function Get-WinForgePerformancePageStatus {
     <#
     O resumo no alto da página Desempenho: a memória em uso e há quanto tempo o PC está ligado, de uma leitura só do
-    Windows, imediata. Cada linha tem Label, Text e Level (Normal | Warn | Muted). Memória a partir de 85% e o PC ligado
-    há uma semana ou mais ficam em amarelo, com o que fazer.
+    Windows, imediata. Cada linha tem Label, Text, Level (Normal | Warn | Muted) e Opens. Memória a partir de 85% e o PC
+    ligado há uma semana ou mais ficam em amarelo, e a linha é um botão que abre o que resolve ou explica (Opens):
+    - a memória alta abre Programas pesando agora, o mesmo destino da Verificação do PC: o que resolve é fechar o que
+      pesa (antes, a faixa só dizia "veja Programas pesando agora");
+    - o tempo ligado abre Tempo ligado e energia, que explica por que desligar não zera esse tempo (com a Inicialização
+      Rápida, só reiniciar zera): quem desliga o PC toda noite e lê "9 dias" acharia que é erro.
     #>
+    $memoryLabel = (Get-WinForgeText 'Memória em uso')
     $os = $null
 
     try {
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -OperationTimeoutSec 15 -ErrorAction Stop
     }
     catch {
-        return @([PSCustomObject]@{ Label = "Memória em uso"; Text = "não foi possível ler"; Level = "Muted" })
+        return @([PSCustomObject]@{ Label = $memoryLabel; Text = (Get-WinForgeText 'não foi possível ler'); Level = "Muted"; Opens = "" })
     }
 
-    $rows = @()
     $memory = Get-WinForgeMemoryUsage -OperatingSystem $os
+    $row = [PSCustomObject]@{ Label = $memoryLabel; Text = (Get-WinForgeText 'não foi possível ler'); Level = "Muted"; Opens = "" }
 
     if ($null -ne $memory) {
-        $text = "$(Format-WinForgeBytes -Bytes $memory.Used) de $(Format-WinForgeBytes -Bytes $memory.Total) ($($memory.Percent)%)"
+        $row.Text = (Get-WinForgeText '{0} de {1} ({2}%)' "$(Format-WinForgeBytes -Bytes $memory.Used)" "$(Format-WinForgeBytes -Bytes $memory.Total)" "$($memory.Percent)")
+        $row.Level = "Normal"
 
         if (Test-WinForgeMemoryHigh -Memory $memory) {
-            $rows += [PSCustomObject]@{ Label = "Memória em uso"; Text = "$text · alta; veja Programas pesando agora"; Level = "Warn" }
+            $row.Text = (Get-WinForgeText '{0} · alta' "$($row.Text)")
+            $row.Level = "Warn"
+            $row.Opens = "performance.processes"
         }
-        else {
-            $rows += [PSCustomObject]@{ Label = "Memória em uso"; Text = $text; Level = "Normal" }
-        }
-    }
-    else {
-        $rows += [PSCustomObject]@{ Label = "Memória em uso"; Text = "não foi possível ler"; Level = "Muted" }
     }
 
+    $rows = @($row)
     $boot = Get-WinForgeJsonValue -Object $os -Name "LastBootUpTime" -Default $null
 
     if ($boot -is [datetime] -and $boot.Year -ge 2000) {
@@ -93,14 +96,16 @@ function Get-WinForgePerformancePageStatus {
 
         # Um boot "no futuro" (o relógio acertado depois de ligar) não tem tempo ligado que se possa dizer: a linha sai,
         # como quando o Windows não informa a hora.
-        if ($uptime -eq "Desconhecido") { return $rows }
+        if ($uptime -ne (Get-WinForgeText 'Desconhecido')) {
+            $row = [PSCustomObject]@{ Label = (Get-WinForgeText 'Ligado há'); Text = $uptime; Level = "Normal"; Opens = "" }
 
-        # Com a Inicialização Rápida, desligar não zera este tempo: só reiniciar zera.
-        if (((Get-Date) - $boot).TotalDays -ge 7) {
-            $rows += [PSCustomObject]@{ Label = "Ligado há"; Text = "$uptime · reiniciar deixa o Windows mais leve"; Level = "Warn" }
-        }
-        else {
-            $rows += [PSCustomObject]@{ Label = "Ligado há"; Text = $uptime; Level = "Normal" }
+            if (Test-WinForgeLongUptime -LastBootTime $boot) {
+                $row.Text = (Get-WinForgeText '{0} · reiniciar deixa o Windows mais leve' "$uptime")
+                $row.Level = "Warn"
+                $row.Opens = "diagnostics.startup"
+            }
+
+            $rows += $row
         }
     }
 
@@ -128,8 +133,9 @@ public static class WinForgeMemoryNative
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
 
-    // PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA
-    private const uint ProcessAccess = 0x0400 | 0x0100;
+    // PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA: o mínimo que o EmptyWorkingSet pede, segundo a
+    // documentação da Microsoft (a consulta limitada basta; a completa pede mais do que o necessário).
+    private const uint ProcessAccess = 0x1000 | 0x0100;
 
     // Só os processos da sessão da pessoa: os serviços do Windows (o antivírus, por exemplo) e os programas de outras
     // contas logadas no PC ficam como estão, sem ter de recarregar a memória por causa de quem pediu.
@@ -239,18 +245,18 @@ function Format-WinForgeMemoryFreedText {
     param ([Parameter(Mandatory)]$Optimization)
 
     if (-not [bool](Get-WinForgeJsonValue -Object $Optimization -Name "Measured" -Default $true)) {
-        return "memória liberada (o Windows não informou quanto)"
+        return (Get-WinForgeText 'memória liberada (o Windows não informou quanto)')
     }
 
     $high = Test-WinForgeMemoryStillHigh -Optimization $Optimization
 
     if (Test-WinForgeMemoryFreedLittle -Optimization $Optimization) {
-        if ($high) { return "quase nada a liberar: a memória continua alta ($($Optimization.After.Percent)%)" }
-        return "a memória já estava folgada (quase nada a liberar)"
+        if ($high) { return (Get-WinForgeText 'quase nada a liberar: a memória continua alta ({0}%)' "$($Optimization.After.Percent)") }
+        return (Get-WinForgeText 'a memória já estava folgada (quase nada a liberar)')
     }
 
-    $text = "$(Format-WinForgeBytes -Bytes $Optimization.Freed) de memória liberados"
-    if ($high) { $text += "; a memória continua alta ($($Optimization.After.Percent)%)" }
+    $text = (Get-WinForgeText '{0} de memória liberados' "$(Format-WinForgeBytes -Bytes $Optimization.Freed)")
+    if ($high) { $text += (Get-WinForgeText '; a memória continua alta ({0}%)' "$($Optimization.After.Percent)") }
 
     return $text
 }
@@ -263,7 +269,7 @@ function Write-WinForgeMemoryStillHighNotice {
 
     if (-not (Test-WinForgeMemoryStillHigh -Optimization $Optimization)) { return $false }
 
-    Write-WinForgeStatus -Type Warning -Notice -Message "A memória continua alta ($($Optimization.After.Percent)%): o que pesa são os programas abertos; veja Desempenho > Programas pesando agora."
+    Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'A memória continua alta ({0}%): o que pesa são os programas abertos; veja Desempenho > Programas pesando agora.' "$($Optimization.After.Percent)")
 
     return $true
 }
@@ -283,13 +289,13 @@ function Set-WinForgeMemoryStillHighView {
     )
 
     $note = $(
-        if (Test-WinForgeMemoryFreedLittle -Optimization $Optimization) { "Liberar quase não ajudou: o que pesa são os programas abertos." }
-        else { "$Freed liberados, mas o que pesa são os programas abertos." }
+        if (Test-WinForgeMemoryFreedLittle -Optimization $Optimization) { (Get-WinForgeText 'Liberar quase não ajudou: o que pesa são os programas abertos.') }
+        else { (Get-WinForgeText '{0} liberados, mas o que pesa são os programas abertos.' "$Freed") }
     )
     if ($Extra) { $note += " $Extra" }
 
-    return (Set-WinForgeResultView -Result $Result -Headline "A memória continua alta ($($Optimization.After.Percent)%)" -Note $note -Tone Warn `
-            -Next "performance.processes" -NextLabel "Ver o que está pesando")
+    return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'A memória continua alta ({0}%)' "$($Optimization.After.Percent)") -Note $note -Tone Warn `
+            -Next "performance.processes" -NextLabel (Get-WinForgeText 'Ver o que está pesando'))
 }
 
 
@@ -297,19 +303,19 @@ function Write-WinForgeMemoryFacts {
     param ([Parameter(Mandatory)]$Optimization)
 
     if ($null -ne $Optimization.Before -and $null -ne $Optimization.After) {
-        Write-WinForgeKeyValue -Label "Memória em uso antes" -Value "$(Format-WinForgeBytes -Bytes $Optimization.Before.Used) de $(Format-WinForgeBytes -Bytes $Optimization.Before.Total) ($($Optimization.Before.Percent)%)"
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Memória em uso antes') -Value (Get-WinForgeText '{0} de {1} ({2}%)' "$(Format-WinForgeBytes -Bytes $Optimization.Before.Used)" "$(Format-WinForgeBytes -Bytes $Optimization.Before.Total)" "$($Optimization.Before.Percent)")
         $high = Test-WinForgeMemoryStillHigh -Optimization $Optimization
-        Write-WinForgeKeyValue -Label "Memória em uso agora" -Value "$(Format-WinForgeBytes -Bytes $Optimization.After.Used) ($($Optimization.After.Percent)%)" -Level $(if ($high) { "Warn" } else { "Normal" })
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Memória em uso agora') -Value "$(Format-WinForgeBytes -Bytes $Optimization.After.Used) ($($Optimization.After.Percent)%)" -Level $(if ($high) { "Warn" } else { "Normal" })
         # Verde só quando liberou algo que faça diferença; "0 B" em verde pareceria uma conquista. "Folgada" só quando a
         # memória de fato está folgada: alta, o pouco que saiu é dos programas abertos que estão usando a memória.
         $freedValue = Format-WinForgeBytes -Bytes $Optimization.Freed
-        if ((Test-WinForgeMemoryFreedLittle -Optimization $Optimization) -and -not $high) { $freedValue = "$freedValue (a memória já estava folgada)" }
+        if ((Test-WinForgeMemoryFreedLittle -Optimization $Optimization) -and -not $high) { $freedValue = (Get-WinForgeText '{0} (a memória já estava folgada)' "$freedValue") }
 
-        Write-WinForgeKeyValue -Label "Liberada" -Value $freedValue -Level $(if (-not (Test-WinForgeMemoryFreedLittle -Optimization $Optimization) -and -not $high) { "Ok" } else { "Normal" })
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Liberada') -Value $freedValue -Level $(if (-not (Test-WinForgeMemoryFreedLittle -Optimization $Optimization) -and -not $high) { "Ok" } else { "Normal" })
     }
     else {
         # Sem a leitura de antes e depois, "0 B" diria que nada saiu; o esvaziamento aconteceu, só não foi medido.
-        Write-WinForgeKeyValue -Label "Liberada" -Value "não foi possível medir"
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Liberada') -Value (Get-WinForgeText 'não foi possível medir')
     }
 }
 
@@ -326,10 +332,10 @@ function Set-WinForgeMemoryOptimizationView {
     )
 
     if (-not [bool](Get-WinForgeJsonValue -Object $Optimization -Name "Measured" -Default $true)) {
-        return (Set-WinForgeResultView -Result $Result -Headline "Memória liberada" -Note "O Windows não informou quanto.")
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Memória liberada') -Note (Get-WinForgeText 'O Windows não informou quanto.'))
     }
 
-    $freed = "$(Format-WinForgeBytes -Bytes $Optimization.Freed) de memória"
+    $freed = (Get-WinForgeText '{0} de memória' "$(Format-WinForgeBytes -Bytes $Optimization.Freed)")
 
     if (Test-WinForgeMemoryStillHigh -Optimization $Optimization) {
         return (Set-WinForgeMemoryStillHighView -Result $Result -Optimization $Optimization -Freed $freed)
@@ -338,27 +344,27 @@ function Set-WinForgeMemoryOptimizationView {
     # A memória de agora e de antes, quando o Windows informou as duas.
     $after = Get-WinForgeJsonValue -Object $Optimization -Name "After" -Default $null
     $before = Get-WinForgeJsonValue -Object $Optimization -Name "Before" -Default $null
-    $now = $(if ($null -ne $after) { "Memória em uso: $($after.Percent)%" } else { "" })
+    $now = $(if ($null -ne $after) { (Get-WinForgeText 'Memória em uso: {0}%' "$($after.Percent)") } else { "" })
 
     if (Test-WinForgeMemoryFreedLittle -Optimization $Optimization) {
-        return (Set-WinForgeResultView -Result $Result -Headline "A memória já estava folgada" -Note $(if ($now) { "$now; quase nada a liberar." } else { "Quase nada a liberar." }) -HideSummary)
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'A memória já estava folgada') -Note $(if ($now) { (Get-WinForgeText '{0}; quase nada a liberar.' "$now") } else { (Get-WinForgeText 'Quase nada a liberar.') }) -HideSummary)
     }
 
-    $lead = $(if ($now -and $null -ne $before) { "$now (antes, $($before.Percent)%). " } else { "" })
+    $lead = $(if ($now -and $null -ne $before) { (Get-WinForgeText '{0} (antes, {1}%). ' "$now" "$($before.Percent)") } else { "" })
 
-    return (Set-WinForgeResultView -Result $Result -Headline "$freed liberados" -Note "${lead}Ajuda antes de abrir algo pesado; o efeito some aos poucos." -HideSummary)
+    return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText '{0} liberados' "$freed") -Note (Get-WinForgeText '{0}Ajuda antes de abrir algo pesado; o efeito some aos poucos.' "${lead}") -HideSummary)
 }
 
 
 function Invoke-WinForgeMemoryOptimization {
-    $title = "Liberar memória"
+    $title = (Get-WinForgeText 'Liberar memória')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-Progress -Activity $title -Status "esvaziando a memória que os programas não estão usando"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'esvaziando a memória que os programas não estão usando')
 
         try {
             $optimization = Optimize-WinForgeMemory
@@ -374,7 +380,7 @@ function Invoke-WinForgeMemoryOptimization {
         # fica como está: ele já conta como memória disponível e faz os programas abrirem mais rápido. Com a memória ainda
         # alta, o conselho é outro: o que pesa são os programas abertos.
         if (-not (Write-WinForgeMemoryStillHighNotice -Optimization $optimization)) {
-            Write-WinForgeStatus -Type Info -Message "Ajuda antes de abrir algo pesado; o efeito some aos poucos."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Ajuda antes de abrir algo pesado; o efeito some aos poucos.')
         }
 
         $final = New-WinForgeResult -Kind Ok -Detail (Format-WinForgeMemoryFreedText -Optimization $optimization) -Title $title -Data @{ FreedBytes = [int64]$optimization.Freed }
@@ -383,11 +389,34 @@ function Invoke-WinForgeMemoryOptimization {
     catch {
         # A mensagem do .NET (DLL, ponto de entrada, modo de linguagem) não diz nada para a pessoa; fica no detalhe técnico.
         Write-Verbose "Liberar memória: $($_.Exception.Message)"
-        Write-WinForgeStatus -Type Error -Message "Não foi possível liberar a memória: o Windows não atendeu ao pedido."
-        $final = New-WinForgeResult -Kind Failed -Detail "o Windows não atendeu ao pedido de liberar a memória" -Title $title
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível liberar a memória: o Windows não atendeu ao pedido.')
+        $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Windows não atendeu ao pedido de liberar a memória') -Title $title
+        [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A memória não foi liberada') -Note "$(Get-WinForgeText 'O Windows não atendeu ao pedido').")
     }
 
     Exit-WinForgeAction -Result $final
+}
+
+
+function Get-WinForgeBoostTempState {
+    <#
+    O que aconteceu com os temporários no Acelerar agora, numa palavra só, para o resumo e a faixa dizerem a mesma coisa
+    (antes, cada um decidia com as suas contas): Done (saiu algo: Bytes acima de zero), None (nada a apagar, ou o que saiu
+    estava vazio), InUse (havia temporários antigos, mas todos em uso: o Warning da limpeza da pasta,
+    Invoke-WinForgeFolderCleanup) e Failed (a pasta não pôde ser limpa). Sem o resultado da limpeza, pelos bytes.
+    #>
+    param (
+        $Temp = $null,
+        [int64]$Bytes = 0
+    )
+
+    $kind = $(if ($null -ne $Temp) { [string]$Temp.Kind } else { "" })
+
+    if ($kind -eq "Failed") { return "Failed" }
+    if ($kind -eq "Warning") { return "InUse" }
+    if ($Bytes -gt 0) { return "Done" }
+
+    return "None"
 }
 
 
@@ -395,8 +424,9 @@ function Set-WinForgeBoostView {
     <#
     A faixa do Acelerar agora. O título diz o que importa: quanto de memória saiu (ou os temporários, quando eles foram o
     ganho), que o PC já estava leve, que a memória continua alta (amarelo, com o botão para o que está pesando) ou que ela
-    não foi liberada; embaixo vêm a memória de agora e de antes e os temporários. O que deu errado com os temporários e
-    a conta diferente vão no fim da frase, e aí o resumo fica à vista. Devolve o próprio resultado.
+    não foi liberada; embaixo vêm a memória de agora e de antes e os temporários (Get-WinForgeBoostTempState). O que deu
+    errado com os temporários e a conta diferente vão no fim da frase, e aí o resumo fica à vista. Devolve o próprio
+    resultado.
     #>
     param (
         [Parameter(Mandatory)]$Result,
@@ -407,12 +437,19 @@ function Set-WinForgeBoostView {
     )
 
     $tempText = Format-WinForgeBytes -Bytes $TempBytes
-    $tempFailed = ($null -ne $Temp -and [string]$Temp.Kind -eq "Failed")
-    $tempPart = $(if ($tempFailed) { "" } elseif ($TempBytes -le 0) { "nenhum temporário para apagar" } else { "$tempText de temporários apagados" })
+    $tempState = Get-WinForgeBoostTempState -Temp $Temp -Bytes $TempBytes
+
+    # Os temporários em uso não são "nenhum temporário para apagar": eles existem, só não puderam sair.
+    $tempPart = switch ($tempState) {
+        "Done" { (Get-WinForgeText '{0} de temporários apagados' "$tempText") }
+        "None" { (Get-WinForgeText 'nenhum temporário para apagar') }
+        "InUse" { (Get-WinForgeText 'os temporários estavam em uso e ficaram') }
+        default { "" }
+    }
 
     $extra = @(
-        if ($tempFailed) { "Os temporários não foram apagados: $(([string]$Temp.Detail).Trim().TrimEnd('.'))." }
-        if ($OtherAccount) { "Os temporários apagados foram os da conta com que o WinForge está aberto." }
+        if ($tempState -eq "Failed") { (Get-WinForgeText 'Os temporários não foram apagados: {0}.' "$(([string]$Temp.Detail).Trim().TrimEnd('.'))") }
+        if ($OtherAccount) { (Get-WinForgeText 'Os temporários apagados foram os da conta com que o WinForge está aberto.') }
     ) -join " "
 
     # A frase: a parte principal, os temporários (quando não estão no título) e o que deu errado.
@@ -428,52 +465,52 @@ function Set-WinForgeBoostView {
     $hide = ([string]$Result.Kind -eq "Ok")
 
     if ($null -eq $Optimization) {
-        return (Set-WinForgeResultView -Result $Result -Headline "A memória não foi liberada" -Note (& $join "O Windows não atendeu ao pedido" $tempPart))
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'A memória não foi liberada') -Note (& $join (Get-WinForgeText 'O Windows não atendeu ao pedido') $tempPart))
     }
 
     if (-not [bool](Get-WinForgeJsonValue -Object $Optimization -Name "Measured" -Default $true)) {
-        return (Set-WinForgeResultView -Result $Result -Headline "Memória liberada" -Note (& $join "O Windows não informou quanto" $tempPart))
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Memória liberada') -Note (& $join (Get-WinForgeText 'O Windows não informou quanto') $tempPart))
     }
 
-    $memory = "$(Format-WinForgeBytes -Bytes $Optimization.Freed) de memória"
+    $memory = (Get-WinForgeText '{0} de memória' "$(Format-WinForgeBytes -Bytes $Optimization.Freed)")
     $little = Test-WinForgeMemoryFreedLittle -Optimization $Optimization
 
     if (Test-WinForgeMemoryStillHigh -Optimization $Optimization) {
-        $freed = $(if ($tempFailed -or $TempBytes -le 0) { $memory } else { "$memory e $tempText de temporários" })
+        $freed = $(if ($tempState -eq "Done") { (Get-WinForgeText '{0} e {1} de temporários' "$memory" "$tempText") } else { $memory })
         return (Set-WinForgeMemoryStillHighView -Result $Result -Optimization $Optimization -Freed $freed -Extra $extra)
     }
 
     # A memória de agora e de antes, quando o Windows informou as duas.
     $after = Get-WinForgeJsonValue -Object $Optimization -Name "After" -Default $null
     $before = Get-WinForgeJsonValue -Object $Optimization -Name "Before" -Default $null
-    $now = $(if ($null -ne $after) { "Memória em uso: $($after.Percent)%" } else { "" })
+    $now = $(if ($null -ne $after) { (Get-WinForgeText 'Memória em uso: {0}%' "$($after.Percent)") } else { "" })
 
     if ($little -and $TempBytes -lt $script:WinForgeMemoryLittleBytes) {
-        return (Set-WinForgeResultView -Result $Result -Headline "O PC já estava leve" -Note (& $join $(if ($now) { "$now; quase nada a liberar" } else { "Quase nada a liberar" }) "") -HideSummary:$hide)
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'O PC já estava leve') -Note (& $join $(if ($now) { (Get-WinForgeText '{0}; quase nada a liberar' "$now") } else { (Get-WinForgeText 'Quase nada a liberar') }) $(if ($tempState -eq "InUse") { $tempPart } else { "" })) -HideSummary:$hide)
     }
 
     if ($little) {
         # A memória já estava folgada, e o ganho foram os temporários: eles vão no título.
-        return (Set-WinForgeResultView -Result $Result -Headline "$tempText de temporários apagados" -Note (& $join "A memória já estava folgada$(if ($null -ne $after) { " ($($after.Percent)% em uso)" })" "") -HideSummary:$hide)
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText '{0} de temporários apagados' "$tempText") -Note (& $join (Get-WinForgeText 'A memória já estava folgada{0}' "$(if ($null -ne $after) { (Get-WinForgeText ' ({0}% em uso)' "$($after.Percent)") })") "") -HideSummary:$hide)
     }
 
-    $note = & $join $(if ($now -and $null -ne $before) { "$now (antes, $($before.Percent)%)" } else { "" }) $tempPart
-    if (-not $tempFailed -and -not $OtherAccount) { $note += " O efeito na memória some aos poucos." }
+    $note = & $join $(if ($now -and $null -ne $before) { (Get-WinForgeText '{0} (antes, {1}%)' "$now" "$($before.Percent)") } else { "" }) $tempPart
+    if ($tempState -ne "Failed" -and -not $OtherAccount) { $note += (Get-WinForgeText ' O efeito na memória some aos poucos.') }
 
-    return (Set-WinForgeResultView -Result $Result -Headline "$memory liberados" -Note $note -HideSummary:$hide)
+    return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText '{0} liberados' "$memory") -Note $note -HideSummary:$hide)
 }
 
 
 function Invoke-WinForgeBoost {
     # Acelerar agora: libera memória e apaga os temporários do usuário, sem perguntar nada (nada disso faz falta).
-    $title = "Acelerar agora"
+    $title = (Get-WinForgeText 'Acelerar agora')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-Progress -Activity $title -Status "1 de 2: liberando memória" -PercentComplete 0
+        Write-Progress -Activity $title -Status (Get-WinForgeText '1 de 2: liberando memória') -PercentComplete 0
 
         try {
             # As duas partes são independentes: a memória que o Windows não deixou liberar não impede apagar os temporários.
@@ -484,11 +521,11 @@ function Invoke-WinForgeBoost {
             }
             catch {
                 Write-Verbose "Acelerar agora, memória: $($_.Exception.Message)"
-                Write-WinForgeStatus -Type Warning -Message "Não foi possível liberar a memória: o Windows não atendeu ao pedido."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível liberar a memória: o Windows não atendeu ao pedido.')
             }
 
-            Write-Progress -Activity $title -Status "2 de 2: apagando temporários" -PercentComplete 50
-            $temp = Clear-WinForgeUserTemp -Embedded -PassThru
+            Write-Progress -Activity $title -Status (Get-WinForgeText '2 de 2: apagando temporários') -PercentComplete 50
+            $temp = Clear-WinForgeUserTemp
         }
         finally {
             Write-Progress -Activity $title -Completed
@@ -496,44 +533,62 @@ function Invoke-WinForgeBoost {
 
         $tempBytes = [int64](Get-WinForgeResultData -Result $temp -Name "FreedBytes")
         $tempText = Format-WinForgeBytes -Bytes $tempBytes
+        $tempState = Get-WinForgeBoostTempState -Temp $temp -Bytes $tempBytes
+        $tempFailed = ($tempState -eq "Failed")
 
-        Write-WinForgeSection -Title "Resultado"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Resultado')
 
         if ($null -ne $optimization) {
             Write-WinForgeMemoryFacts -Optimization $optimization
         }
         else {
-            Write-WinForgeKeyValue -Label "Memória" -Value "não foi possível liberar" -Level Warn
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Memória') -Value (Get-WinForgeText 'não foi possível liberar') -Level Warn
         }
 
-        Write-WinForgeKeyValue -Label "Temporários apagados" -Value $tempText
+        # Os temporários que não puderam ser apagados, ou que estavam em uso, não são "0 B": a linha diz o que houve.
+        switch ($tempState) {
+            "Failed" { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Temporários apagados') -Value (Get-WinForgeText 'não foi possível apagar') -Level Warn }
+            "InUse" { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Temporários apagados') -Value (Get-WinForgeText 'nenhum (estavam em uso)') }
+            default { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Temporários apagados') -Value $tempText }
+        }
         Write-Host ""
 
         # Com a memória ainda alta, o aviso diz onde está o peso (os programas abertos); senão, o conselho de sempre.
         $stillHigh = ($null -ne $optimization -and (Write-WinForgeMemoryStillHighNotice -Optimization $optimization))
 
         if (-not $stillHigh) {
-            Write-WinForgeStatus -Type Info -Message "Para durar, use Desempenho > Gerenciar inicialização e Desempenho > Programas pesando agora."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para durar, use Desempenho > Gerenciar inicialização e Desempenho > Programas pesando agora.')
         }
 
         # Sem pergunta, o aviso da outra conta fica no resumo, e a faixa fica amarela: os temporários apagados foram os
         # dessa conta.
-        $otherAccount = Write-WinForgeOtherAccountNotice -What "os temporários apagados"
+        $otherAccount = Write-WinForgeOtherAccountNotice -What 'os temporários apagados'
 
+        # O resumo diz o que aconteceu com cada parte: os temporários entram quando foram apagados ("0 B de temporários"
+        # não diz nada), quando estavam em uso ou quando não puderam ser apagados.
+        $tempDone = ($tempState -eq "Done")
+        $tempNote = switch ($tempState) {
+            "Failed" { (Get-WinForgeText 'os temporários não foram apagados') }
+            "InUse" { (Get-WinForgeText 'os temporários estavam em uso e ficaram') }
+            "Done" { (Get-WinForgeText '{0} de temporários apagados' "$tempText") }
+            default { "" }
+        }
         $detail = $(
-            if ($null -eq $optimization) { "a memória não foi liberada; $tempText de temporários apagados" }
-            elseif (-not $optimization.Measured) { "$(Format-WinForgeMemoryFreedText -Optimization $optimization) e $tempText de temporários apagados" }
-            elseif ($stillHigh) { "$(Format-WinForgeBytes -Bytes $optimization.Freed) de memória e $tempText de temporários liberados; a memória continua alta ($($optimization.After.Percent)%)" }
-            elseif ((Test-WinForgeMemoryFreedLittle -Optimization $optimization) -and $tempBytes -lt $script:WinForgeMemoryLittleBytes) { "o PC já estava leve: quase nada a liberar" }
-            else { "$(Format-WinForgeBytes -Bytes $optimization.Freed) de memória e $tempText de temporários liberados" }
+            if ($null -eq $optimization) { (Get-WinForgeText 'a memória não foi liberada; {0}' "$(if ($tempNote) { $tempNote } else { (Get-WinForgeText 'nenhum temporário para apagar') })") }
+            elseif ($tempDone -and -not $optimization.Measured) { (Get-WinForgeText '{0} e {1} de temporários apagados' "$(Format-WinForgeMemoryFreedText -Optimization $optimization)" "$tempText") }
+            elseif ($tempDone -and $stillHigh) { (Get-WinForgeText '{0} de memória e {1} de temporários liberados; a memória continua alta ({2}%)' "$(Format-WinForgeBytes -Bytes $optimization.Freed)" "$tempText" "$($optimization.After.Percent)") }
+            elseif ($tempState -in @("Done", "None") -and -not $stillHigh -and $optimization.Measured -and (Test-WinForgeMemoryFreedLittle -Optimization $optimization) -and $tempBytes -lt $script:WinForgeMemoryLittleBytes) { (Get-WinForgeText 'o PC já estava leve: quase nada a liberar') }
+            elseif ($tempDone) { (Get-WinForgeText '{0} de memória e {1} de temporários liberados' "$(Format-WinForgeBytes -Bytes $optimization.Freed)" "$tempText") }
+            else { "$(Format-WinForgeMemoryFreedText -Optimization $optimization)$(if ($tempNote) { "; $tempNote" })" }
         )
-        $kind = $(if ($null -eq $optimization -or $temp.Kind -eq "Failed" -or $otherAccount) { "Warning" } else { "Ok" })
-        if ($otherAccount) { $detail += "; os temporários apagados foram os da conta com que o WinForge está aberto" }
+        # As duas partes falhando é falha; uma só, ressalva.
+        $kind = $(if ($null -eq $optimization -and $tempFailed) { "Failed" } elseif ($null -eq $optimization -or $tempFailed -or $otherAccount) { "Warning" } else { "Ok" })
+        if ($otherAccount) { $detail += (Get-WinForgeText '; os temporários apagados foram os da conta com que o WinForge está aberto') }
         $final = New-WinForgeResult -Kind $kind -Detail $detail -Title $title -Data @{ FreedBytes = [int64]$tempBytes }
         [void](Set-WinForgeBoostView -Result $final -Optimization $optimization -TempBytes $tempBytes -Temp $temp -OtherAccount ([bool]$otherAccount))
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível acelerar: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível acelerar: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
@@ -556,7 +611,7 @@ function Get-WinForgeProtectedProcessNames {
         "fontdrvhost", "Memory Compression", "explorer", "sihost", "ctfmon", "taskhostw", "RuntimeBroker", "SearchHost",
         "SearchIndexer", "StartMenuExperienceHost", "ShellExperienceHost", "TextInputHost", "audiodg", "spoolsv", "conhost",
         "WmiPrvSE", "MsMpEng", "NisSrv", "SecurityHealthService", "SecurityHealthSystray", "SgrmBroker", "smartscreen",
-        "dllhost", "LsaIso", "Secure System", "LogonUI", "WUDFHost", "msiexec", "TiWorker", "TrustedInstaller",
+        "dllhost", "Secure System", "LogonUI", "WUDFHost", "msiexec", "TiWorker", "TrustedInstaller",
         "MoUsoCoreWorker", "wuauclt", "UsoClient", "powershell", "pwsh", "WindowsTerminal", "OpenConsole", "WinForge",
         "msedgewebview2", "ApplicationFrameHost", "SearchApp", "SearchUI", "LockApp", "ShellHost", "Widgets", "WidgetService",
         "backgroundTaskHost", "rundll32", "SystemSettingsBroker", "UserOOBEBroker", "ChsIME", "TabTip", "AggregatorHost",
@@ -711,7 +766,8 @@ function Add-WinForgeProcessDetails {
     <#
     O nome amigável e o fabricante (lidos do arquivo do programa) dos programas que vão aparecer. Ler o módulo de um
     processo custa, e numa sessão há centenas deles: a medição deixa isso para cá, só para a dúzia que aparece. Sem
-    leitura (aberto como Administrador, com o WinForge sem), fica o nome do processo.
+    leitura (aberto como Administrador, com o WinForge sem), fica o nome do processo. Nomes amigáveis repetidos levam o
+    nome do processo entre parênteses.
     #>
     param ([object[]]$Groups = @())
 
@@ -731,6 +787,16 @@ function Add-WinForgeProcessDetails {
             if ($description) { $group.Description = $description }
             $group.Company = ([string]$version.CompanyName).Trim()
             break
+        }
+    }
+
+    # Dois programas com o mesmo nome amigável (python e pythonw são "Python"; java e javaw, "Java(TM) Platform SE
+    # binary") seriam gêmeos na lista e na pergunta ("Fechar Python e Python?"): o nome do processo os separa. O que ficou
+    # com o nome do processo, exatamente (sem leitura do arquivo), já é diferente dos outros: a comparação respeita as
+    # maiúsculas, porque "Python", o nome amigável do python, não é o nome do processo.
+    foreach ($twins in @($Groups | Group-Object -Property Description | Where-Object { $_.Count -gt 1 })) {
+        foreach ($group in $twins.Group) {
+            if ([string]$group.Description -cne [string]$group.Name) { $group.Description = "$($group.Description) ($($group.Name))" }
         }
     }
 }
@@ -766,13 +832,13 @@ function Format-WinForgeProcessUsage {
     $unread = [int](Get-WinForgeJsonValue -Object $Process -Name "CpuUnread" -Default 0)
 
     $cpuText = $(
-        if ($Process.Cpu -ge 1) { "$([int][Math]::Round($Process.Cpu))% do processador" }
-        elseif ($unread -gt 0 -and $unread -ge $count) { "processador sem leitura" }
-        elseif ($unread -gt 0) { "processador sem leitura em parte" }
-        else { "processador quase parado" }
+        if ($Process.Cpu -ge 1) { (Get-WinForgeText '{0}% do processador' "$([int][Math]::Round($Process.Cpu))") }
+        elseif ($unread -gt 0 -and $unread -ge $count) { (Get-WinForgeText 'processador sem leitura') }
+        elseif ($unread -gt 0) { (Get-WinForgeText 'processador sem leitura em parte') }
+        else { (Get-WinForgeText 'processador quase parado') }
     )
 
-    return "$cpuText · $(Format-WinForgeBytes -Bytes $Process.Memory) de memória"
+    return (Get-WinForgeText '{0} · {1} de memória' "$cpuText" "$(Format-WinForgeBytes -Bytes $Process.Memory)")
 }
 
 
@@ -782,12 +848,12 @@ function Get-WinForgeProtectedProcessReason {
 
     # O WinForge que está aberto fica fora da lista; um PowerShell ou terminal que aparece pode ser o monitor da bandeja,
     # a janela de texto do WinForge ou um script seu: fechar por aqui poderia derrubar o WinForge.
-    if ($Name -eq "WinForge") { return "usado pelo WinForge" }
-    if ($Name -in @("powershell", "pwsh", "WindowsTerminal", "OpenConsole")) { return "pode ser o WinForge" }
-    if ($Name -in @("msiexec", "TiWorker", "TrustedInstaller", "MoUsoCoreWorker", "wuauclt", "UsoClient")) { return "instalação ou atualização" }
-    if ($Name -in @("msedgewebview2", "rundll32", "dllhost")) { return "usado por vários programas" }
+    if ($Name -eq "WinForge") { return (Get-WinForgeText 'usado pelo WinForge') }
+    if ($Name -in @("powershell", "pwsh", "WindowsTerminal", "OpenConsole")) { return (Get-WinForgeText 'pode ser o WinForge') }
+    if ($Name -in @("msiexec", "TiWorker", "TrustedInstaller", "MoUsoCoreWorker", "wuauclt", "UsoClient")) { return (Get-WinForgeText 'instalação ou atualização') }
+    if ($Name -in @("msedgewebview2", "rundll32", "dllhost")) { return (Get-WinForgeText 'usado por vários programas') }
 
-    return "do Windows"
+    return (Get-WinForgeText 'do Windows')
 }
 
 
@@ -1157,29 +1223,29 @@ function Stop-WinForgeProcessGroup {
         $left = @($others | Where-Object { $null -ne (Get-WinForgeSampledProcess -Name $name -Entry $_) }).Count
     }
 
-    if ($dialog -gt 0) { return (New-WinForgeResult -Kind Warning -Detail "está com uma caixa de diálogo aberta; responda a ela e feche o programa por ela") }
-    if ($stillOpen -gt 0) { return (New-WinForgeResult -Kind Warning -Detail "a janela não fechou (pode estar perguntando se quer salvar, ou ter outra janela aberta); feche por ela") }
-    if ($tray -gt 0) { return (New-WinForgeResult -Kind Warning -Detail "fechou a janela, mas continua aberto perto do relógio; para sair, use o ícone dele (botão direito, Sair)") }
-    if ($unconfirmed -gt 0 -and $windowed.Count -eq 0 -and $targets.Count -eq 0) { return (New-WinForgeResult -Kind Failed -Detail "o Windows não deixou conferir que é o mesmo programa medido (talvez aberto como Administrador); feche-o pela janela dele") }
-    if ($unconfirmed -gt 0) { return (New-WinForgeResult -Kind Warning -Detail "parte dos processos continuou aberta (o Windows não deixou conferir todos)") }
-    if (-not $hadWindow -and -not $AllowForce -and $background.Count -gt 0) { return (New-WinForgeResult -Kind Warning -Detail "não tem janela aberta para fechar como no X; ficou aberto") }
-    if ($failed -gt 0 -and $failed -lt $targets.Count) { return (New-WinForgeResult -Kind Warning -Detail "parte dos processos continuou aberta") }
-    if ($failed -gt 0) { return (New-WinForgeResult -Kind Failed -Detail "o Windows não deixou fechar (talvez precise de Administrador)") }
-    if ($left -gt 0) { return (New-WinForgeResult -Kind Warning -Detail "$(Format-WinForgeCount -Count $left -One 'processo com o mesmo nome continua aberto' -Many 'processos com o mesmo nome continuam abertos') (pode ser de outro programa)") }
+    if ($dialog -gt 0) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'está com uma caixa de diálogo aberta; responda a ela e feche o programa por ela')) }
+    if ($stillOpen -gt 0) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a janela não fechou (pode estar perguntando se quer salvar, ou ter outra janela aberta); feche por ela')) }
+    if ($tray -gt 0) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'fechou a janela, mas continua aberto perto do relógio; para sair, use o ícone dele (botão direito, Sair)')) }
+    if ($unconfirmed -gt 0 -and $windowed.Count -eq 0 -and $targets.Count -eq 0) { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Windows não deixou conferir que é o mesmo programa medido (talvez aberto como Administrador); feche-o pela janela dele')) }
+    if ($unconfirmed -gt 0) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'parte dos processos continuou aberta (o Windows não deixou conferir todos)')) }
+    if (-not $hadWindow -and -not $AllowForce -and $background.Count -gt 0) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não tem janela aberta para fechar como no X; ficou aberto')) }
+    if ($failed -gt 0 -and $failed -lt $targets.Count) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'parte dos processos continuou aberta')) }
+    if ($failed -gt 0) { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Windows não deixou fechar (talvez precise de Administrador)')) }
+    if ($left -gt 0) { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} (pode ser de outro programa)' "$(Format-WinForgeCount -Count $left -One (Get-WinForgeText 'processo com o mesmo nome continua aberto') -Many (Get-WinForgeText 'processos com o mesmo nome continuam abertos'))")) }
 
-    return (New-WinForgeResult -Kind Ok -Detail "fechado")
+    return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'fechado'))
 }
 
 
 function Show-WinForgeHeavyProcesses {
-    $title = "Programas pesando agora"
+    $title = (Get-WinForgeText 'Programas pesando agora')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-Progress -Activity $title -Status "medindo o uso do processador e da memória"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'medindo o uso do processador e da memória')
 
         try {
             $heavy = @(Get-WinForgeHeavyProcesses)
@@ -1191,17 +1257,17 @@ function Show-WinForgeHeavyProcesses {
 
         if ($heavy.Count -eq 0) {
             # Sem nenhum processo lido, "o que pesa é do Windows" seria um palpite.
-            Write-WinForgeStatus -Type Error -Message "Não foi possível ler os programas abertos agora."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "não foi possível ler os programas abertos" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler os programas abertos agora.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível ler os programas abertos') -Title $title)
             return
         }
 
         if ($null -ne $memory) {
-            Write-WinForgeKeyValue -Label "Memória em uso" -Value "$(Format-WinForgeBytes -Bytes $memory.Used) de $(Format-WinForgeBytes -Bytes $memory.Total) ($($memory.Percent)%)" -Level $(if (Test-WinForgeMemoryHigh -Memory $memory) { "Warn" } else { "Normal" })
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Memória em uso') -Value (Get-WinForgeText '{0} de {1} ({2}%)' "$(Format-WinForgeBytes -Bytes $memory.Used)" "$(Format-WinForgeBytes -Bytes $memory.Total)" "$($memory.Percent)") -Level $(if (Test-WinForgeMemoryHigh -Memory $memory) { "Warn" } else { "Normal" })
             Write-Host ""
         }
 
-        Write-WinForgeSection -Title "O que mais pesa"
+        Write-WinForgeSection -Title (Get-WinForgeText 'O que mais pesa')
 
         foreach ($process in $heavy) {
             $label = $process.Description
@@ -1218,7 +1284,7 @@ function Show-WinForgeHeavyProcesses {
 
         # Um aviso sobre o PC, não sobre a tela: não conta no desfecho.
         if ($null -ne $memory -and (Test-WinForgeMemoryHigh -Memory $memory)) {
-            Write-WinForgeStatus -Type Warning -Notice -Message "A memória em uso está alta ($($memory.Percent)%): fechar programas que você não está usando ajuda."
+            Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'A memória em uso está alta ({0}%): fechar programas que você não está usando ajuda.' "$($memory.Percent)")
         }
 
         $closable = @($heavy | Where-Object { -not $_.Protected })
@@ -1227,18 +1293,18 @@ function Show-WinForgeHeavyProcesses {
         # conteúdo da tela.
         if ($closable.Count -eq 0) {
             # O que mais pesa é do Windows, de uma instalação em andamento ou do próprio WinForge.
-            Write-WinForgeStatus -Type Info -Message "Nada do que mais pesa agora pode ser fechado por aqui."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada do que mais pesa agora pode ser fechado por aqui.')
             Exit-WinForgeAction
             return
         }
 
         # Os programas do Windows não entram na lista.
-        Write-WinForgeStatus -Type Info -Message "Fechar por aqui é como clicar no X: o que não foi salvo pode ser perdido."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Fechar por aqui é como clicar no X: o que não foi salvo pode ser perdido.')
         Write-Host ""
 
-        $answer = Read-WinForgeChoice -Message "Quer fechar algum programa?" -DefaultKey "X" -ShowMenu -TextPrompt "Opção (F ou X; ENTER = concluir)" -Options @(
-            @{ Key = "F"; Label = "Fechar programas"; Description = "escolha na lista o que fechar" },
-            @{ Key = "X"; Label = "Concluir"; Exit = $true; Accent = $true }
+        $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'Quer fechar algum programa?') -DefaultKey "X" -ShowMenu -TextPrompt (Get-WinForgeText 'Opção (F ou X; ENTER = concluir)') -Options @(
+            @{ Key = "F"; Label = (Get-WinForgeText 'Fechar programas'); Description = (Get-WinForgeText 'escolha na lista o que fechar') },
+            @{ Key = "X"; Label = (Get-WinForgeText 'Concluir'); Exit = $true; Accent = $true }
         )
 
         if ($answer -ine "F") {
@@ -1250,25 +1316,25 @@ function Show-WinForgeHeavyProcesses {
             foreach ($process in $closable) {
                 $parts = @(Format-WinForgeProcessUsage -Process $process)
                 if ($process.Company) { $parts += $process.Company }
-                if ($process.Count -gt 1) { $parts += "$($process.Count) processos" }
+                if ($process.Count -gt 1) { $parts += (Get-WinForgeText '{0} processos' "$($process.Count)") }
                 @{ Key = $process.Name; Label = $process.Description; Description = ($parts -join " · "); Selected = $false }
             }
         )
 
-        $picked = Read-WinForgeMultiSelect -Message "Marque os programas que devem ser fechados" -Options $options
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Marque os programas que devem ser fechados') -Options $options -ConfirmLabel (Get-WinForgeText 'Fechar')
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
         $chosen = @($closable | Where-Object { @($picked) -contains $_.Name })
-        $question = Get-WinForgeSelectionQuestion -Verb "Fechar" -Names @($chosen | ForEach-Object { [string]$_.Description }) -Many "programas"
+        $question = Get-WinForgeSelectionQuestion -Verb (Get-WinForgeText 'Fechar') -Names @($chosen | ForEach-Object { [string]$_.Description }) -Many (Get-WinForgeText 'programas')
 
-        if (-not (Confirm-WinForgeAction -Message $question -DefaultKey "N")) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+        if (-not (Confirm-WinForgeAction -Message $question -DefaultKey "N" -YesLabel (Get-WinForgeText 'Fechar') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
@@ -1278,15 +1344,24 @@ function Show-WinForgeHeavyProcesses {
         $force = $false
 
         if ($windowless.Count -gt 0) {
-            Write-WinForgeStatus -Type Warning -Notice -Message "$(Join-WinForgeList -Items @($windowless | ForEach-Object { [string]$_.Description })) $(if ($windowless.Count -eq 1) { 'não tem janela aberta' } else { 'não têm janela aberta' }): fechar é encerrar à força, e o que não foi salvo (uma gravação, uma máquina virtual) pode ser perdido."
-            $force = Confirm-WinForgeAction -Message (Get-WinForgeSelectionQuestion -Verb "Encerrar à força" -Names @($windowless | ForEach-Object { [string]$_.Description }) -Many "programas") -DefaultKey "N"
+            Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText '{0} {1}: fechar é encerrar à força, e o que não foi salvo (uma gravação, uma máquina virtual) pode ser perdido.' "$(Join-WinForgeList -Items @($windowless | ForEach-Object { [string]$_.Description }))" "$(if ($windowless.Count -eq 1) { (Get-WinForgeText 'não tem janela aberta') } else { (Get-WinForgeText 'não têm janela aberta') })")
+            $forceQuestion = Get-WinForgeSelectionQuestion -Verb (Get-WinForgeText 'Encerrar à força') -Names @($windowless | ForEach-Object { [string]$_.Description }) -Many (Get-WinForgeText 'programas')
+            $force = Confirm-WinForgeAction -Message $forceQuestion -DefaultKey "N" -Danger -YesLabel (Get-WinForgeText 'Encerrar à força') -NoLabel (Get-WinForgeText 'Não encerrar')
+        }
+
+        # Tudo o que foi marcado está sem janela, e a resposta foi Não: é desistir, como na pergunta de antes, e não um
+        # programa que "ficou aberto".
+        if ($windowless.Count -gt 0 -and -not $force -and $windowless.Count -eq $chosen.Count) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
+            return
         }
 
         $results = @()
 
         foreach ($process in $chosen) {
             if (-not $force -and $windowless -contains $process) {
-                $result = New-WinForgeResult -Kind Warning -Detail "ficou aberto (sem janela para fechar como no X)"
+                $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'ficou aberto (sem janela para fechar como no X)')
                 $result.Etapa = $process.Description
                 $results += $result
                 Write-WinForgeStatus -Type Warning -Message "$($process.Description): $($result.Detail)."
@@ -1297,7 +1372,7 @@ function Show-WinForgeHeavyProcesses {
             $result.Etapa = $process.Description
             $results += $result
 
-            if ($result.Kind -eq "Ok") { Write-WinForgeStatus -Type Success -Message "$($process.Description): fechado." }
+            if ($result.Kind -eq "Ok") { Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: fechado.' "$($process.Description)") }
             elseif ($result.Kind -eq "Warning") { Write-WinForgeStatus -Type Warning -Message "$($process.Description): $($result.Detail)." }
             else { Write-WinForgeStatus -Type Error -Message "$($process.Description): $($result.Detail)." }
         }
@@ -1312,34 +1387,34 @@ function Show-WinForgeHeavyProcesses {
 
             if ($null -ne $now) {
                 Write-Host ""
-                Write-WinForgeKeyValue -Label "Memória em uso agora" -Value "$(Format-WinForgeBytes -Bytes $now.Used) de $(Format-WinForgeBytes -Bytes $now.Total) ($($now.Percent)%); antes, $($memory.Percent)%"
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Memória em uso agora') -Value (Get-WinForgeText '{0} de {1} ({2}%); antes, {3}%' "$(Format-WinForgeBytes -Bytes $now.Used)" "$(Format-WinForgeBytes -Bytes $now.Total)" "$($now.Percent)" "$($memory.Percent)")
             }
         }
 
         if ($failed.Count -eq 0) {
             # Na janela, o título diz quantos, e a frase, o efeito na memória (os nomes ficam no resumo); sem a leitura da
             # memória, a frase diz quais.
-            $closedText = Format-WinForgeCount -Count $results.Count -One "programa fechado" -Many "programas fechados"
+            $closedText = Format-WinForgeCount -Count $results.Count -One (Get-WinForgeText 'programa fechado') -Many (Get-WinForgeText 'programas fechados')
             $final = New-WinForgeResult -Kind Ok -Detail $closedText -Title $title
             $note = $(
-                if ($null -ne $now) { "Memória em uso agora: $($now.Percent)% (antes, $($memory.Percent)%)." }
-                else { "$(if ($results.Count -eq 1) { 'Fechado' } else { 'Fechados' }): $(Join-WinForgeList -Items @($results | ForEach-Object { [string]$_.Etapa }))." }
+                if ($null -ne $now) { (Get-WinForgeText 'Memória em uso agora: {0}% (antes, {1}%).' "$($now.Percent)" "$($memory.Percent)") }
+                else { $(if ($results.Count -eq 1) { (Get-WinForgeText 'Fechado: {0}.' "$(Join-WinForgeList -Items @($results | ForEach-Object { [string]$_.Etapa }))") } else { (Get-WinForgeText 'Fechados: {0}.' "$(Join-WinForgeList -Items @($results | ForEach-Object { [string]$_.Etapa }))") }) }
             )
             [void](Set-WinForgeResultView -Result $final -Headline $closedText -Note $note)
         }
         elseif (@($failed | Where-Object { $_.Kind -eq "Failed" }).Count -eq $results.Count) {
-            $final = New-WinForgeResult -Kind Failed -Detail "não foi possível fechar: $names" -Title $title
+            $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível fechar: {0}' "$names") -Title $title
         }
         elseif ($failed.Count -eq $results.Count) {
             # Uma janela que ficou aberta perguntando se quer salvar não é erro: a pessoa responde e fecha por ela.
-            $final = New-WinForgeResult -Kind Warning -Detail "$(if ($failed.Count -eq 1) { 'ficou aberto' } else { 'ficaram abertos' }): $names" -Title $title
+            $final = New-WinForgeResult -Kind Warning -Detail $(if ($failed.Count -eq 1) { (Get-WinForgeText 'ficou aberto: {0}' "$names") } else { (Get-WinForgeText 'ficaram abertos: {0}' "$names") }) -Title $title
         }
         else {
-            $final = New-WinForgeResult -Kind Warning -Detail "$($failed.Count) de $($results.Count) não fecharam: $names" -Title $title
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} não fecharam: {2}' "$($failed.Count)" "$($results.Count)" "$names") -Title $title
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível medir os programas: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível medir os programas: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 

@@ -18,8 +18,9 @@ function Write-WinForgeOtherAccountNotice {
     <#
     Com o WinForge aberto com outra conta (o pedido de Administrador respondido com a senha de outra pessoa), o que é de
     cada conta (temporários, Lixeira, AppData, registro do usuário) é o dessa conta, não o de quem está usando o Windows:
-    um aviso antes da pergunta (Test-WinForgeUserContextMismatch). What diz o quê ("os temporários e a Lixeira"); o
-    artigo do começo faz a frase concordar. Devolve $true quando avisou.
+    um aviso antes da pergunta (Test-WinForgeUserContextMismatch). What diz o quê ("os temporários e a Lixeira"), em
+    português (a chave da tradução): o artigo do começo faz a frase concordar, e o espanhol tem o mesmo gênero e número
+    em todos os textos usados. Devolve $true quando avisou.
     #>
     param ([Parameter(Mandatory)][string]$What)
 
@@ -28,68 +29,14 @@ function Write-WinForgeOtherAccountNotice {
     $account = $(if (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) { $env:USERNAME } else { [Environment]::UserName })
 
     $predicate = switch (($What.Trim() -split ' ', 2)[0].ToLowerInvariant()) {
-        "as" { "são as dessa conta, não as" }
-        "a" { "é a dessa conta, não a" }
-        "o" { "é o dessa conta, não o" }
-        default { "são os dessa conta, não os" }
+        "as" { (Get-WinForgeText 'são as dessa conta, não as') }
+        "a" { (Get-WinForgeText 'é a dessa conta, não a') }
+        "o" { (Get-WinForgeText 'é o dessa conta, não o') }
+        default { (Get-WinForgeText 'são os dessa conta, não os') }
     }
 
-    Write-WinForgeStatus -Type Warning -Notice -Message "O WinForge está aberto com outra conta ($account): $What $predicate de quem está usando o Windows."
+    Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'O WinForge está aberto com outra conta ({0}): {1} {2} de quem está usando o Windows.' "$account" "$(Get-WinForgeText $What)" "$predicate")
     return $true
-}
-
-
-# ---------------------------------------------------------------------------
-# Exclusão segura
-# ---------------------------------------------------------------------------
-
-function Remove-WinForgeItem {
-    <#
-    Remove um arquivo ou pasta. Atalhos de pasta (junção/link simbólico) são removidos como atalho, sem tocar no
-    conteúdo de destino: o Windows PowerShell 5.1 pode seguir o link em Remove-Item -Recurse e apagar o que está fora
-    da pasta limpa. Em pastas, apaga o que for possível e lança erro se algum item continuar em uso.
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-
-    if (-not $item.PSIsContainer) {
-        if ($item.IsReadOnly) {
-            $item.IsReadOnly = $false
-        }
-
-        $item.Delete()
-        return
-    }
-
-    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        $item.Delete()
-        return
-    }
-
-    $failed = $false
-
-    foreach ($child in @($item.EnumerateFileSystemInfos())) {
-        try {
-            Remove-WinForgeItem -Path $child.FullName
-        }
-        catch {
-            $failed = $true
-        }
-    }
-
-    if ($failed) {
-        throw "Há itens em uso em '$($item.Name)'."
-    }
-
-    if (($item.Attributes -band [System.IO.FileAttributes]::ReadOnly) -ne 0) {
-        $item.Attributes = $item.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly)
-    }
-
-    $item.Delete()
 }
 
 
@@ -225,11 +172,11 @@ function Get-WinForgeRecycleBinProblem {
     $text = ([string]$Path).Trim()
 
     if ([string]::IsNullOrWhiteSpace($text)) {
-        return "não fica numa unidade que o WinForge consiga identificar"
+        return (Get-WinForgeText 'não fica numa unidade que o WinForge consiga identificar')
     }
 
     if ($text.StartsWith("\\") -or $text.StartsWith("//")) {
-        return "fica numa pasta de rede, que não tem Lixeira"
+        return (Get-WinForgeText 'fica numa pasta de rede, que não tem Lixeira')
     }
 
     try {
@@ -240,7 +187,7 @@ function Get-WinForgeRecycleBinProblem {
     }
 
     if ([string]::IsNullOrWhiteSpace($root) -or $root.StartsWith("\\")) {
-        return "não fica numa unidade que o WinForge consiga identificar"
+        return (Get-WinForgeText 'não fica numa unidade que o WinForge consiga identificar')
     }
 
     $drive = $root.TrimEnd([char[]]@('\', '/'))
@@ -248,15 +195,15 @@ function Get-WinForgeRecycleBinProblem {
 
     switch (Get-WinForgeDriveType -Root $root) {
         "Fixed" {
-            if ((Get-WinForgeRecycleBinCapacity -Root $root).Nuke) { return "fica em $drive, onde a Lixeira está configurada para apagar na hora" }
+            if ((Get-WinForgeRecycleBinCapacity -Root $root).Nuke) { return (Get-WinForgeText 'fica em {0}, onde a Lixeira está configurada para apagar na hora' "$drive") }
             return ""
         }
-        "Network" { return "fica numa unidade de rede ($drive), que não tem Lixeira" }
-        "Removable" { return "fica num pendrive ou cartão de memória ($drive), que não tem Lixeira" }
-        "CDRom" { return "fica num CD ou DVD ($drive), que não tem Lixeira" }
+        "Network" { return (Get-WinForgeText 'fica numa unidade de rede ({0}), que não tem Lixeira' "$drive") }
+        "Removable" { return (Get-WinForgeText 'fica num pendrive ou cartão de memória ({0}), que não tem Lixeira' "$drive") }
+        "CDRom" { return (Get-WinForgeText 'fica num CD ou DVD ({0}), que não tem Lixeira' "$drive") }
     }
 
-    return "fica numa unidade sem Lixeira ou que não foi possível identificar ($drive)"
+    return (Get-WinForgeText 'fica numa unidade sem Lixeira ou que não foi possível identificar ({0})' "$drive")
 }
 
 
@@ -310,7 +257,7 @@ function Move-WinForgeItemToRecycleBin {
     $problem = Get-WinForgeRecycleBinProblem -Path $Path
 
     if ($problem) {
-        throw "$problem; o Windows apagaria em definitivo, então ficou onde estava"
+        throw (Get-WinForgeText '{0}; o Windows apagaria em definitivo, então ficou onde estava' "$problem")
     }
 
     $limit = [int64](Get-WinForgeRecycleBinCapacity -Root ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path)))).MaxBytes
@@ -321,7 +268,7 @@ function Move-WinForgeItemToRecycleBin {
         }
 
         if ($SizeBytes -gt $limit) {
-            throw "tem $(Format-WinForgeBytes -Bytes $SizeBytes) e passa do limite da Lixeira desta unidade ($(Format-WinForgeBytes -Bytes $limit)): o Windows apagaria em definitivo, então ficou onde estava"
+            throw (Get-WinForgeText 'tem {0} e passa do limite da Lixeira desta unidade ({1}): o Windows apagaria em definitivo, então ficou onde estava' "$(Format-WinForgeBytes -Bytes $SizeBytes)" "$(Format-WinForgeBytes -Bytes $limit)")
         }
     }
 
@@ -369,7 +316,7 @@ function Write-WinForgeCleanupProgress {
     $percent = 0
     if ($Total -gt 0) { $percent = [Math]::Min(100, [int](($Current * 100) / $Total)) }
 
-    Write-Progress -Activity $Activity -Status "$(Format-WinForgeNumber -Value $Current) de $(Format-WinForgeNumber -Value $Total)" -PercentComplete $percent
+    Write-Progress -Activity $Activity -Status (Get-WinForgeText '{0} de {1}' "$(Format-WinForgeNumber -Value $Current)" "$(Format-WinForgeNumber -Value $Total)") -PercentComplete $percent
 }
 
 
@@ -527,7 +474,7 @@ function Clear-WinForgeFolderContents {
         [Parameter(Mandatory)]
         [string]$Path,
 
-        [string]$Activity = "Limpando",
+        [string]$Activity = (Get-WinForgeText 'Limpeza'),
 
         [object[]]$Entries,
 
@@ -539,7 +486,7 @@ function Clear-WinForgeFolderContents {
         $listing = Get-WinForgeFolderListing -Path $Path
 
         if (-not $listing.Readable) {
-            throw "Não foi possível ler a pasta: $($listing.Reason)"
+            throw (Get-WinForgeText 'Não foi possível ler a pasta: {0}' "$($listing.Reason)")
         }
 
         $Entries = @(Measure-WinForgeFolderItems -Items $listing.Items)
@@ -837,14 +784,19 @@ function Get-WinForgeMinAgeText {
     # "um dia", "2 dias", "6 horas": a idade mínima como a tela diz antes da limpeza ("os de menos de um dia ficam").
     param ([Parameter(Mandatory)][int]$Hours)
 
-    if ($Hours -eq 24) { return "um dia" }
-    if ($Hours -gt 0 -and $Hours % 24 -eq 0) { return (Format-WinForgeCount -Count ($Hours / 24) -One "dia" -Many "dias") }
+    if ($Hours -eq 24) { return (Get-WinForgeText 'um dia') }
+    if ($Hours -gt 0 -and $Hours % 24 -eq 0) { return (Format-WinForgeCount -Count ($Hours / 24) -One (Get-WinForgeText 'dia') -Many (Get-WinForgeText 'dias')) }
 
-    return (Format-WinForgeCount -Count $Hours -One "hora" -Many "horas")
+    return (Format-WinForgeCount -Count $Hours -One (Get-WinForgeText 'hora') -Many (Get-WinForgeText 'horas'))
 }
 
 
 function Invoke-WinForgeFolderCleanup {
+    <#
+    Uma parte de outra limpeza (a Limpeza rápida e o Acelerar agora): esvazia uma pasta de temporários, sem pergunta (a
+    pergunta é a de quem chama), e devolve o WinForge.Result com Data.FreedBytes. Warning quer dizer uma coisa só: havia o
+    que limpar, mas nada saiu, porque estava tudo em uso (o Acelerar agora diz isso, e não "nenhum temporário").
+    #>
     param (
         [Parameter(Mandatory)]
         [string]$Title,
@@ -854,46 +806,41 @@ function Invoke-WinForgeFolderCleanup {
         [AllowEmptyString()]
         [string]$Path,
 
-        [string[]]$Notes = @(),
-
         # Itens mais novos que isto (em horas) ficam; 0 = limpa tudo.
-        [int]$MinAgeHours = 0,
-
-        [switch]$Embedded,
-        [switch]$PassThru
+        [int]$MinAgeHours = 0
     )
 
-    Enter-WinForgeAction -Title $Title -Embedded:$Embedded
+    Enter-WinForgeAction -Title $Title -Embedded
 
     $result = $null
 
     try {
         if ([string]::IsNullOrWhiteSpace($Path)) {
-            Write-WinForgeStatus -Type Error -Message "Não foi possível localizar a pasta a limpar (variável de ambiente ausente)."
-            $result = New-WinForgeResult -Kind Failed -Detail "pasta não localizada"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível localizar a pasta a limpar (variável de ambiente ausente).')
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta não localizada')
         }
         elseif (-not (Test-WinForgeTempFolderSafe -Path $Path -RequireTempName)) {
             # Uma pasta de temporários precisa se chamar Temp e não pode ser uma raiz de disco, conter o perfil, o Windows ou
             # os dados dos programas (AppData), nem ficar numa pasta pessoal ou na pasta do WinForge.
-            Write-WinForgeStatus -Type Error -Message "Pasta recusada por segurança: $Path"
-            Write-WinForgeStatus -Type Info -Message "Ela não parece uma pasta de temporários: verifique a variável de ambiente TEMP."
-            $result = New-WinForgeResult -Kind Failed -Detail "pasta recusada por segurança"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Pasta recusada por segurança: {0}' "$Path")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Ela não parece uma pasta de temporários: verifique a variável de ambiente TEMP.')
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta recusada por segurança')
         }
         elseif (-not (Test-Path -LiteralPath $Path -PathType Container)) {
-            Write-WinForgeStatus -Type Warning -Message "Pasta não encontrada: $Path"
-            $result = New-WinForgeResult -Kind Skipped -Detail "pasta não encontrada" -Data @{ FreedBytes = [int64]0 }
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Pasta não encontrada: {0}' "$Path")
+            $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'pasta não encontrada') -Data @{ FreedBytes = [int64]0 }
         }
         else {
             $listing = Get-WinForgeFolderListing -Path $Path
 
             if (-not $listing.Readable) {
                 # Sem conseguir listar, "vazia" seria um palpite: a pasta pode estar cheia e só não ser permitida.
-                Write-WinForgeStatus -Type Error -Message "Não foi possível ler a pasta: $($listing.Reason)"
-                Write-WinForgeStatus -Type Info -Message "Se a pasta for do sistema, feche o WinForge, abra de novo e aceite o aviso do Windows."
-                $result = New-WinForgeResult -Kind Failed -Detail "pasta ilegível"
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler a pasta: {0}' "$($listing.Reason)")
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Se a pasta for do sistema, feche o WinForge, abra de novo e aceite o aviso do Windows.')
+                $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta ilegível')
             }
             else {
-                Write-Progress -Activity $Title -Status "medindo a pasta"
+                Write-Progress -Activity $Title -Status (Get-WinForgeText 'medindo a pasta')
                 $all = @(Measure-WinForgeFolderItems -Items $listing.Items)
                 Write-Progress -Activity $Title -Completed
 
@@ -904,81 +851,66 @@ function Invoke-WinForgeFolderCleanup {
                 $totalBytes = [int64]0
                 foreach ($entry in @($entries)) { $totalBytes += [int64]$entry.SizeBytes }
 
-                Write-WinForgeKeyValue -Label "Pasta" -Value $Path
-                Write-WinForgeKeyValue -Label "Itens a limpar" -Value (Format-WinForgeNumber -Value @($entries).Count)
-                Write-WinForgeKeyValue -Label "Tamanho estimado" -Value (Format-WinForgeBytes -Bytes $totalBytes)
-                if ($recent -gt 0) { Write-WinForgeKeyValue -Label "Ficam (recentes)" -Value "$(Format-WinForgeCount -Count $recent -One 'item' -Many 'itens') de menos de $(Get-WinForgeMinAgeText -Hours $MinAgeHours)" }
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Pasta') -Value $Path
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens a limpar') -Value (Format-WinForgeNumber -Value @($entries).Count)
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Tamanho estimado') -Value (Format-WinForgeBytes -Bytes $totalBytes)
+                if ($recent -gt 0) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Ficam (recentes)') -Value (Get-WinForgeText '{0} de menos de {1}' "$(Format-WinForgeCount -Count $recent -One (Get-WinForgeText 'item') -Many (Get-WinForgeText 'itens'))" "$(Get-WinForgeMinAgeText -Hours $MinAgeHours)") }
                 Write-Host ""
 
                 if (@($entries).Count -eq 0) {
                     # O que é recente pode ser de um programa ou de uma instalação em andamento: fica.
-                    Write-WinForgeStatus -Type Success -Message $(if ($recent -gt 0) { "Não há nada para limpar: o que está na pasta é recente." } else { "Não há nada para limpar nesta pasta." })
-                    $result = New-WinForgeResult -Kind Ok -Detail "nada a limpar" -Data @{ FreedBytes = [int64]0 }
+                    Write-WinForgeStatus -Type Success -Message $(if ($recent -gt 0) { (Get-WinForgeText 'Não há nada para limpar: o que está na pasta é recente.') } else { (Get-WinForgeText 'Não há nada para limpar nesta pasta.') })
+                    $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nada a limpar') -Data @{ FreedBytes = [int64]0 }
                 }
                 else {
-                    # As notas vão antes da pergunta e, na janela, aparecem no resumo: durante uma pergunta de Sim e Não
-                    # os detalhes técnicos ficam recolhidos. Dentro da Limpeza rápida (sem pergunta) não se repetem.
-                    if (-not $Embedded) {
-                        foreach ($note in $Notes) { Write-WinForgeStatus -Type Info -Message $note }
-                        if ($Notes.Count -gt 0) { Write-Host "" }
-                    }
+                    # O andamento vai na barra de progresso (Clear-WinForgeFolderContents); uma linha "Limpando..."
+                    # ficaria no resumo como se a limpeza ainda estivesse em curso. Os recentes, que ficam, já foram
+                    # contados acima ("Ficam (recentes)").
+                    $outcome = Clear-WinForgeFolderContents -Path $Path -Activity $Title -Entries @($entries)
 
-                    if (-not $Embedded -and -not (Confirm-WinForgeAction "Deseja limpar estes arquivos?" -DefaultKey S)) {
-                        Write-WinForgeStatus -Type Warning -Message "Limpeza cancelada."
-                        $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+                    # Itens em uso são esperados; mas se NADA saiu, a limpeza não aconteceu e "concluída" seria mentira.
+                    $nothingRemoved = ($outcome.Removed -eq 0 -and $outcome.Skipped -gt 0)
+
+                    if ($nothingRemoved) {
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nenhum item pôde ser removido.')
                     }
                     else {
-                        # O andamento vai na barra de progresso (Clear-WinForgeFolderContents); uma linha "Limpando..."
-                        # ficaria no resumo como se a limpeza ainda estivesse em curso.
-                        # Os recentes, que ficam, já foram contados antes da pergunta ("Ficam (recentes)").
-                        $outcome = Clear-WinForgeFolderContents -Path $Path -Activity $Title -Entries @($entries)
-
-                        # Itens em uso são esperados; mas se NADA saiu, a limpeza não aconteceu e "concluída" seria mentira.
-                        $nothingRemoved = ($outcome.Removed -eq 0 -and $outcome.Skipped -gt 0)
-
-                        if ($nothingRemoved) {
-                            Write-WinForgeStatus -Type Warning -Message "Nenhum item pôde ser removido."
-                        }
-                        else {
-                            Write-WinForgeStatus -Type Success -Message "Limpeza concluída."
-                        }
-
-                        Write-WinForgeKeyValue -Label "Itens removidos" -Value (Format-WinForgeNumber -Value $outcome.Removed)
-                        if ($outcome.Skipped -gt 0) { Write-WinForgeKeyValue -Label "Em uso (ficaram)" -Value (Format-WinForgeNumber -Value $outcome.Skipped) }
-                        Write-WinForgeKeyValue -Label "Espaço liberado" -Value (Format-WinForgeBytes -Bytes $outcome.Freed)
-
-                        if ($nothingRemoved) {
-                            Write-Host ""
-                            Write-WinForgeStatus -Type Info -Message "Os itens estavam em uso: feche os programas e tente de novo."
-                        }
-                        elseif ($outcome.Skipped -gt 0) {
-                            Write-Host ""
-                            Write-WinForgeStatus -Type Info -Message "Os itens em uso ficaram; isso é esperado."
-                        }
-
-                        $detail = "liberou $(Format-WinForgeBytes -Bytes $outcome.Freed)"
-                        if ($outcome.Skipped -gt 0) { $detail += "; $($outcome.Skipped) em uso" }
-
-                        $kind = $(if ($nothingRemoved) { "Warning" } else { "Ok" })
-                        if ($nothingRemoved) { $detail = "nenhum item removido; $($outcome.Skipped) em uso" }
-
-                        $result = New-WinForgeResult -Kind $kind -Detail $detail -Data @{ FreedBytes = [int64]$outcome.Freed }
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Limpeza concluída.')
                     }
+
+                    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens removidos') -Value (Format-WinForgeNumber -Value $outcome.Removed)
+                    if ($outcome.Skipped -gt 0) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Em uso (ficaram)') -Value (Format-WinForgeNumber -Value $outcome.Skipped) }
+                    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço liberado') -Value (Format-WinForgeBytes -Bytes $outcome.Freed)
+
+                    if ($nothingRemoved) {
+                        Write-Host ""
+                        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Os itens estavam em uso: feche os programas e tente de novo.')
+                    }
+                    elseif ($outcome.Skipped -gt 0) {
+                        Write-Host ""
+                        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Os itens em uso ficaram; isso é esperado.')
+                    }
+
+                    $detail = (Get-WinForgeText 'liberou {0}' "$(Format-WinForgeBytes -Bytes $outcome.Freed)")
+                    if ($outcome.Skipped -gt 0) { $detail += (Get-WinForgeText '; {0} em uso' "$($outcome.Skipped)") }
+
+                    $kind = $(if ($nothingRemoved) { "Warning" } else { "Ok" })
+                    if ($nothingRemoved) { $detail = (Get-WinForgeText 'nenhum item removido; {0} em uso' "$($outcome.Skipped)") }
+
+                    $result = New-WinForgeResult -Kind $kind -Detail $detail -Data @{ FreedBytes = [int64]$outcome.Freed }
                 }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na limpeza: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na limpeza: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
     $result.Etapa = $Title
-    Exit-WinForgeAction -Embedded:$Embedded -Result $result
+    Exit-WinForgeAction -Embedded -Result $result
 
-    if ($PassThru) {
-        return $result
-    }
+    return $result
 }
 
 
@@ -1009,32 +941,14 @@ function Get-WinForgeWindowsTempPath {
 
 
 function Clear-WinForgeUserTemp {
-    param (
-        [switch]$Embedded,
-        [switch]$PassThru
-    )
-
-    Invoke-WinForgeFolderCleanup `
-        -Title "Limpar temporários do usuário" `
-        -Path (Get-WinForgeUserTempPath) `
-        -MinAgeHours $script:WinForgeTempMinAgeHours `
-        -Notes @("Arquivos em uso e os de menos de um dia ficam.") `
-        -Embedded:$Embedded -PassThru:$PassThru
+    # Os temporários do usuário, como parte da Limpeza rápida e do Acelerar agora; devolve o WinForge.Result.
+    return (Invoke-WinForgeFolderCleanup -Title (Get-WinForgeText 'Limpar temporários do usuário') -Path (Get-WinForgeUserTempPath) -MinAgeHours $script:WinForgeTempMinAgeHours)
 }
 
 
 function Clear-WinForgeWindowsTemp {
-    param (
-        [switch]$Embedded,
-        [switch]$PassThru
-    )
-
-    Invoke-WinForgeFolderCleanup `
-        -Title "Limpar temporários do Windows" `
-        -Path (Get-WinForgeWindowsTempPath) `
-        -MinAgeHours $script:WinForgeTempMinAgeHours `
-        -Notes @("Arquivos em uso e os de menos de um dia ficam.") `
-        -Embedded:$Embedded -PassThru:$PassThru
+    # Os temporários do Windows, como parte da Limpeza rápida; devolve o WinForge.Result.
+    return (Invoke-WinForgeFolderCleanup -Title (Get-WinForgeText 'Limpar temporários do Windows') -Path (Get-WinForgeWindowsTempPath) -MinAgeHours $script:WinForgeTempMinAgeHours)
 }
 
 
@@ -1046,7 +960,9 @@ function Set-WinForgeRecycleBinNext {
     <#
     A faixa de uma ferramenta que mandou itens para a Lixeira (Downloads, duplicados, restos de programas): o título diz
     quantos foram, a frase diz que o espaço só volta ao esvaziá-la, e o botão Esvaziar a Lixeira leva direto à tela que
-    faz isso (antes, só o texto apontava o caminho). Só no resultado sem ressalvas; devolve o próprio resultado.
+    faz isso (antes, só o texto apontava o caminho). Numa ressalva (alguns itens ficaram), o título e a frase continuam os
+    da ressalva, que dizem o que ficou, e só o botão entra: o que foi para a Lixeira também espera ser esvaziado. Devolve
+    o próprio resultado.
     #>
     param (
         [Parameter(Mandatory)]
@@ -1054,15 +970,32 @@ function Set-WinForgeRecycleBinNext {
 
         [int]$Count,
         [int64]$Bytes = 0,
-        [string]$One = "item",
-        [string]$Many = "itens"
+        [string]$One = (Get-WinForgeText 'item'),
+        [string]$Many = (Get-WinForgeText 'itens')
     )
 
-    if ([string]$Result.Kind -ne "Ok" -or $Count -le 0) { return $Result }
+    if ([string]$Result.Kind -notin @("Ok", "Warning") -or $Count -le 0) { return $Result }
 
-    $note = $(if ($Bytes -gt 0) { "$(Format-WinForgeBytes -Bytes $Bytes) voltam ao disco ao esvaziar a Lixeira." } else { "O espaço volta ao disco ao esvaziar a Lixeira." })
+    if ([string]$Result.Kind -eq "Warning") {
+        return (Set-WinForgeResultView -Result $Result -Next "cleanup.recycle-bin" -NextLabel (Get-WinForgeText 'Esvaziar a Lixeira'))
+    }
 
-    return (Set-WinForgeResultView -Result $Result -Headline "$(Format-WinForgeCount -Count $Count -One $One -Many $Many) na Lixeira" -Note $note -Next "cleanup.recycle-bin" -NextLabel "Esvaziar a Lixeira")
+    $note = $(if ($Bytes -gt 0) { (Get-WinForgeText '{0} voltam ao disco ao esvaziar a Lixeira.' "$(Format-WinForgeBytes -Bytes $Bytes)") } else { (Get-WinForgeText 'O espaço volta ao disco ao esvaziar a Lixeira.') })
+
+    return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText '{0} na Lixeira' "$(Format-WinForgeCount -Count $Count -One $One -Many $Many)") -Note $note -Next "cleanup.recycle-bin" -NextLabel (Get-WinForgeText 'Esvaziar a Lixeira'))
+}
+
+
+function Get-WinForgeCleanupZeroNote {
+    <#
+    A frase da faixa de uma limpeza que terminou sem espaço liberado: o que saiu estava vazio (pastas e arquivos de 0
+    bytes) ou, com uma parte que não pôde ser medida (Unmeasured, os nomes dela), o espaço não pôde ser medido.
+    #>
+    param ([AllowEmptyCollection()][string[]]$Unmeasured = @())
+
+    if (@($Unmeasured).Count -gt 0) { return (Get-WinForgeText 'O espaço liberado não pôde ser medido.') }
+
+    return (Get-WinForgeText 'O que saiu estava vazio: o espaço livre não mudou.')
 }
 
 
@@ -1153,10 +1086,10 @@ function Format-WinForgeRecycleBinText {
     )
 
     if ([int]$Contents.Count -eq 0) {
-        return "vazia"
+        return (Get-WinForgeText 'vazia')
     }
 
-    return "$(Format-WinForgeCount -Count ([int]$Contents.Count) -One 'item' -Many 'itens'), $(Format-WinForgeBytes -Bytes $Contents.SizeBytes)"
+    return "$(Format-WinForgeCount -Count ([int]$Contents.Count) -One (Get-WinForgeText 'item') -Many (Get-WinForgeText 'itens')), $(Format-WinForgeBytes -Bytes $Contents.SizeBytes)"
 }
 
 
@@ -1178,7 +1111,8 @@ function Test-WinForgeRecycleBinEmptyError {
         $Message -match "cannot find the path specified" -or
         $Message -match "não pode encontrar o arquivo especificado" -or
         $Message -match "não foi possível localizar (o arquivo|o caminho) especificado" -or
-        $Message -match "O sistema não pode encontrar"
+        $Message -match "O sistema não pode encontrar" -or
+        $Message -match "El sistema no puede encontrar"
     )
 }
 
@@ -1192,7 +1126,7 @@ function Clear-WinForgeRecycleBin {
         $Contents = $null
     )
 
-    $title = "Esvaziar a Lixeira"
+    $title = (Get-WinForgeText 'Esvaziar a Lixeira')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
@@ -1200,38 +1134,38 @@ function Clear-WinForgeRecycleBin {
 
     try {
         if ($null -eq $Contents) {
-            Write-Progress -Activity $title -Status "medindo o que está na Lixeira"
+            Write-Progress -Activity $title -Status (Get-WinForgeText 'medindo o que está na Lixeira')
             $Contents = Get-WinForgeRecycleBinContents
             Write-Progress -Activity $title -Completed
         }
 
         if ($null -ne $Contents -and [int]$Contents.Count -eq 0) {
-            Write-WinForgeStatus -Type Success -Message "A Lixeira já está vazia."
-            $result = New-WinForgeResult -Kind Ok -Detail "já estava vazia" -Data @{ FreedBytes = [int64]0 }
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'A Lixeira já está vazia.')
+            $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já estava vazia') -Data @{ FreedBytes = [int64]0; AlreadyEmpty = $true }
         }
         else {
             if ($null -ne $Contents) {
-                Write-WinForgeKeyValue -Label "Na Lixeira" -Value (Format-WinForgeRecycleBinText -Contents $Contents)
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Na Lixeira') -Value (Format-WinForgeRecycleBinText -Contents $Contents)
             }
             else {
-                Write-WinForgeStatus -Type Info -Message "Não foi possível medir a Lixeira; ela será esvaziada mesmo assim."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Não foi possível medir a Lixeira; ela será esvaziada mesmo assim.')
             }
 
             if (-not $Embedded) {
                 # Um aviso antes da pergunta, que na janela fica no resumo, acima dos botões. Não é ressalva do resultado.
-                Write-WinForgeStatus -Type Warning -Notice -Message "Esvazia a Lixeira de todas as unidades: os itens são removidos em definitivo."
-                Write-WinForgeStatus -Type Info -Message "Para salvar algo antes, abra a Lixeira e use Restaurar."
-                [void](Write-WinForgeOtherAccountNotice -What "a Lixeira")
+                Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Esvazia a Lixeira de todas as unidades: os itens são removidos em definitivo.')
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para salvar algo antes, abra a Lixeira e use Restaurar.')
+                [void](Write-WinForgeOtherAccountNotice -What 'a Lixeira')
                 Write-Host ""
             }
 
-            if (-not $Embedded -and -not (Confirm-WinForgeAction "Deseja esvaziar a Lixeira?" -DefaultKey N)) {
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            if (-not $Embedded -and -not (Confirm-WinForgeAction (Get-WinForgeText 'Deseja esvaziar a Lixeira?') -DefaultKey N -Danger -YesLabel (Get-WinForgeText 'Esvaziar') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             else {
                 try {
-                    Write-Progress -Activity $title -Status "esvaziando"
+                    Write-Progress -Activity $title -Status (Get-WinForgeText 'esvaziando')
 
                     try {
                         Clear-RecycleBin -Force -ErrorAction Stop
@@ -1240,24 +1174,24 @@ function Clear-WinForgeRecycleBin {
                         Write-Progress -Activity $title -Completed
                     }
 
-                    Write-WinForgeStatus -Type Success -Message "Lixeira esvaziada."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Lixeira esvaziada.')
 
                     # O espaço liberado é o que foi medido antes (o Windows esvazia a Lixeira inteira de uma vez).
                     if ($null -ne $Contents) {
-                        Write-WinForgeKeyValue -Label "Espaço liberado" -Value (Format-WinForgeBytes -Bytes $Contents.SizeBytes)
-                        $result = New-WinForgeResult -Kind Ok -Detail "liberou $(Format-WinForgeBytes -Bytes $Contents.SizeBytes)" -Data @{ FreedBytes = [int64]$Contents.SizeBytes }
+                        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço liberado') -Value (Format-WinForgeBytes -Bytes $Contents.SizeBytes)
+                        $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'liberou {0}' "$(Format-WinForgeBytes -Bytes $Contents.SizeBytes)") -Data @{ FreedBytes = [int64]$Contents.SizeBytes }
                     }
                     else {
-                        $result = New-WinForgeResult -Kind Ok -Detail "Lixeira esvaziada"
+                        $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'Lixeira esvaziada')
                     }
                 }
                 catch {
                     if (Test-WinForgeRecycleBinEmptyError -Message $_.Exception.Message -HResult $_.Exception.HResult) {
-                        Write-WinForgeStatus -Type Success -Message "A Lixeira já estava vazia."
-                        $result = New-WinForgeResult -Kind Ok -Detail "já estava vazia" -Data @{ FreedBytes = [int64]0 }
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'A Lixeira já estava vazia.')
+                        $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já estava vazia') -Data @{ FreedBytes = [int64]0; AlreadyEmpty = $true }
                     }
                     else {
-                        Write-WinForgeStatus -Type Error -Message "Falha ao esvaziar a Lixeira: $($_.Exception.Message)"
+                        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Falha ao esvaziar a Lixeira: {0}' "$($_.Exception.Message)")
                         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
                     }
                 }
@@ -1265,8 +1199,28 @@ function Clear-WinForgeRecycleBin {
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao esvaziar a Lixeira: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro ao esvaziar a Lixeira: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
+    }
+
+    # Sozinha, a faixa diz quanto voltou ao disco, como a Limpeza rápida ("6 MB liberados"); vazia, "Nada para limpar".
+    # Com o que estava nela sem tamanho (arquivos de 0 bytes) ou sem medida, diz que foi esvaziada e por que o espaço não
+    # aparece. Dentro de outra limpeza, quem chama faz a própria faixa.
+    if (-not $Embedded -and [string]$result.Kind -eq "Ok") {
+        $binFreed = Get-WinForgeResultData -Result $result -Name "FreedBytes"
+
+        if ([bool](Get-WinForgeResultData -Result $result -Name "AlreadyEmpty")) {
+            [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nada para limpar') -Note (Get-WinForgeText 'A Lixeira já está vazia.'))
+        }
+        elseif ($null -ne $binFreed -and [int64]$binFreed -gt 0) {
+            [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText '{0} liberados' "$(Format-WinForgeBytes -Bytes ([int64]$binFreed))") -Note (Get-WinForgeText 'Lixeira esvaziada.'))
+        }
+        elseif ($null -eq $binFreed) {
+            [void](Set-WinForgeResultView -Result $result -Headline (ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'Lixeira esvaziada')) -Note (Get-WinForgeText 'O espaço liberado não pôde ser medido.'))
+        }
+        else {
+            [void](Set-WinForgeResultView -Result $result -Headline (ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'Lixeira esvaziada')) -Note (Get-WinForgeCleanupZeroNote))
+        }
     }
 
     $result.Etapa = $title
@@ -1326,7 +1280,7 @@ function Invoke-WinForgeQuickCleanup {
         [switch]$SkipRecycleBin
     )
 
-    $title = "Limpeza rápida"
+    $title = (Get-WinForgeText 'Limpeza rápida')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
@@ -1340,30 +1294,30 @@ function Invoke-WinForgeQuickCleanup {
         if (-not $Embedded) {
             # O que vai acontecer, antes da pergunta: na janela, isto é o que aparece acima dos botões. Os temporários de
             # menos de um dia e os arquivos em uso ficam.
-            Write-WinForgeStatus -Type Info -Message "Limpa os temporários do usuário e do Windows; seus arquivos pessoais não são tocados."
-            [void](Write-WinForgeOtherAccountNotice -What $(if ($SkipRecycleBin) { "os temporários do usuário" } else { "os temporários do usuário e a Lixeira" }))
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Limpa os temporários do usuário e do Windows; seus arquivos pessoais não são tocados.')
+            [void](Write-WinForgeOtherAccountNotice -What $(if ($SkipRecycleBin) { 'os temporários do usuário' } else { 'os temporários do usuário e a Lixeira' }))
 
             # O que sai, medido antes da pergunta: a pessoa confirma sabendo quanto, e sem nada para tirar nem há pergunta.
-            Write-Progress -Activity $title -Status "medindo os temporários"
+            Write-Progress -Activity $title -Status (Get-WinForgeText 'medindo os temporários')
             $tempEstimate = Measure-WinForgeTempCleanup
 
             if (-not $SkipRecycleBin) {
-                Write-Progress -Activity $title -Status "medindo o que está na Lixeira"
+                Write-Progress -Activity $title -Status (Get-WinForgeText 'medindo o que está na Lixeira')
                 $binContents = Get-WinForgeRecycleBinContents
             }
 
             Write-Progress -Activity $title -Completed
 
             $tempText = $(
-                if ($tempEstimate.Count -gt 0) { "$(Format-WinForgeBytes -Bytes $tempEstimate.Bytes -ZeroText '0 B') · $(Format-WinForgeCount -Count $tempEstimate.Count -One 'item' -Many 'itens')$(if ($tempEstimate.Unknown) { ' (uma pasta não pôde ser medida)' })" }
-                elseif ($tempEstimate.Unknown) { "não foi possível medir" }
-                else { "nada para limpar" }
+                if ($tempEstimate.Count -gt 0) { "$(Format-WinForgeBytes -Bytes $tempEstimate.Bytes -ZeroText '0 B') · $(Format-WinForgeCount -Count $tempEstimate.Count -One (Get-WinForgeText 'item') -Many (Get-WinForgeText 'itens'))$(if ($tempEstimate.Unknown) { (Get-WinForgeText ' (uma pasta não pôde ser medida)') })" }
+                elseif ($tempEstimate.Unknown) { (Get-WinForgeText 'não foi possível medir') }
+                else { (Get-WinForgeText 'nada para limpar') }
             )
-            Write-WinForgeKeyValue -Label "Temporários" -Value $tempText
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Temporários') -Value $tempText
 
             $binEmpty = ($null -ne $binContents -and [int]$binContents.Count -eq 0)
             if (-not $SkipRecycleBin) {
-                Write-WinForgeKeyValue -Label "Na Lixeira" -Value $(if ($null -eq $binContents) { "não foi possível medir" } elseif ($binEmpty) { "vazia" } else { Format-WinForgeRecycleBinText -Contents $binContents })
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Na Lixeira') -Value $(if ($null -eq $binContents) { (Get-WinForgeText 'não foi possível medir') } elseif ($binEmpty) { (Get-WinForgeText 'vazia') } else { Format-WinForgeRecycleBinText -Contents $binContents })
             }
 
             $nothing = ($tempEstimate.Count -eq 0 -and -not $tempEstimate.Unknown -and ($SkipRecycleBin -or $binEmpty))
@@ -1371,22 +1325,22 @@ function Invoke-WinForgeQuickCleanup {
             if ($nothing) {
                 # Nada a tirar: sem pergunta, e sem um "Tudo certo: liberou 0 B" depois de um Sim.
                 Write-Host ""
-                Write-WinForgeStatus -Type Success -Message "Não há nada para limpar: os temporários estão vazios ou são recentes$(if (-not $SkipRecycleBin) { ', e a Lixeira está vazia' })."
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Não há nada para limpar: os temporários estão vazios ou são recentes{0}.' "$(if (-not $SkipRecycleBin) { (Get-WinForgeText ', e a Lixeira está vazia') })")
                 $proceed = $false
             }
             elseif ($SkipRecycleBin -or $binEmpty) {
                 Write-Host ""
-                $proceed = Confirm-WinForgeAction "Limpar os temporários agora?" -DefaultKey S
+                $proceed = Confirm-WinForgeAction (Get-WinForgeText 'Limpar os temporários agora?') -DefaultKey S -YesLabel (Get-WinForgeText 'Limpar') -NoLabel (Get-WinForgeText 'Cancelar')
             }
             else {
                 # O que está na Lixeira antes de esvaziá-la: é o único passo que não tem volta, e a pessoa escolhe. O padrão
                 # (ENTER e o botão em destaque) é o que tem volta: só os temporários.
                 Write-Host ""
 
-                $choice = Read-WinForgeChoice -Message "O que deseja limpar?" -DefaultKey "S" -ShowMenu -TextPrompt "Opção (ENTER = só os temporários)" -Options @(
-                    @{ Key = "S"; Label = "Só os temporários"; Description = "a Lixeira fica como está"; Accent = $true },
-                    @{ Key = "T"; Label = "Temporários e Lixeira"; Description = "o que está na Lixeira é apagado em definitivo, sem volta" },
-                    @{ Key = "X"; Label = "Cancelar"; Exit = $true }
+                $choice = Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja limpar?') -DefaultKey "S" -ShowMenu -TextPrompt (Get-WinForgeText 'Opção (ENTER = só os temporários)') -Options @(
+                    @{ Key = "S"; Label = (Get-WinForgeText 'Só os temporários'); Description = (Get-WinForgeText 'a Lixeira fica como está'); Accent = $true },
+                    @{ Key = "T"; Label = (Get-WinForgeText 'Temporários e Lixeira'); Description = (Get-WinForgeText 'o que está na Lixeira é apagado em definitivo, sem volta'); Danger = $true },
+                    @{ Key = "X"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
                 )
 
                 $proceed = ($choice -in @("T", "S"))
@@ -1395,23 +1349,24 @@ function Invoke-WinForgeQuickCleanup {
         }
 
         if ($nothing) {
-            $result = New-WinForgeResult -Kind Skipped -Detail "nada para limpar" -Data @{ FreedBytes = [int64]0 }
-            [void](Set-WinForgeResultView -Result $result -Headline "Nada para limpar" -Note "Os temporários estão vazios ou são recentes$(if (-not $SkipRecycleBin) { ', e a Lixeira está vazia' }).")
+            $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada para limpar') -Data @{ FreedBytes = [int64]0 }
+            [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nada para limpar') -Note (Get-WinForgeText 'Os temporários estão vazios ou são recentes{0}.' "$(if (-not $SkipRecycleBin) { (Get-WinForgeText ', e a Lixeira está vazia') })"))
         }
         elseif (-not $proceed) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
         }
         else {
             # Cada parte com o nome que a frase do total usa.
             $steps = @(
-                @{ Name = "os temporários do usuário"; Result = (Clear-WinForgeUserTemp -Embedded -PassThru) },
-                @{ Name = "os temporários do Windows"; Result = (Clear-WinForgeWindowsTemp -Embedded -PassThru) }
+                @{ Name = (Get-WinForgeText 'os temporários do usuário'); Result = (Clear-WinForgeUserTemp) },
+                @{ Name = (Get-WinForgeText 'os temporários do Windows'); Result = (Clear-WinForgeWindowsTemp) }
             )
 
-            # Sem a Lixeira (a escolha da pessoa), nada é dito: ela ficou como estava.
-            if (-not $SkipRecycleBin) {
-                $steps += @{ Name = "a Lixeira"; Result = (Clear-WinForgeRecycleBin -Embedded -PassThru -Contents $binContents) }
+            # Sem a Lixeira (a escolha da pessoa), nada é dito: ela ficou como estava. Medida vazia, também não entra: a
+            # pergunta foi só dos temporários, e uma seção "Esvaziar a Lixeira" no resumo pareceria algo que não foi pedido.
+            if (-not $SkipRecycleBin -and -not ($null -ne $binContents -and [int]$binContents.Count -eq 0)) {
+                $steps += @{ Name = (Get-WinForgeText 'a Lixeira'); Result = (Clear-WinForgeRecycleBin -Embedded -PassThru -Contents $binContents) }
             }
             $parts = @($steps | ForEach-Object { $_.Result })
 
@@ -1432,45 +1387,57 @@ function Invoke-WinForgeQuickCleanup {
 
             $freedText = Format-WinForgeBytes -Bytes $freed
 
-            Write-WinForgeSection -Title "Resumo"
-            Write-WinForgeKeyValue -Label "Espaço liberado" -Value $freedText
+            Write-WinForgeSection -Title (Get-WinForgeText 'Resumo')
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço liberado') -Value $freedText
 
             if ($unmeasured.Count -gt 0) {
-                Write-WinForgeStatus -Type Info -Message "O total não inclui $(Join-WinForgeList -Items $unmeasured): não foi possível medir antes de limpar."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O total não inclui {0}: não foi possível medir antes de limpar.' "$(Join-WinForgeList -Items $unmeasured)")
             }
 
             $data = @{ FreedBytes = $freed }
 
             if ($failed.Count -eq 0 -and $warned.Count -eq 0) {
-                $result = New-WinForgeResult -Kind Ok -Detail "liberou $freedText" -Data $data
+                $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'liberou {0}' "$freedText") -Data $data
 
                 # Na janela, a faixa diz quanto e de onde, e o resumo (as mesmas contas, parte por parte) fica nos detalhes.
                 if (-not $Embedded -and $freed -gt 0) {
                     # A Lixeira entra na frase só quando havia algo nela (vazia, o passo dela não tirou nada).
                     $binCleaned = (-not $SkipRecycleBin -and -not ($null -ne $binContents -and [int]$binContents.Count -eq 0))
-                    $what = "Temporários do usuário e do Windows$(if ($binCleaned) { ', e a Lixeira' })."
-                    if ($unmeasured.Count -gt 0) { $what += " O total não inclui $(Join-WinForgeList -Items $unmeasured)." }
-                    [void](Set-WinForgeResultView -Result $result -Headline "$freedText liberados" -Note $what -HideSummary:($unmeasured.Count -eq 0))
+                    $what = $(if ($binCleaned) { (Get-WinForgeText 'Temporários do usuário e do Windows, e a Lixeira.') } else { (Get-WinForgeText 'Temporários do usuário e do Windows.') })
+                    if ($unmeasured.Count -gt 0) { $what += (Get-WinForgeText ' O total não inclui {0}.' "$(Join-WinForgeList -Items $unmeasured)") }
+                    [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText '{0} liberados' "$freedText") -Note $what -HideSummary:($unmeasured.Count -eq 0))
+                }
+                elseif (-not $Embedded) {
+                    # Nada liberado com a limpeza feita: o que saiu eram pastas e arquivos vazios (ou o que saiu não pôde ser
+                    # medido). Antes, a faixa dizia "Tudo certo" e "Liberou 0 B".
+                    [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Limpeza concluída') -Note (Get-WinForgeCleanupZeroNote -Unmeasured $unmeasured))
                 }
             }
-            elseif ($failed.Count -eq 0) {
-                # Uma parte só fica com ressalva quando nada saiu dela porque estava tudo em uso: a faixa diz qual.
-                $warnedNames = @($steps | Where-Object { $_.Result.Kind -eq "Warning" } | ForEach-Object { [string]$_.Name })
-                $result = New-WinForgeResult -Kind Warning -Detail "$(Join-WinForgeList -Items $warnedNames) com itens em uso; liberou $freedText" -Data $data
-            }
             elseif ($failed.Count -lt $parts.Count) {
-                $detail = "$($failed.Count) de $($parts.Count) partes $(if ($failed.Count -eq 1) { 'falhou' } else { 'falharam' })"
-                if ($warned.Count -gt 0) { $detail += "; $($warned.Count) com ressalvas" }
+                # Uma parte fica com ressalva quando nada saiu dela porque estava tudo em uso; falha quando não pôde ser
+                # limpa (pasta ilegível, recusada). O detalhe diz quais, e não "1 de 3 partes falhou".
+                $warnedNames = @($steps | Where-Object { $_.Result.Kind -eq "Warning" } | ForEach-Object { [string]$_.Name })
+                $failedNames = @($steps | Where-Object { $_.Result.Kind -eq "Failed" } | ForEach-Object { [string]$_.Name })
 
-                $result = New-WinForgeResult -Kind Warning -Detail "$detail; liberou $freedText" -Data $data
+                $detail = $(if ($failedNames.Count -eq 0) { (Get-WinForgeText '{0} com itens em uso; liberou {1}' "$(Join-WinForgeList -Items $warnedNames)" "$freedText") } else { (Get-WinForgeText 'liberou {0}; com problema: {1}' "$freedText" "$(Join-WinForgeList -Items @($failedNames + $warnedNames))") })
+                $result = New-WinForgeResult -Kind Warning -Detail $detail -Data $data
+
+                # Na janela, a faixa diz quanto saiu e o que ficou para trás (antes, "Concluído com ressalvas" e a conta das partes).
+                if (-not $Embedded) {
+                    $notes = @()
+                    if ($failedNames.Count -gt 0) { $notes += (Get-WinForgeText 'Não foi possível limpar {0}.' "$(Join-WinForgeList -Items $failedNames)") }
+                    if ($warnedNames.Count -gt 0) { $notes += (Get-WinForgeText 'Itens em uso ficaram: feche os programas e tente de novo.') }
+
+                    [void](Set-WinForgeResultView -Result $result -Headline $(if ($freed -gt 0) { (Get-WinForgeText '{0} liberados' "$freedText") } else { (Get-WinForgeText 'Nada foi liberado') }) -Note ($notes -join " "))
+                }
             }
             else {
-                $result = New-WinForgeResult -Kind Failed -Detail "todas as partes falharam" -Data $data
+                $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'todas as partes falharam') -Data $data
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na limpeza: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na limpeza: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -1546,18 +1513,18 @@ function Read-WinForgeDaysThreshold {
     "Outro valor" (e o console) pedem o número digitado, de novo quando ele é inválido. Retorna $null depois de três
     valores inválidos.
     #>
-    $question = "Remover o que foi baixado ou alterado há mais de quantos dias?"
+    $question = (Get-WinForgeText 'Remover o que foi baixado ou alterado há mais de quantos dias?')
 
     if (Test-WinForgeGuiPrompts) {
         $key = Read-WinForgeChoice -Message $question -DefaultKey "30" -Options @(
-            @{ Key = "7"; Label = "7 dias" },
-            @{ Key = "15"; Label = "15 dias" },
-            @{ Key = "30"; Label = "30 dias"; Description = "recomendado"; Accent = $true },
-            @{ Key = "60"; Label = "60 dias" },
-            @{ Key = "90"; Label = "90 dias" },
-            @{ Key = "180"; Label = "180 dias" },
-            @{ Key = "365"; Label = "1 ano" },
-            @{ Key = "other"; Label = "Outro valor..." }
+            @{ Key = "7"; Label = (Get-WinForgeText '7 dias') },
+            @{ Key = "15"; Label = (Get-WinForgeText '15 dias') },
+            @{ Key = "30"; Label = (Get-WinForgeText '30 dias'); Description = (Get-WinForgeText 'recomendado'); Accent = $true },
+            @{ Key = "60"; Label = (Get-WinForgeText '60 dias') },
+            @{ Key = "90"; Label = (Get-WinForgeText '90 dias') },
+            @{ Key = "180"; Label = (Get-WinForgeText '180 dias') },
+            @{ Key = "365"; Label = (Get-WinForgeText '1 ano') },
+            @{ Key = "other"; Label = (Get-WinForgeText 'Outro valor...') }
         )
 
         if ($key -ne "other") {
@@ -1567,7 +1534,7 @@ function Read-WinForgeDaysThreshold {
 
     # Um valor errado (uma letra, um zero) pede de novo, até três vezes, em vez de encerrar a ação.
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-        $prompt = $(if ($attempt -eq 1) { "$question (ENTER = 30)" } else { "Digite um número de dias, por exemplo 45 (ENTER = 30)" })
+        $prompt = $(if ($attempt -eq 1) { (Get-WinForgeText '{0} (ENTER = 30)' "$question") } else { (Get-WinForgeText 'Digite um número de dias, por exemplo 45 (ENTER = 30)') })
         $daysText = Read-WinForgeText -Message $prompt
 
         if ([string]::IsNullOrWhiteSpace($daysText)) {
@@ -1582,7 +1549,7 @@ function Read-WinForgeDaysThreshold {
         }
 
         if ($attempt -lt 3) {
-            Write-WinForgeStatus -Type Warning -Notice -Message "Valor inválido: digite só o número de dias (1 ou mais), por exemplo 45."
+            Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Valor inválido: digite só o número de dias (1 ou mais), por exemplo 45.')
         }
     }
 
@@ -1602,7 +1569,7 @@ function Show-WinForgeDownloadsPreview {
         [int]$Top = 15
     )
 
-    Write-WinForgeSection -Title "O que será limpo (maiores primeiro)"
+    Write-WinForgeSection -Title (Get-WinForgeText 'O que será limpo (maiores primeiro)')
 
     foreach ($entry in @($Selected | Sort-Object SizeBytes -Descending | Select-Object -First $Top)) {
         $nameText = [string]$entry.Name
@@ -1616,7 +1583,7 @@ function Show-WinForgeDownloadsPreview {
     }
 
     if ($Selected.Count -gt $Top) {
-        Write-WinForgeStatus -Type Info -Message "E mais $(Format-WinForgeCount -Count ($Selected.Count - $Top) -One 'item menor' -Many 'itens menores')."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'E mais {0}.' "$(Format-WinForgeCount -Count ($Selected.Count - $Top) -One (Get-WinForgeText 'item menor') -Many (Get-WinForgeText 'itens menores'))")
     }
 }
 
@@ -1706,7 +1673,7 @@ function Get-WinForgeFreedFromPartial {
 
 
 function Clear-WinForgeDownloads {
-    $title = "Limpar a pasta Downloads"
+    $title = (Get-WinForgeText 'Limpar a pasta Downloads')
 
     Enter-WinForgeAction -Title $title
 
@@ -1718,40 +1685,40 @@ function Clear-WinForgeDownloads {
         $listing = $null
 
         if (-not (Test-Path -LiteralPath $downloadsPath -PathType Container)) {
-            Write-WinForgeStatus -Type Error -Message "Pasta Downloads não encontrada: $downloadsPath"
-            $result = New-WinForgeResult -Kind Failed -Detail "pasta Downloads não encontrada"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Pasta Downloads não encontrada: {0}' "$downloadsPath")
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta Downloads não encontrada')
         }
         # A pasta Downloads pode ser redirecionada pelo Windows para qualquer lugar. Se apontar para a raiz de um disco, para
         # o perfil ou para outra pasta pessoal (Documentos, a raiz do OneDrive), "Tudo" apagaria muito mais que downloads.
         elseif (-not (Test-WinForgeDownloadsFolderSafe -Path $downloadsPath)) {
-            Write-WinForgeStatus -Type Error -Message "Pasta recusada por segurança: $downloadsPath"
-            Write-WinForgeStatus -Type Info -Message "Ela é uma raiz de disco, contém o seu perfil ou outra pasta pessoal. Confira onde a pasta Downloads está definida."
-            $result = New-WinForgeResult -Kind Failed -Detail "pasta recusada por segurança"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Pasta recusada por segurança: {0}' "$downloadsPath")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Ela é uma raiz de disco, contém o seu perfil ou outra pasta pessoal. Confira onde a pasta Downloads está definida.')
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta recusada por segurança')
         }
         else {
             $listing = Get-WinForgeFolderListing -Path $downloadsPath -ExcludeShellMetadata
 
             if (-not $listing.Readable) {
                 # Sem conseguir listar, "já está vazia" seria um palpite.
-                Write-WinForgeStatus -Type Error -Message "Não foi possível ler a pasta Downloads: $($listing.Reason)"
-                $result = New-WinForgeResult -Kind Failed -Detail "pasta ilegível"
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler a pasta Downloads: {0}' "$($listing.Reason)")
+                $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta ilegível')
             }
         }
 
         if ($null -eq $result) {
-            if (Test-WinForgeUserContextMismatch) {
-                Write-WinForgeStatus -Type Warning -Notice -Message "Elevado com outra conta: esta é a pasta Downloads de $env:USERNAME, não a do usuário logado."
-            }
+            # O aviso das outras telas da Limpeza (antes, "Elevado com outra conta ... do usuário logado").
+            [void](Write-WinForgeOtherAccountNotice -What 'a pasta Downloads')
 
             $allItems = @($listing.Items)
 
-            Write-WinForgeKeyValue -Label "Pasta" -Value $downloadsPath
-            Write-WinForgeKeyValue -Label "Itens na pasta" -Value (Format-WinForgeNumber -Value $allItems.Count)
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Pasta') -Value $downloadsPath
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens na pasta') -Value (Format-WinForgeNumber -Value $allItems.Count)
             Write-Host ""
 
             if ($allItems.Count -eq 0) {
-                Write-WinForgeStatus -Type Success -Message "A pasta Downloads já está vazia."
-                $result = New-WinForgeResult -Kind Ok -Detail "a pasta já estava vazia"
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'A pasta Downloads já está vazia.')
+                $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'a pasta já estava vazia')
+                [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nada para limpar') -Note (Get-WinForgeText 'A pasta Downloads já está vazia.'))
             }
         }
 
@@ -1759,38 +1726,40 @@ function Clear-WinForgeDownloads {
         $days = $null
 
         if ($null -eq $result) {
-            $mode = Read-WinForgeChoice -Message "O que deseja limpar?" -ShowMenu -Options @(
-                @{ Key = "1"; Label = "O que é mais antigo"; Description = "recomendado: você escolhe há quantos dias"; Accent = $true },
-                @{ Key = "2"; Label = "Tudo"; Description = "$(if ($allItems.Count -eq 1) { 'o único item da pasta' } else { "todos os $($allItems.Count) itens da pasta" }), de qualquer data" },
-                @{ Key = "0"; Label = "Cancelar"; Exit = $true }
+            $mode = Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja limpar?') -ShowMenu -Options @(
+                @{ Key = "1"; Label = (Get-WinForgeText 'O que é mais antigo'); Description = (Get-WinForgeText 'recomendado: você escolhe há quantos dias'); Accent = $true },
+                @{ Key = "2"; Label = (Get-WinForgeText 'Tudo'); Description = (Get-WinForgeText '{0}, de qualquer data' "$(if ($allItems.Count -eq 1) { (Get-WinForgeText 'o único item da pasta') } else { (Get-WinForgeText 'todos os {0} itens da pasta' "$($allItems.Count)") })") },
+                @{ Key = "0"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
             )
 
             if ($mode -ne "1" -and $mode -ne "2") {
-                Write-WinForgeStatus -Type Warning -Message "Limpeza cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Limpeza cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             elseif ($mode -eq "1") {
                 $days = Read-WinForgeDaysThreshold
 
                 if ($null -eq $days) {
-                    Write-WinForgeStatus -Type Error -Message "Valor inválido: informe um número inteiro de dias (1 ou mais). Nada foi apagado."
-                    $result = New-WinForgeResult -Kind Failed -Detail "número de dias inválido"
+                    Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Valor inválido: informe um número inteiro de dias (1 ou mais). Nada foi apagado.')
+                    $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'número de dias inválido')
                 }
             }
         }
 
         if ($null -eq $result) {
             # Medir e datar pode levar um tempo numa pasta grande; o andamento vai na barra, não numa linha do resumo.
-            Write-Progress -Activity "Analisando a pasta Downloads" -Status "medindo os itens"
+            Write-Progress -Activity (Get-WinForgeText 'Analisando a pasta Downloads') -Status (Get-WinForgeText 'medindo os itens')
             $entries = @(Measure-WinForgeFolderItems -Items $allItems -ExcludeShellMetadata)
-            Write-Progress -Activity "Analisando a pasta Downloads" -Completed
+            Write-Progress -Activity (Get-WinForgeText 'Analisando a pasta Downloads') -Completed
 
             # @() e não $(): com um item só, $() devolveria o item solto, sem .Count de lista.
             $selected = @(if ($null -ne $days) { Select-WinForgeItemsOlderThan -Entries $entries -Cutoff (Get-Date).AddDays(-$days) } else { $entries })
 
             if ($selected.Count -eq 0) {
-                Write-WinForgeStatus -Type Success -Message "Nada foi baixado ou alterado há mais de $(Format-WinForgeCount -Count $days -One 'dia' -Many 'dias'); não há o que limpar."
-                $result = New-WinForgeResult -Kind Ok -Detail "nada com mais de $(Format-WinForgeCount -Count $days -One 'dia' -Many 'dias')"
+                $daysText = Format-WinForgeCount -Count $days -One (Get-WinForgeText 'dia') -Many (Get-WinForgeText 'dias')
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nada foi baixado ou alterado há mais de {0}; não há o que limpar.' "$daysText")
+                $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nada com mais de {0}' "$daysText")
+                [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nada para limpar') -Note (Get-WinForgeText 'Nada foi baixado ou alterado há mais de {0}.' "$daysText"))
             }
         }
 
@@ -1798,24 +1767,43 @@ function Clear-WinForgeDownloads {
             $selectedBytes = [int64]0
             foreach ($entry in $selected) { $selectedBytes += [int64]$entry.SizeBytes }
 
-            $itemsText = Format-WinForgeCount -Count $selected.Count -One "item" -Many "itens"
+            $itemsText = Format-WinForgeCount -Count $selected.Count -One (Get-WinForgeText 'item') -Many (Get-WinForgeText 'itens')
 
             Show-WinForgeDownloadsPreview -Selected $selected
 
             Write-Host ""
-            Write-WinForgeKeyValue -Label "Itens a limpar" -Value (Format-WinForgeNumber -Value $selected.Count)
-            Write-WinForgeKeyValue -Label "Espaço que ocupam" -Value (Format-WinForgeBytes -Bytes $selectedBytes)
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens a limpar') -Value (Format-WinForgeNumber -Value $selected.Count)
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço que ocupam') -Value (Format-WinForgeBytes -Bytes $selectedBytes)
             Write-Host ""
 
-            $destination = Read-WinForgeChoice -Message "O que fazer com $(if ($selected.Count -eq 1) { 'este item' } else { "estes $itemsText" })?" -ShowMenu -Options @(
-                @{ Key = "L"; Label = "Enviar para a Lixeira"; Description = "recomendado: dá para recuperar"; Accent = $true },
-                @{ Key = "P"; Label = "Excluir permanentemente"; Description = "não dá para recuperar" },
-                @{ Key = "0"; Label = "Cancelar"; Exit = $true }
-            )
+            # Sem Lixeira na unidade (pendrive, unidade de rede, Lixeira desligada), o Windows apagaria em definitivo o que
+            # fosse "para a Lixeira": a opção nem aparece, e a tela diz por quê antes da pergunta. Antes, a pessoa escolhia
+            # a Lixeira, ouvia que nada tinha saído e precisava começar de novo. Com Lixeira, um item maior que o limite
+            # dela ficaria onde está: dito antes da escolha, a pessoa decide entre deixá-lo e a exclusão permanente.
+            $binProblem = Get-WinForgeRecycleBinProblem -Path $downloadsPath
+            $destinations = @()
 
-            if ($destination -ne "L" -and $destination -ne "P") {
-                Write-WinForgeStatus -Type Warning -Message "Limpeza cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            if ($binProblem) {
+                Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'A pasta Downloads {0}: o que sair dela não tem volta.' "$binProblem")
+                Write-Host ""
+            }
+            else {
+                if (Test-WinForgeRecycleBinLimitExceeded -Items $selected) {
+                    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Itens maiores que o limite da Lixeira ficam onde estão: o Windows os apagaria em definitivo.')
+                    Write-Host ""
+                }
+
+                $destinations += @{ Key = "L"; Label = (Get-WinForgeText 'Enviar para a Lixeira'); Description = (Get-WinForgeText 'recomendado: dá para recuperar'); Accent = $true }
+            }
+
+            $destinations += @{ Key = "P"; Label = (Get-WinForgeText 'Excluir permanentemente'); Description = (Get-WinForgeText 'não dá para recuperar'); Danger = $true }
+            $destinations += @{ Key = "0"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
+
+            $destination = Read-WinForgeChoice -Message $(if ($selected.Count -eq 1) { (Get-WinForgeText 'O que fazer com este item?') } else { (Get-WinForgeText 'O que fazer com estes {0}?' "$itemsText") }) -ShowMenu -Options $destinations
+
+            if ($destination -ne "P" -and ($destination -ne "L" -or $binProblem)) {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Limpeza cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             else {
                 $permanent = ($destination -eq "P")
@@ -1824,24 +1812,11 @@ function Clear-WinForgeDownloads {
                     Write-Host ""
                     # Aviso antes da pergunta, não resultado: não conta como ressalva, senão toda exclusão que deu certo
                     # terminaria como "Concluído com ressalvas".
-                    Write-WinForgeStatus -Type Warning -Notice -Message $(if ($selected.Count -eq 1) { "O item será removido permanentemente e não poderá ser recuperado." } else { "Os itens serão removidos permanentemente e não poderão ser recuperados." })
+                    Write-WinForgeStatus -Type Warning -Notice -Message $(if ($selected.Count -eq 1) { (Get-WinForgeText 'O item será removido permanentemente e não poderá ser recuperado.') } else { (Get-WinForgeText 'Os itens serão removidos permanentemente e não poderão ser recuperados.') })
 
-                    if (-not (Confirm-WinForgeAction "Confirma a exclusão permanente de $(if ($selected.Count -eq 1) { '1 item' } else { $itemsText })?" -DefaultKey N)) {
-                        Write-WinForgeStatus -Type Warning -Message "Limpeza cancelada."
-                        $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
-                    }
-                }
-                else {
-                    $binProblem = Get-WinForgeRecycleBinProblem -Path $downloadsPath
-
-                    if ($binProblem) {
-                        # Sem Lixeira na unidade, o Windows apagaria tudo em definitivo; "enviados à Lixeira" seria mentira.
-                        Write-WinForgeStatus -Type Error -Message "A pasta Downloads ${binProblem}: o Windows apagaria os itens em definitivo. Nada foi removido."
-                        Write-WinForgeStatus -Type Info -Message "Se é isso o que você quer, abra de novo e escolha Excluir permanentemente."
-                        $result = New-WinForgeResult -Kind Failed -Detail "a pasta Downloads $binProblem"
-                    }
-                    elseif (Test-WinForgeRecycleBinLimitExceeded -Items $selected) {
-                        Write-WinForgeStatus -Type Info -Message "Itens maiores que o limite da Lixeira ficam onde estão: o Windows os apagaria em definitivo."
+                    if (-not (Confirm-WinForgeAction $(if ($selected.Count -eq 1) { (Get-WinForgeText 'Confirma a exclusão permanente de 1 item?') } else { (Get-WinForgeText 'Confirma a exclusão permanente de {0}?' "$itemsText") }) -DefaultKey N -Danger -YesLabel (Get-WinForgeText 'Excluir') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Limpeza cancelada.')
+                        $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
                     }
                 }
 
@@ -1852,7 +1827,7 @@ function Clear-WinForgeDownloads {
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Falha ao limpar Downloads: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Falha ao limpar Downloads: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -1882,7 +1857,7 @@ function Invoke-WinForgeDownloadsRemoval {
     $limit = [int64]0
     $bytes = [int64]0
     $position = 0
-    $activity = "Limpando Downloads"
+    $activity = (Get-WinForgeText 'Limpar a pasta Downloads')
 
     foreach ($entry in $Selected) {
         $position++
@@ -1901,7 +1876,7 @@ function Invoke-WinForgeDownloadsRemoval {
         try {
             # Na exclusão permanente não há janela do Windows: o que estiver em uso simplesmente fica.
             if (-not $Permanent -and (Test-WinForgeItemInUse -Path $entry.Path -IsDirectory:$entry.IsDirectory)) {
-                throw "em uso"
+                throw (Get-WinForgeText 'em uso')
             }
 
             if ($Permanent) {
@@ -1913,7 +1888,7 @@ function Invoke-WinForgeDownloadsRemoval {
 
             # Get-Item -Force e não Test-Path: um atalho quebrado "não existe" para o Test-Path, mas continua na pasta.
             if ($null -ne (Get-Item -LiteralPath $entry.Path -Force -ErrorAction SilentlyContinue)) {
-                throw "o item continua na pasta"
+                throw (Get-WinForgeText 'o item continua na pasta')
             }
 
             $done++
@@ -1937,58 +1912,73 @@ function Invoke-WinForgeDownloadsRemoval {
     $bytesText = Format-WinForgeBytes -Bytes $bytes
 
     if ($done -eq 0 -and $tooBig -gt 0 -and $skipped -eq 0) {
-        Write-WinForgeStatus -Type Warning -Message "Nenhum item foi para a Lixeira: todos passam do limite dela."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nenhum item foi para a Lixeira: todos passam do limite dela.')
     }
     elseif ($done -eq 0) {
-        Write-WinForgeStatus -Type Warning -Message "Nenhum item foi removido: estavam em uso ou não puderam ser removidos."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nenhum item foi removido: estavam em uso ou não puderam ser removidos.')
     }
     else {
-        Write-WinForgeStatus -Type Success -Message "Limpeza concluída."
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Limpeza concluída.')
     }
 
     if ($Permanent) {
-        Write-WinForgeKeyValue -Label "Itens excluídos" -Value (Format-WinForgeNumber -Value $done)
-        Write-WinForgeKeyValue -Label "Espaço liberado" -Value $bytesText
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens excluídos') -Value (Format-WinForgeNumber -Value $done)
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço liberado') -Value $bytesText
     }
     else {
-        Write-WinForgeKeyValue -Label "Itens enviados à Lixeira" -Value (Format-WinForgeNumber -Value $done)
-        Write-WinForgeKeyValue -Label "Tamanho na Lixeira" -Value $bytesText
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens enviados à Lixeira') -Value (Format-WinForgeNumber -Value $done)
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Tamanho na Lixeira') -Value $bytesText
     }
 
-    Write-WinForgeKeyValue -Label "Itens ignorados" -Value ($skipped + $tooBig)
+    if ($skipped + $tooBig -gt 0) {
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Itens ignorados') -Value (Format-WinForgeNumber -Value ($skipped + $tooBig))
+    }
 
     if ($tooBig -gt 0) {
         Write-Host ""
         # O Windows apagaria em definitivo o que passa do limite da Lixeira: fica, e a saída é a exclusão permanente.
-        Write-WinForgeStatus -Type Warning -Message "$(Format-WinForgeCount -Count $tooBig -One 'item passa' -Many 'itens passam') do limite da Lixeira ($(Format-WinForgeBytes -Bytes $limit)) e $(if ($tooBig -eq 1) { 'ficou' } else { 'ficaram' }); para $(if ($tooBig -eq 1) { 'tirá-lo' } else { 'tirá-los' }), use Excluir permanentemente."
+        Write-WinForgeStatus -Type Warning -Message $(if ($tooBig -eq 1) { (Get-WinForgeText '1 item passa do limite da Lixeira ({0}) e ficou; para tirá-lo, use Excluir permanentemente.' "$(Format-WinForgeBytes -Bytes $limit)") } else { (Get-WinForgeText '{0} itens passam do limite da Lixeira ({1}) e ficaram; para tirá-los, use Excluir permanentemente.' "$tooBig" "$(Format-WinForgeBytes -Bytes $limit)") })
     }
 
     if ($skipped -gt 0 -and $done -gt 0) {
         Write-Host ""
-        Write-WinForgeStatus -Type Warning -Message $(if ($skipped -eq 1) { "1 item estava em uso ou não pôde ser removido; feche o programa que o usa e tente de novo." } else { "$skipped itens estavam em uso ou não puderam ser removidos; feche os programas que os usam e tente de novo." })
+        Write-WinForgeStatus -Type Warning -Message $(if ($skipped -eq 1) { (Get-WinForgeText '1 item estava em uso ou não pôde ser removido; feche o programa que o usa e tente de novo.') } else { (Get-WinForgeText '{0} itens estavam em uso ou não puderam ser removidos; feche os programas que os usam e tente de novo.' "$skipped") })
     }
 
     if (-not $Permanent -and $done -gt 0) {
         Write-Host ""
-        Write-WinForgeStatus -Type Info -Message "O espaço só volta quando a Lixeira for esvaziada (Limpeza > Esvaziar a Lixeira)."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O espaço só volta quando a Lixeira for esvaziada (Limpeza > Esvaziar a Lixeira).')
     }
 
     if ($done -eq 0) {
-        return New-WinForgeResult -Kind Warning -Detail $(if ($skipped -eq 0 -and $tooBig -gt 0) { "nenhum item foi removido: passam do limite da Lixeira" } else { "nenhum item foi removido: estavam em uso" })
+        return New-WinForgeResult -Kind Warning -Detail $(if ($skipped -eq 0 -and $tooBig -gt 0) { (Get-WinForgeText 'nenhum item foi removido: passam do limite da Lixeira') } else { (Get-WinForgeText 'nenhum item foi removido: estavam em uso') })
     }
 
     # Mandar para a Lixeira não libera espaço no disco; só a exclusão permanente libera.
-    $detail = $(if ($Permanent) { "$(Format-WinForgeCount -Count $done -One 'item excluído' -Many 'itens excluídos'), liberou $bytesText" } else { "$(Format-WinForgeCount -Count $done -One 'item enviado' -Many 'itens enviados') à Lixeira ($bytesText)" })
+    $detail = $(if ($Permanent) { (Get-WinForgeText '{0}, liberou {1}' "$(Format-WinForgeCount -Count $done -One (Get-WinForgeText 'item excluído') -Many (Get-WinForgeText 'itens excluídos'))" "$bytesText") } else { (Get-WinForgeText '{0} à Lixeira ({1})' "$(Format-WinForgeCount -Count $done -One (Get-WinForgeText 'item enviado') -Many (Get-WinForgeText 'itens enviados'))" "$bytesText") })
     $freed = $(if ($Permanent) { $bytes } else { [int64]0 })
 
     if ($skipped + $tooBig -gt 0) {
-        return New-WinForgeResult -Kind Warning -Detail "$detail; $(Format-WinForgeCount -Count ($skipped + $tooBig) -One 'ficou' -Many 'ficaram')" -Data @{ FreedBytes = $freed }
+        $partial = New-WinForgeResult -Kind Warning -Detail "$detail; $(Format-WinForgeCount -Count ($skipped + $tooBig) -One (Get-WinForgeText 'ficou') -Many (Get-WinForgeText 'ficaram'))" -Data @{ FreedBytes = $freed }
+
+        # O que foi para a Lixeira também espera ser esvaziado: o botão da faixa leva até lá.
+        if (-not $Permanent) { [void](Set-WinForgeRecycleBinNext -Result $partial -Count $done -Bytes $bytes) }
+
+        return $partial
     }
 
     $okResult = New-WinForgeResult -Kind Ok -Detail $detail -Data @{ FreedBytes = $freed }
 
-    # Na Lixeira, o espaço ainda não voltou: o botão da faixa esvazia a Lixeira.
+    # Na Lixeira, o espaço ainda não voltou: o botão da faixa esvazia a Lixeira. Na exclusão permanente, a faixa diz quanto
+    # voltou ao disco, como as outras limpezas, e que não passou pela Lixeira.
     if (-not $Permanent) { [void](Set-WinForgeRecycleBinNext -Result $okResult -Count $done -Bytes $bytes) }
+    elseif ($bytes -gt 0) {
+        [void](Set-WinForgeResultView -Result $okResult -Headline (Get-WinForgeText '{0} liberados' "$bytesText") -Note (Get-WinForgeText '{0}, sem passar pela Lixeira.' "$(Format-WinForgeCount -Count $done -One (Get-WinForgeText 'item excluído') -Many (Get-WinForgeText 'itens excluídos'))"))
+    }
+    else {
+        # Pastas e arquivos vazios: a faixa diz quantos saíram e que o espaço não muda (antes, "Tudo certo" e "liberou 0 B").
+        [void](Set-WinForgeResultView -Result $okResult -Headline (Format-WinForgeCount -Count $done -One (Get-WinForgeText 'item excluído') -Many (Get-WinForgeText 'itens excluídos')) -Note (Get-WinForgeCleanupZeroNote))
+    }
 
     return $okResult
 }
@@ -2002,9 +1992,9 @@ function Get-WinForgeReviewFolders {
     # As pastas pessoais que o Otimizar sugere organizar, na ordem. Shortcut é o atalho que abre a pasta e diz onde ela
     # fica (Get-WinForgeShortcutFolderPath); Clean, a ação do WinForge que limpa a pasta além de abri-la.
     return @(
-        [PSCustomObject]@{ Shortcut = "Downloads"; Label = "Downloads"; Clean = "Clear-WinForgeDownloads" },
-        [PSCustomObject]@{ Shortcut = "Documents"; Label = "Documentos"; Clean = "" },
-        [PSCustomObject]@{ Shortcut = "Pictures"; Label = "Imagens"; Clean = "" }
+        [PSCustomObject]@{ Shortcut = "Downloads"; Label = (Get-WinForgeText 'Downloads'); Clean = "Clear-WinForgeDownloads" },
+        [PSCustomObject]@{ Shortcut = "Documents"; Label = (Get-WinForgeText 'Documentos'); Clean = "" },
+        [PSCustomObject]@{ Shortcut = "Pictures"; Label = (Get-WinForgeText 'Imagens'); Clean = "" }
     )
 }
 
@@ -2021,16 +2011,18 @@ function Invoke-WinForgeFolderReview {
         [switch]$PassThru
     )
 
-    $title = "Organizar Downloads, Documentos e Imagens"
+    $title = (Get-WinForgeText 'Organizar Downloads, Documentos e Imagens')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
     $notes = @()
     $problems = 0
+    # O que mudou de fato: limpar ou procurar duplicados e desistir no meio ("nada mudou") não conta.
+    $done = 0
     $final = $null
 
     try {
-        [void](Write-WinForgeOtherAccountNotice -What "as pastas pessoais (Downloads, Documentos e Imagens)")
+        [void](Write-WinForgeOtherAccountNotice -What 'as pastas pessoais (Downloads, Documentos e Imagens)')
 
         $folders = @(Get-WinForgeReviewFolders)
         $position = 0
@@ -2039,90 +2031,88 @@ function Invoke-WinForgeFolderReview {
             $position++
             $path = Get-WinForgeShortcutFolderPath -Name $folder.Shortcut
 
-            Write-WinForgeSection -Title "$($folder.Label) ($position de $($folders.Count))"
+            Write-WinForgeSection -Title (Get-WinForgeText '{0} ({1} de {2})' "$($folder.Label)" "$position" "$($folders.Count)")
 
             if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Container)) {
-                Write-WinForgeStatus -Type Info -Message "Pasta não encontrada."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Pasta não encontrada.')
                 continue
             }
 
-            Write-Progress -Activity "Medindo a pasta $($folder.Label)" -Status $path
+            Write-Progress -Activity (Get-WinForgeText 'Medindo a pasta {0}' "$($folder.Label)") -Status $path
 
             try { $stats = Get-WinForgePathStats -Path $path -ExcludeShellMetadata }
-            finally { Write-Progress -Activity "Medindo a pasta $($folder.Label)" -Completed }
+            finally { Write-Progress -Activity (Get-WinForgeText 'Medindo a pasta {0}' "$($folder.Label)") -Completed }
 
-            Write-WinForgeKeyValue -Label "Pasta" -Value $path
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Pasta') -Value $path
 
             if ([int64]$stats.Files -eq 0) {
-                Write-WinForgeKeyValue -Label "Conteúdo" -Value "vazia"
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Conteúdo') -Value (Get-WinForgeText 'vazia')
                 continue
             }
 
-            Write-WinForgeKeyValue -Label "Conteúdo" -Value "$(Format-WinForgeBytes -Bytes ([int64]$stats.Size) -ZeroText '0 B') em $(Format-WinForgeCount -Count ([int64]$stats.Files) -One 'arquivo' -Many 'arquivos')"
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Conteúdo') -Value (Get-WinForgeText '{0} em {1}' "$(Format-WinForgeBytes -Bytes ([int64]$stats.Size) -ZeroText '0 B')" "$(Format-WinForgeCount -Count ([int64]$stats.Files) -One (Get-WinForgeText 'arquivo') -Many (Get-WinForgeText 'arquivos'))")
             Write-Host ""
 
             $options = @()
             $keys = @()
 
             if ($folder.Clean) {
-                $options += @{ Key = "L"; Label = "Limpar com o WinForge"; Description = "o que você escolher vai para a Lixeira"; Accent = $true }
+                $options += @{ Key = "L"; Label = (Get-WinForgeText 'Limpar com o WinForge'); Description = (Get-WinForgeText 'o que você escolher vai para a Lixeira'); Accent = $true }
                 $keys += "L"
             }
 
-            $options += @{ Key = "A"; Label = "Abrir no Explorador"; Description = "você organiza à mão"; Accent = (-not $folder.Clean) }
-            $options += @{ Key = "D"; Label = "Procurar arquivos duplicados"; Description = "cópias iguais; você escolhe o que vai para a Lixeira" }
-            $options += @{ Key = "P"; Label = "Pular esta pasta" }
+            $options += @{ Key = "A"; Label = (Get-WinForgeText 'Abrir no Explorador'); Description = (Get-WinForgeText 'você organiza à mão'); Accent = (-not $folder.Clean) }
+            $options += @{ Key = "D"; Label = (Get-WinForgeText 'Procurar arquivos duplicados'); Description = (Get-WinForgeText 'cópias iguais; você escolhe o que vai para a Lixeira') }
+            $options += @{ Key = "P"; Label = (Get-WinForgeText 'Pular esta pasta') }
             $keys += @("A", "D", "P")
 
             if ($position -lt $folders.Count) {
-                $options += @{ Key = "X"; Label = "Pular as pastas restantes"; Exit = $true }
+                $options += @{ Key = "X"; Label = (Get-WinForgeText 'Pular as pastas restantes'); Exit = $true }
                 $keys += "X"
             }
 
-            $keyText = (@($keys | Select-Object -First ($keys.Count - 1)) -join ", ") + " ou " + $keys[$keys.Count - 1]
-            $answer = Read-WinForgeChoice -Message "O que fazer com a pasta $($folder.Label)?" -Options $options -DefaultKey "P" -ShowMenu `
-                -TextPrompt "Opção ($keyText; ENTER = pular esta pasta)"
+            $keyText = (Get-WinForgeText '{0} ou {1}' "$(@($keys | Select-Object -First ($keys.Count - 1)) -join ', ')" "$($keys[$keys.Count - 1])")
+            $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'O que fazer com a pasta {0}?' "$($folder.Label)") -Options $options -DefaultKey "P" -ShowMenu `
+                -TextPrompt (Get-WinForgeText 'Opção ({0}; ENTER = pular esta pasta)' "$keyText")
 
             if ($answer -ieq "X") {
-                Write-WinForgeStatus -Type Info -Message "As pastas restantes ficaram como estão."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'As pastas restantes ficaram como estão.')
                 break
             }
 
-            if ($answer -ieq "L" -and $folder.Clean) {
-                $result = Invoke-WinForgeNestedAction -Command $folder.Clean
+            if (($answer -ieq "L" -and $folder.Clean) -or $answer -ieq "D") {
+                $result = $(if ($answer -ieq "D") { Invoke-WinForgeNestedAction -Command "Find-WinForgeDuplicateFiles" -Arguments @{ Path = $path } } else { Invoke-WinForgeNestedAction -Command $folder.Clean })
                 $notes += "$($folder.Label): $(Get-WinForgeFolderReviewNote -Result $result)"
-                if ($result.Kind -eq "Failed") { $problems++ }
-            }
-            elseif ($answer -ieq "D") {
-                $result = Invoke-WinForgeNestedAction -Command "Find-WinForgeDuplicateFiles" -Arguments @{ Path = $path }
-                $notes += "$($folder.Label): $(Get-WinForgeFolderReviewNote -Result $result)"
-                if ($result.Kind -eq "Failed") { $problems++ }
+                if ($result.Kind -eq "Failed") { $problems++ } elseif ($result.Kind -ne "Skipped") { $done++ }
             }
             elseif ($answer -ieq "A") {
                 if (Open-WinForgeShortcut -Name $folder.Shortcut) {
                     Write-Host ""
-                    [void](Read-WinForgeChoice -Message "Organize a pasta na janela aberta e depois continue." -Options @(@{ Key = "C"; Label = "Continuar"; Accent = $true }) `
-                            -DefaultKey "C" -TextPrompt "Organize a pasta na janela aberta e pressione ENTER")
-                    $notes += "$($folder.Label): aberta no Explorador"
+                    [void](Read-WinForgeChoice -Message (Get-WinForgeText 'Organize a pasta na janela aberta e depois continue.') -Options @(@{ Key = "C"; Label = (Get-WinForgeText 'Continuar'); Accent = $true }) `
+                            -DefaultKey "C" -TextPrompt (Get-WinForgeText 'Organize a pasta na janela aberta e pressione ENTER'))
+                    $notes += (Get-WinForgeText '{0}: aberta no Explorador' "$($folder.Label)")
+                    $done++
                 }
                 else {
+                    # Open-WinForgeShortcut já disse o motivo na tela; o resumo diz qual pasta não abriu.
+                    $notes += (Get-WinForgeText '{0}: não abriu no Explorador' "$($folder.Label)")
                     $problems++
                 }
             }
         }
 
-        if ($notes.Count -eq 0 -and $problems -eq 0) {
-            $final = New-WinForgeResult -Kind Skipped -Detail "nenhuma pasta foi mexida" -Title $title
+        if ($problems -gt 0) {
+            $final = New-WinForgeResult -Kind Warning -Detail ($notes -join "; ") -Title $title
         }
-        elseif ($problems -gt 0) {
-            $final = New-WinForgeResult -Kind Warning -Detail $(if ($notes.Count -gt 0) { $notes -join "; " } else { "a pasta não abriu" }) -Title $title
+        elseif ($done -eq 0) {
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhuma pasta foi mexida') -Title $title
         }
         else {
             $final = New-WinForgeResult -Kind Ok -Detail ($notes -join "; ") -Title $title
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível revisar as pastas: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível revisar as pastas: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
@@ -2138,13 +2128,13 @@ function Get-WinForgeFolderReviewNote {
 
     $detail = [string](Get-WinForgeJsonValue -Object $Result -Name "Detail" -Default "")
 
-    if ([string]$Result.Kind -eq "Skipped" -and ([string]::IsNullOrWhiteSpace($detail) -or $detail -match "(?i)cancelad")) {
-        return "nada mudou"
+    if ([string]$Result.Kind -eq "Skipped" -and ([string]::IsNullOrWhiteSpace($detail) -or (Test-WinForgeCanceledText -Text $detail))) {
+        return (Get-WinForgeText 'nada mudou')
     }
 
     if (-not [string]::IsNullOrWhiteSpace($detail)) { return $detail }
 
-    return $(if ([string]$Result.Kind -eq "Ok") { "concluído" } else { [string]$Result.Status })
+    return $(if ([string]$Result.Kind -eq "Ok") { (Get-WinForgeText 'concluído') } else { [string]$Result.Status })
 }
 
 
@@ -2162,34 +2152,74 @@ function Invoke-WinForgeComponentCleanup {
     # mesmo tempo mexe na conta, por isso "cerca de"). Sem uma das leituras, fica o resultado do DISM.
     $before = [int64](Get-WinForgeSystemDriveFreeBytes)
 
+    # Só o código: o texto da saída e o resto do que o Invoke-WinForgeTool passa ficam em $args.
     $parser = {
-        param ($ExitCode, $Text)
+        param ($ExitCode)
 
-        $result = Get-WinForgeExitCodeResult -ExitCode $ExitCode -OutputText $Text
+        # Com a manutenção dos componentes esperando um reinício (0x800F0806 é o CBS_E_PENDING; 0x800F082F e o 3017
+        # aparecem no mesmo caso), o DISM recusa a limpeza: o que resolve é reiniciar, e a tela diz isso, e não só o código.
+        $code = Format-WinForgeExitCode -ExitCode $ExitCode
+
+        if ($code -in @("0x800F0806", "0x800F082F", "3017")) {
+            return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Windows espera um reinício para terminar outra instalação, e os componentes só são limpos depois disso — erro {0}' "$code") -Data @{ RebootRequired = $true; Notes = @((Get-WinForgeText 'Reinicie o PC e rode a limpeza de novo.')) })
+        }
+
+        $result = Get-WinForgeExitCodeResult -ExitCode $ExitCode
         $after = [int64](Get-WinForgeSystemDriveFreeBytes)
 
         if ($result.Kind -eq "Ok" -and $before -ge 0 -and $after -ge 0) {
             $freed = $after - $before
 
             if ($freed -lt 50MB) {
-                $result = New-WinForgeResult -Kind Ok -Detail "quase nada a liberar" -Data @{ FreedBytes = [int64]0 }
+                $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'quase nada a liberar') -Data @{ FreedBytes = [int64]0 }
             }
             else {
-                $result = New-WinForgeResult -Kind Ok -Detail "liberou cerca de $(Format-WinForgeBytes -Bytes $freed)" -Data @{ FreedBytes = [int64]$freed }
+                $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'liberou cerca de {0}' "$(Format-WinForgeBytes -Bytes $freed)") -Data @{ FreedBytes = [int64]$freed }
             }
         }
 
         $result
     }.GetNewClosure()
 
+    # A faixa: quanto voltou ao disco (medido no espaço livre, por isso "cerca de") ou, com quase nada, que o Windows já
+    # faz essa limpeza sozinho (a tarefa StartComponentCleanup, quando o PC está parado).
+    $view = {
+        param ($Result)
+
+        if ([string]$Result.Kind -ne "Ok") { return }
+
+        $componentsFreed = Get-WinForgeResultData -Result $Result -Name "FreedBytes"
+
+        if ($null -ne $componentsFreed -and [int64]$componentsFreed -gt 0) {
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Cerca de {0} liberados' "$(Format-WinForgeBytes -Bytes ([int64]$componentsFreed))") -Note (Get-WinForgeText 'Medido pelo espaço livre do disco do Windows, antes e depois da limpeza.')
+        }
+        elseif ($null -ne $componentsFreed) {
+            Set-WinForgeResultView -Result $Result -Headline (ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'quase nada a liberar')) -Note (Get-WinForgeText 'O Windows já faz esta limpeza sozinho, de tempos em tempos.')
+        }
+    }
+
+    # Com uma atualização esperando o reinício, o DISM recusaria a limpeza depois de minutos (0x800F0806): sozinha, a
+    # ação não roda e oferece reiniciar. No Otimizar, quem confere isso é o Otimizar.
+    $pending = @{
+        Note            = (Get-WinForgeText 'O Windows espera um reinício para terminar uma atualização: os componentes só podem ser limpos depois de reiniciar.')
+        Detail          = (Get-WinForgeText 'o Windows espera um reinício para terminar uma atualização; a limpeza só roda depois de reiniciar')
+        Headline        = (Get-WinForgeText 'Reinicie antes de limpar')
+        Reason          = (Get-WinForgeText 'Reiniciar agora deixa o Windows pronto para a limpeza.')
+        Comment         = (Get-WinForgeText 'Reinicialização solicitada pelo WinForge antes da limpeza dos componentes do Windows (DISM).')
+        DeclinedMessage = (Get-WinForgeText 'Reinicialização não iniciada. Depois de reiniciar, rode a limpeza de novo.')
+    }
+
     Invoke-WinForgeTool `
-        -Title "Limpar componentes do Windows (WinSxS)" `
+        -Title (Get-WinForgeText 'Limpar componentes do Windows (WinSxS)') `
         -FilePath "dism.exe" `
         -Arguments @("/Online", "/Cleanup-Image", "/StartComponentCleanup") `
-        -Description @("Remove versões antigas de componentes do Windows, em 5 a 30 minutos.") `
-        -Warnings @("Não apaga nada seu, e as atualizações recentes continuam podendo ser desinstaladas.") `
-        -Question "Limpar os componentes agora?" `
+        -Description @((Get-WinForgeText 'Remove versões antigas de componentes do Windows, em 5 a 30 minutos.')) `
+        -Warnings @((Get-WinForgeText 'Não apaga nada seu, e as atualizações recentes continuam podendo ser desinstaladas.')) `
+        -Question (Get-WinForgeText 'Limpar os componentes agora?') `
+        -YesLabel (Get-WinForgeText 'Limpar') -NoLabel (Get-WinForgeText 'Cancelar') `
         -ResultParser $parser `
+        -ResultView $view `
+        -NeedsServicing -ServicingText $pending `
         -Embedded:$Embedded -PassThru:$PassThru
 }
 
@@ -2361,25 +2391,25 @@ function Get-WinForgeCleanupTargets {
     }
 
     return @(
-        (New-WinForgeCleanupTarget -Id "user-temp" -Label "Temporários do usuário" -Selected -MinAgeHours $script:WinForgeTempMinAgeHours `
-            -Description "O que os programas deixam na sua pasta Temp" -Paths @(Get-WinForgeUserTempPath)),
-        (New-WinForgeCleanupTarget -Id "windows-temp" -Label "Temporários do Windows" -Admin -Selected -MinAgeHours $script:WinForgeTempMinAgeHours `
-            -Description "A pasta Temp do sistema" -Paths @(Get-WinForgeWindowsTempPath)),
-        (New-WinForgeCleanupTarget -Id "error-reports" -Label "Relatórios de erro do Windows" -Admin -Selected `
-            -Description "Cópias de falhas de programas" -Paths $errorReports),
-        (New-WinForgeCleanupTarget -Id "delivery-optimization" -Label "Cache da Otimização de Entrega" -Admin -Selected `
-            -Description "Partes de atualizações; o Windows baixa de novo se precisar" -Paths $deliveryCache),
-        (New-WinForgeCleanupTarget -Id "browser-cache" -Label "Cache dos navegadores" `
-            -Description "Senhas, cookies e histórico ficam; as páginas abrem mais devagar na primeira vez" `
+        (New-WinForgeCleanupTarget -Id "user-temp" -Label (Get-WinForgeText 'Temporários do usuário') -Selected -MinAgeHours $script:WinForgeTempMinAgeHours `
+            -Description (Get-WinForgeText 'O que os programas deixam na sua pasta Temp') -Paths @(Get-WinForgeUserTempPath)),
+        (New-WinForgeCleanupTarget -Id "windows-temp" -Label (Get-WinForgeText 'Temporários do Windows') -Admin -Selected -MinAgeHours $script:WinForgeTempMinAgeHours `
+            -Description (Get-WinForgeText 'A pasta Temp do sistema') -Paths @(Get-WinForgeWindowsTempPath)),
+        (New-WinForgeCleanupTarget -Id "error-reports" -Label (Get-WinForgeText 'Relatórios de erro do Windows') -Admin -Selected `
+            -Description (Get-WinForgeText 'Cópias de falhas de programas') -Paths $errorReports),
+        (New-WinForgeCleanupTarget -Id "delivery-optimization" -Label (Get-WinForgeText 'Cache da Otimização de Entrega') -Admin -Selected `
+            -Description (Get-WinForgeText 'Partes de atualizações; o Windows baixa de novo se precisar') -Paths $deliveryCache),
+        (New-WinForgeCleanupTarget -Id "browser-cache" -Label (Get-WinForgeText 'Cache dos navegadores') `
+            -Description (Get-WinForgeText 'Senhas, cookies e histórico ficam; as páginas abrem mais devagar na primeira vez') `
             -Paths @(Get-WinForgeBrowserCachePaths)),
-        (New-WinForgeCleanupTarget -Id "shader-cache" -Label "Cache de sombreadores dos jogos" `
-            -Description "O primeiro carregamento de cada jogo fica mais lento" `
+        (New-WinForgeCleanupTarget -Id "shader-cache" -Label (Get-WinForgeText 'Cache de sombreadores dos jogos') `
+            -Description (Get-WinForgeText 'O primeiro carregamento de cada jogo fica mais lento') `
             -Paths @(Get-WinForgeShaderCachePaths)),
-        (New-WinForgeCleanupTarget -Id "crash-dumps" -Label "Despejos de memória de falhas" -Admin `
-            -Description "Só servem para investigar travamentos e telas azuis" `
+        (New-WinForgeCleanupTarget -Id "crash-dumps" -Label (Get-WinForgeText 'Despejos de memória de falhas') -Admin `
+            -Description (Get-WinForgeText 'Só servem para investigar travamentos e telas azuis') `
             -Paths @(Get-WinForgeCrashDumpPaths) -Files @(Get-WinForgeMemoryDumpFile)),
-        (New-WinForgeCleanupTarget -Id "recycle-bin" -Label "Lixeira" -RecycleBin `
-            -Description "O que está nela é removido em definitivo")
+        (New-WinForgeCleanupTarget -Id "recycle-bin" -Label (Get-WinForgeText 'Lixeira') -RecycleBin `
+            -Description (Get-WinForgeText 'O que está nela é removido em definitivo'))
     )
 }
 
@@ -2460,13 +2490,13 @@ function Get-WinForgeUserFolderSizes {
             Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) })
 
     # Somar um perfil inteiro pode levar minutos: a barra diz em que pasta a soma está.
-    $activity = "Somando o tamanho das pastas do perfil"
+    $activity = (Get-WinForgeText 'Somando o tamanho das pastas do perfil')
     $position = 0
 
     $rows = @(
         foreach ($folder in $folders) {
             $position++
-            Write-Progress -Activity $activity -Status "$($folder.Name) ($position de $($folders.Count))" -PercentComplete ([int](($position - 1) * 100 / $folders.Count))
+            Write-Progress -Activity $activity -Status (Get-WinForgeText '{0} ({1} de {2})' "$($folder.Name)" "$position" "$($folders.Count)") -PercentComplete ([int](($position - 1) * 100 / $folders.Count))
             [PSCustomObject]@{ Name = $folder.Name; Path = $folder.FullName; Size = [int64](Get-WinForgePathStats -Path $folder.FullName).Size }
         }
     )
@@ -2485,12 +2515,12 @@ function Get-WinForgeSystemSpaceFiles {
     $windows = $(if (-not [string]::IsNullOrWhiteSpace($env:WINDIR)) { $env:WINDIR } else { Join-Path $driveRoot "Windows" })
 
     $entries = @(
-        @{ Label = "Hibernação (hiberfil.sys)"; Path = (Join-Path $driveRoot "hiberfil.sys"); Folder = $false; Hint = "sai com o ajuste Desativar hibernação, na página Ajustes do Windows" },
-        @{ Label = "Memória virtual (pagefile.sys)"; Path = (Join-Path $driveRoot "pagefile.sys"); Folder = $false; Hint = "o Windows cuida dele; não mexa sem motivo" },
-        @{ Label = "Arquivo de troca (swapfile.sys)"; Path = (Join-Path $driveRoot "swapfile.sys"); Folder = $false; Hint = "o Windows cuida dele" },
-        @{ Label = "Windows anterior (Windows.old)"; Path = (Join-Path $driveRoot "Windows.old"); Folder = $true; Hint = "remova em Limpeza > Configurações de armazenamento (Arquivos temporários, Instalações anteriores do Windows)" },
-        @{ Label = "Downloads do Windows Update"; Path = (Join-Path $windows "SoftwareDistribution\Download"); Folder = $true; Hint = "o Windows apaga depois de instalar as atualizações" },
-        @{ Label = "Despejo de tela azul (MEMORY.DMP)"; Path = (Join-Path $windows "MEMORY.DMP"); Folder = $false; Hint = "sai em Limpeza > Limpeza personalizada (Despejos de memória de falhas)" }
+        @{ Label = (Get-WinForgeText 'Hibernação (hiberfil.sys)'); Path = (Join-Path $driveRoot "hiberfil.sys"); Folder = $false; Hint = (Get-WinForgeText 'sai com o ajuste Desativar hibernação, na página Ajustes do Windows') },
+        @{ Label = (Get-WinForgeText 'Memória virtual (pagefile.sys)'); Path = (Join-Path $driveRoot "pagefile.sys"); Folder = $false; Hint = (Get-WinForgeText 'o Windows cuida dele; não mexa sem motivo') },
+        @{ Label = (Get-WinForgeText 'Arquivo de troca (swapfile.sys)'); Path = (Join-Path $driveRoot "swapfile.sys"); Folder = $false; Hint = (Get-WinForgeText 'o Windows cuida dele') },
+        @{ Label = (Get-WinForgeText 'Windows anterior (Windows.old)'); Path = (Join-Path $driveRoot "Windows.old"); Folder = $true; Hint = (Get-WinForgeText 'remova em Limpeza > Configurações de armazenamento (Arquivos temporários, Instalações anteriores do Windows)') },
+        @{ Label = (Get-WinForgeText 'Downloads do Windows Update'); Path = (Join-Path $windows "SoftwareDistribution\Download"); Folder = $true; Hint = (Get-WinForgeText 'o Windows apaga depois de instalar as atualizações') },
+        @{ Label = (Get-WinForgeText 'Despejo de tela azul (MEMORY.DMP)'); Path = (Join-Path $windows "MEMORY.DMP"); Folder = $false; Hint = (Get-WinForgeText 'sai em Limpeza > Limpeza personalizada (Despejos de memória de falhas)') }
     )
 
     return @(
@@ -2527,13 +2557,13 @@ function Get-WinForgeSystemSpaceFiles {
 function Measure-WinForgeCleanupTargets {
     # Todos os alvos da limpeza personalizada, medidos, com a barra dizendo qual está sendo medido.
     $targets = @(Get-WinForgeCleanupTargets)
-    $activity = "Medindo o que pode ser liberado"
+    $activity = (Get-WinForgeText 'Medindo o que pode ser liberado')
     $position = 0
 
     $measured = @(
         foreach ($target in $targets) {
             $position++
-            Write-Progress -Activity $activity -Status "$($target.Label) ($position de $($targets.Count))" -PercentComplete ([int](($position - 1) * 100 / $targets.Count))
+            Write-Progress -Activity $activity -Status (Get-WinForgeText '{0} ({1} de {2})' "$($target.Label)" "$position" "$($targets.Count)") -PercentComplete ([int](($position - 1) * 100 / $targets.Count))
             Measure-WinForgeCleanupTarget -Target $target
         }
     )
@@ -2560,7 +2590,7 @@ function Test-WinForgeCleanupTargetAvailable {
 
 
 function Show-WinForgeSpaceAnalysis {
-    $title = "Analisar uso de espaço"
+    $title = (Get-WinForgeText 'Analisar uso de espaço')
     Enter-WinForgeAction -Title $title
 
     $result = $null
@@ -2572,31 +2602,31 @@ function Show-WinForgeSpaceAnalysis {
         $diskLevel = ""
         $sum = [int64]0
 
-        Write-WinForgeSection -Title "Disco do sistema"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Disco do sistema')
 
         $space = Get-WinForgeSystemDriveSpace
 
         if ($null -ne $space -and $space.TotalBytes -gt 0) {
-            $headline = "$(Format-WinForgeBytes -Bytes $space.FreeBytes -ZeroText '0 B') livres de $(Format-WinForgeBytes -Bytes $space.TotalBytes)"
+            $headline = (Get-WinForgeText '{0} livres de {1}' "$(Format-WinForgeBytes -Bytes $space.FreeBytes -ZeroText '0 B')" "$(Format-WinForgeBytes -Bytes $space.TotalBytes)")
             $diskLevel = Get-WinForgeDiskSpaceLevel -FreeBytes $space.FreeBytes -TotalBytes $space.TotalBytes
             $used = [int64]$space.TotalBytes - [int64]$space.FreeBytes
             $percent = [int][Math]::Round(($used * 100.0) / $space.TotalBytes, [MidpointRounding]::AwayFromZero)
 
-            Write-WinForgeKeyValue -Label "Tamanho" -Value (Format-WinForgeBytes -Bytes $space.TotalBytes)
-            Write-WinForgeKeyValue -Label "Em uso" -Value "$(Format-WinForgeBytes -Bytes $used -ZeroText '0 B') ($percent%)"
-            Write-WinForgeKeyValue -Label "Livre" -Value (Format-WinForgeBytes -Bytes $space.FreeBytes -ZeroText '0 B')
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Tamanho') -Value (Format-WinForgeBytes -Bytes $space.TotalBytes)
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Em uso') -Value "$(Format-WinForgeBytes -Bytes $used -ZeroText '0 B') ($percent%)"
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Livre') -Value (Format-WinForgeBytes -Bytes $space.FreeBytes -ZeroText '0 B')
 
             # A regra da tela inicial e da Manutenção. Um aviso sobre o disco, não sobre a análise: não conta no desfecho.
             switch ($diskLevel) {
-                "Critical" { Write-WinForgeStatus -Type Warning -Notice -Message "O disco do sistema está quase cheio: o Windows precisa de espaço livre para se atualizar." }
-                "Low" { Write-WinForgeStatus -Type Warning -Notice -Message "Pouco espaço livre no disco do sistema." }
+                "Critical" { Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'O disco do sistema está quase cheio: o Windows precisa de espaço livre para se atualizar.') }
+                "Low" { Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Pouco espaço livre no disco do sistema.') }
             }
         }
         else {
-            Write-WinForgeStatus -Type Warning -Message "Não foi possível ler o tamanho do disco do sistema."
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível ler o tamanho do disco do sistema.')
         }
 
-        Write-WinForgeSection -Title "O que a limpeza pode liberar"
+        Write-WinForgeSection -Title (Get-WinForgeText 'O que a limpeza pode liberar')
 
         $targets = @(Measure-WinForgeCleanupTargets)
         $withSize = @($targets | Where-Object { $null -ne $_.Size -and $_.Size -gt 0 } | Sort-Object -Property Size -Descending)
@@ -2607,7 +2637,7 @@ function Show-WinForgeSpaceAnalysis {
 
         if ($withSize.Count -eq 0) {
             if ($unmeasured.Count -eq 0) {
-                Write-WinForgeStatus -Type Info -Message "Não há temporários, relatórios nem caches acumulados."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Não há temporários, relatórios nem caches acumulados.')
             }
         }
         else {
@@ -2620,20 +2650,20 @@ function Show-WinForgeSpaceAnalysis {
             Write-Host ""
 
             # Com itens sem medir, o total é só o piso do que dá para liberar.
-            $lead = $(if ($unmeasured.Count -gt 0) { "Pelo menos" } else { "Até" })
-            Write-WinForgeStatus -Type Info -Message "$lead $(Format-WinForgeBytes -Bytes $sum) podem ser liberados em Limpeza > Limpeza personalizada."
+            $lead = $(if ($unmeasured.Count -gt 0) { (Get-WinForgeText 'Pelo menos') } else { (Get-WinForgeText 'Até') })
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0} {1} podem ser liberados em Limpeza > Limpeza personalizada.' "$lead" "$(Format-WinForgeBytes -Bytes $sum)")
         }
 
-        Write-WinForgeSection -Title "Maiores pastas do seu perfil"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Maiores pastas do seu perfil')
 
         $folders = @(Get-WinForgeUserFolderSizes)
         $filled = @($folders | Where-Object { $_.Size -gt 0 })
 
         if ($folders.Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Não foi possível ler as pastas do perfil."
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível ler as pastas do perfil.')
         }
         elseif ($filled.Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "As pastas do perfil estão vazias."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'As pastas do perfil estão vazias.')
         }
         else {
             foreach ($folder in $filled) {
@@ -2641,13 +2671,13 @@ function Show-WinForgeSpaceAnalysis {
             }
         }
 
-        Write-WinForgeSection -Title "Arquivos grandes do sistema"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Arquivos grandes do sistema')
 
         $shown = 0
 
         foreach ($entry in @(Get-WinForgeSystemSpaceFiles)) {
             if ($entry.Unreadable) {
-                Write-WinForgeKeyValue -Label $entry.Label -Value "não foi possível medir" -LabelWidth 36
+                Write-WinForgeKeyValue -Label $entry.Label -Value (Get-WinForgeText 'não foi possível medir') -LabelWidth 36
                 $unmeasured.Add($entry.Label)
                 $shown++
                 continue
@@ -2663,7 +2693,7 @@ function Show-WinForgeSpaceAnalysis {
         }
 
         if ($shown -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Nenhum arquivo grande do sistema foi encontrado."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhum arquivo grande do sistema foi encontrado.')
         }
 
         Write-Host ""
@@ -2674,10 +2704,10 @@ function Show-WinForgeSpaceAnalysis {
             $isAdmin = Test-WinForgeAdministrator
             $type = $(if ($isAdmin) { "Warning" } else { "Info" })
 
-            Write-WinForgeStatus -Type $type -Message "Não foi possível medir: $(Join-WinForgeList -Items @($unmeasured))."
+            Write-WinForgeStatus -Type $type -Message (Get-WinForgeText 'Não foi possível medir: {0}.' "$(Join-WinForgeList -Items @($unmeasured))")
 
             if (-not $isAdmin) {
-                Write-WinForgeStatus -Type Info -Message "Para incluir as pastas do sistema, feche o WinForge, abra de novo e aceite o aviso do Windows."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para incluir as pastas do sistema, feche o WinForge, abra de novo e aceite o aviso do Windows.')
             }
         }
 
@@ -2685,22 +2715,21 @@ function Show-WinForgeSpaceAnalysis {
 
         # A faixa da janela: o espaço livre como título (amarelo com pouco espaço), o que a limpeza libera embaixo e o botão
         # para a Limpeza personalizada, que é onde se escolhe o que tirar. Antes, a análise terminava sem faixa.
-        $lead = $(if ($unmeasured.Count -gt 0) { "Pelo menos" } else { "Até" })
-        $note = $(if ($sum -gt 0) { "$lead $(Format-WinForgeBytes -Bytes $sum) podem ser liberados na Limpeza personalizada." } elseif ($unmeasured.Count -eq 0) { "Não há temporários, relatórios nem caches acumulados." } else { "" })
-        if ($unmeasured.Count -gt 0) { $note = ("$note Não foi possível medir: $(Join-WinForgeList -Items @($unmeasured)).").Trim() }
+        $lead = $(if ($unmeasured.Count -gt 0) { (Get-WinForgeText 'Pelo menos') } else { (Get-WinForgeText 'Até') })
+        $note = $(if ($sum -gt 0) { (Get-WinForgeText '{0} {1} podem ser liberados na Limpeza personalizada.' "$lead" "$(Format-WinForgeBytes -Bytes $sum)") } elseif ($unmeasured.Count -eq 0) { (Get-WinForgeText 'Não há temporários, relatórios nem caches acumulados.') } else { "" })
+        if ($unmeasured.Count -gt 0) { $note = ((Get-WinForgeText '{0} Não foi possível medir: {1}.' "$note" "$(Join-WinForgeList -Items @($unmeasured))")).Trim() }
 
         # Sem o disco do sistema, ou sem medir o que um Administrador mede, é ressalva (como os avisos da tela).
         $kind = $(if (-not $headline -or ($unmeasured.Count -gt 0 -and (Test-WinForgeAdministrator))) { "Warning" } else { "Ok" })
-        $result = New-WinForgeResult -Kind $kind -Detail $(if ($headline) { $headline } else { "disco do sistema não lido" }) -Data @{ CleanableBytes = $sum }
+        $result = New-WinForgeResult -Kind $kind -Detail $(if ($headline) { $headline } else { (Get-WinForgeText 'disco do sistema não lido') }) -Data @{ CleanableBytes = $sum }
 
-        if ($headline) {
-            $tone = $(if ($diskLevel -in @("Critical", "Low")) { "Warn" } elseif ($kind -eq "Warning") { "Warn" } else { "" })
-            [void](Set-WinForgeResultView -Result $result -Headline $headline -Note $note -Tone $tone `
-                    -Next $(if ($sum -gt 0) { "cleanup.custom" } else { "" }) -NextLabel $(if ($sum -gt 0) { "Abrir a Limpeza personalizada" } else { "" }))
-        }
+        # Sem a leitura do disco, o título diz isso, e o resto da faixa (o que a limpeza libera e o botão) continua valendo.
+        $tone = $(if ($diskLevel -in @("Critical", "Low")) { "Warn" } elseif ($kind -eq "Warning") { "Warn" } else { "" })
+        [void](Set-WinForgeResultView -Result $result -Headline $(if ($headline) { $headline } else { (ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'disco do sistema não lido')) }) -Note $note -Tone $tone `
+                -Next $(if ($sum -gt 0) { "cleanup.custom" } else { "" }) -NextLabel $(if ($sum -gt 0) { (Get-WinForgeText 'Abrir a Limpeza personalizada') } else { "" }))
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao analisar o espaço: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro ao analisar o espaço: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -2710,7 +2739,7 @@ function Show-WinForgeSpaceAnalysis {
 
 
 function Invoke-WinForgeCustomCleanup {
-    $title = "Limpeza personalizada"
+    $title = (Get-WinForgeText 'Limpeza personalizada')
 
     Enter-WinForgeAction -Title $title
 
@@ -2718,8 +2747,8 @@ function Invoke-WinForgeCustomCleanup {
     $result = $null
 
     try {
-        if (-not (Test-WinForgeElevation -Reason "A limpeza personalizada exige privilégios de Administrador.")) {
-            $result = New-WinForgeResult -Kind Failed -Detail "requer Administrador"
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'A limpeza personalizada exige privilégios de Administrador.'))) {
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador')
         }
 
         $available = @()
@@ -2728,9 +2757,9 @@ function Invoke-WinForgeCustomCleanup {
             $available = @(Measure-WinForgeCleanupTargets | Where-Object { Test-WinForgeCleanupTargetAvailable -Target $_ })
 
             if ($available.Count -eq 0) {
-                Write-WinForgeStatus -Type Success -Message "Não há nada acumulado para limpar."
-                $result = New-WinForgeResult -Kind Skipped -Detail "não há nada acumulado" -Data @{ FreedBytes = [int64]0 }
-                [void](Set-WinForgeResultView -Result $result -Headline "Nada para limpar" -Note "Não há temporários, relatórios nem caches acumulados.")
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Não há nada acumulado para limpar.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'não há nada acumulado') -Data @{ FreedBytes = [int64]0 }
+                [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nada para limpar') -Note (Get-WinForgeText 'Não há temporários, relatórios nem caches acumulados.'))
             }
         }
 
@@ -2738,23 +2767,23 @@ function Invoke-WinForgeCustomCleanup {
 
         if ($null -eq $result) {
             # Antes da lista: na janela, a pergunta de marcar deixa os detalhes técnicos recolhidos, e esta linha fica no resumo.
-            Write-WinForgeStatus -Type Info -Message "Suas pastas pessoais não são tocadas."
-            [void](Write-WinForgeOtherAccountNotice -What "os temporários do usuário, os caches dos navegadores e a Lixeira")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Suas pastas pessoais não são tocadas.')
+            [void](Write-WinForgeOtherAccountNotice -What 'os temporários do usuário, os caches dos navegadores e a Lixeira')
             Write-Host ""
 
             $options = @(
                 foreach ($target in $available) {
-                    $sizeText = $(if ($null -ne $target.Size) { Format-WinForgeBytes -Bytes $target.Size -ZeroText "0 B" } else { "tamanho desconhecido" })
+                    $sizeText = $(if ($null -ne $target.Size) { Format-WinForgeBytes -Bytes $target.Size -ZeroText "0 B" } else { (Get-WinForgeText 'tamanho desconhecido') })
                     @{ Key = $target.Id; Label = "$($target.Label) · $sizeText"; Description = $target.Description; Selected = $target.Selected }
                 }
             )
 
-            $picked = @(Read-WinForgeMultiSelect -Message "Escolha o que deseja limpar" -Options $options)
+            $picked = @(Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Escolha o que deseja limpar') -Options $options)
             $chosen = @($available | Where-Object { $picked -contains $_.Id })
 
             if ($chosen.Count -eq 0) {
-                Write-WinForgeStatus -Type Warning -Message "Nada foi marcado; nenhuma limpeza foi feita."
-                $result = New-WinForgeResult -Kind Skipped -Detail "nada marcado"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nada foi marcado; nenhuma limpeza foi feita.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada marcado')
             }
         }
 
@@ -2769,37 +2798,55 @@ function Invoke-WinForgeCustomCleanup {
             # Com algo sem tamanho conhecido, o que foi medido é o mínimo; sem nada medido, não há número a dar.
             $sizeText = $(
                 if ($unknown -eq $chosen.Count) { "" }
-                elseif ($unknown -gt 0) { " (pelo menos $(Format-WinForgeBytes -Bytes $estimate -ZeroText '0 B'))" }
-                else { " (cerca de $(Format-WinForgeBytes -Bytes $estimate -ZeroText '0 B'))" }
+                elseif ($unknown -gt 0) { (Get-WinForgeText ' (pelo menos {0})' "$(Format-WinForgeBytes -Bytes $estimate -ZeroText '0 B')") }
+                else { (Get-WinForgeText ' (cerca de {0})' "$(Format-WinForgeBytes -Bytes $estimate -ZeroText '0 B')") }
             )
-            $what = $(if ($chosen.Count -eq 1) { "o item marcado" } else { "os $($chosen.Count) itens marcados" })
+            $what = $(if ($chosen.Count -eq 1) { (Get-WinForgeText 'o item marcado') } else { (Get-WinForgeText 'os {0} itens marcados' "$($chosen.Count)") })
 
             # A Lixeira e os despejos de memória não voltam (o resto o Windows e os programas recriam): com eles marcados, um
             # aviso antes da pergunta, e Não como padrão.
             $chosenIds = @($chosen | ForEach-Object { [string]$_.Id })
-            $noReturn = @()
-            if ($chosenIds -contains "recycle-bin") { $noReturn += "o que está na Lixeira" }
-            if ($chosenIds -contains "crash-dumps") { $noReturn += "os despejos de memória de falhas" }
+            $binChosen = ($chosenIds -contains "recycle-bin")
+            $dumpsChosen = ($chosenIds -contains "crash-dumps")
+            # Frases inteiras (e não pedaços juntados): a concordância muda de um idioma para outro.
+            $noReturnText = $(
+                if ($binChosen -and $dumpsChosen) { (Get-WinForgeText 'O que está na Lixeira e os despejos de memória de falhas são apagados em definitivo, sem volta.') }
+                elseif ($binChosen) { (Get-WinForgeText 'O que está na Lixeira é apagado em definitivo, sem volta.') }
+                elseif ($dumpsChosen) { (Get-WinForgeText 'Os despejos de memória de falhas são apagados em definitivo, sem volta.') }
+                else { "" }
+            )
 
             Write-Host ""
 
-            if ($noReturn.Count -gt 0) {
-                $noReturnText = Join-WinForgeList -Items $noReturn
-                $verb = $(if ($noReturn.Count -gt 1 -or $noReturn[0] -like "os *") { "são apagados" } else { "é apagado" })
-                Write-WinForgeStatus -Type Warning -Notice -Message "$($noReturnText.Substring(0, 1).ToUpperInvariant())$($noReturnText.Substring(1)) $verb em definitivo, sem volta."
+            if ($noReturnText) {
+                Write-WinForgeStatus -Type Warning -Notice -Message $noReturnText
             }
 
-            if (-not (Confirm-WinForgeAction "Limpar $what${sizeText}?" -DefaultKey $(if ($noReturn.Count -gt 0) { "N" } else { "S" }))) {
-                Write-WinForgeStatus -Type Warning -Message "Limpeza cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            if (-not (Confirm-WinForgeAction (Get-WinForgeText 'Limpar {0}{1}?' "$what" "${sizeText}") -DefaultKey $(if ($noReturnText) { "N" } else { "S" }) -Danger:([bool]$noReturnText) -YesLabel (Get-WinForgeText 'Limpar') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Limpeza cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             else {
                 $result = Invoke-WinForgeCleanupTargets -Targets $chosen
+
+                # A faixa diz quanto voltou ao disco e de onde, como a Limpeza rápida (antes, "Concluído" e "liberou X"). Sem
+                # nada liberado, diz por quê: o que saiu estava vazio, ou não pôde ser medido.
+                $customFreed = [int64](Get-WinForgeResultData -Result $result -Name "FreedBytes")
+                $customUnmeasured = @(Get-WinForgeResultData -Result $result -Name "Unmeasured" | Where-Object { $_ })
+
+                if ([string]$result.Kind -eq "Ok" -and $customFreed -gt 0) {
+                    $note = "$(Join-WinForgeList -Items @($chosen | ForEach-Object { [string]$_.Label }))."
+                    if ($customUnmeasured.Count -gt 0) { $note += (Get-WinForgeText ' O total não inclui {0}.' "$(Join-WinForgeList -Items $customUnmeasured)") }
+                    [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText '{0} liberados' "$(Format-WinForgeBytes -Bytes $customFreed)") -Note $note)
+                }
+                elseif ([string]$result.Kind -eq "Ok") {
+                    [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Limpeza concluída') -Note (Get-WinForgeCleanupZeroNote -Unmeasured $customUnmeasured))
+                }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na limpeza: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na limpeza: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -2825,6 +2872,10 @@ function Invoke-WinForgeCleanupTargets {
     $skippedItems = 0
     $problems = New-Object System.Collections.Generic.List[string]
 
+    # O que foi limpo sem medida (a Lixeira que não pôde ser medida, o cache que o Windows esvaziou numa pasta ilegível):
+    # o total não o inclui, e a faixa diz isso em vez de "nada foi liberado".
+    $unmeasured = New-Object System.Collections.Generic.List[string]
+
     foreach ($target in $Targets) {
         if ($target.RecycleBin) {
             # Esvaziar a Lixeira escreve o próprio título de seção.
@@ -2832,6 +2883,7 @@ function Invoke-WinForgeCleanupTargets {
             $partFreed = Get-WinForgeResultData -Result $part -Name "FreedBytes"
 
             if ($null -ne $partFreed) { $freed += [int64]$partFreed }
+            elseif ($part.Kind -ne "Failed") { $unmeasured.Add($target.Label) }
             if ($part.Kind -eq "Failed") { $problems.Add($target.Label) }
             continue
         }
@@ -2866,10 +2918,11 @@ function Invoke-WinForgeCleanupTargets {
                 if ($measured) {
                     $targetFreed = [Math]::Max([int64]0, $before - $after)
                     $freed += $targetFreed
-                    Write-WinForgeStatus -Type Success -Message "Liberou $(Format-WinForgeBytes -Bytes $targetFreed -ZeroText '0 B')."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Liberou {0}.' "$(Format-WinForgeBytes -Bytes $targetFreed -ZeroText '0 B')")
                 }
                 else {
-                    Write-WinForgeStatus -Type Success -Message "O Windows esvaziou o cache; o espaço liberado não pôde ser medido."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'O Windows esvaziou o cache; o espaço liberado não pôde ser medido.')
+                    $unmeasured.Add($target.Label)
                 }
 
                 continue
@@ -2886,7 +2939,7 @@ function Invoke-WinForgeCleanupTargets {
             # As pastas TEMP vêm de variáveis de ambiente que podem estar erradas: precisam se chamar Temp. As outras
             # (caches, relatórios) são caminhos fixos montados pelo WinForge.
             if (-not (Test-WinForgeTempFolderSafe -Path $path -RequireTempName:($target.Id -in @("user-temp", "windows-temp")))) {
-                Write-WinForgeStatus -Type Error -Message "Pasta recusada por segurança: $path"
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Pasta recusada por segurança: {0}' "$path")
                 $errors++
                 continue
             }
@@ -2923,16 +2976,16 @@ function Invoke-WinForgeCleanupTargets {
 
         if ($removed -eq 0 -and $skipped -gt 0) {
             # Tudo em uso: não houve limpeza, e "liberou 0 B" em verde esconderia isso.
-            $hint = $(if ($target.Id -eq "browser-cache") { "feche os navegadores e tente de novo" } else { "feche os programas abertos e tente de novo" })
-            Write-WinForgeStatus -Type Warning -Message "Nenhum item pôde ser removido: estavam em uso; $hint."
+            $hint = $(if ($target.Id -eq "browser-cache") { (Get-WinForgeText 'feche os navegadores e tente de novo') } else { (Get-WinForgeText 'feche os programas abertos e tente de novo') })
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nenhum item pôde ser removido: estavam em uso; {0}.' "$hint")
             $problems.Add($target.Label)
         }
         elseif ($errors -gt 0) {
-            if ($removed -gt 0) { Write-WinForgeStatus -Type Success -Message "Liberou $(Format-WinForgeBytes -Bytes $targetFreed -ZeroText '0 B') no que pôde ser limpo." }
+            if ($removed -gt 0) { Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Liberou {0} no que pôde ser limpo.' "$(Format-WinForgeBytes -Bytes $targetFreed -ZeroText '0 B')") }
             $problems.Add($target.Label)
         }
         else {
-            Write-WinForgeStatus -Type Success -Message "Liberou $(Format-WinForgeBytes -Bytes $targetFreed -ZeroText '0 B')."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Liberou {0}.' "$(Format-WinForgeBytes -Bytes $targetFreed -ZeroText '0 B')")
 
             # Alguns itens em uso numa parte que foi limpa são o normal; uma parte em que nada saiu já teve o seu aviso.
             $skippedItems += $skipped
@@ -2942,32 +2995,35 @@ function Invoke-WinForgeCleanupTargets {
     $freedText = Format-WinForgeBytes -Bytes $freed -ZeroText "0 B"
 
     if (-not $NoSummary) {
-        Write-WinForgeSection -Title "Resumo"
-        Write-WinForgeKeyValue -Label "Espaço liberado" -Value $freedText
+        Write-WinForgeSection -Title (Get-WinForgeText 'Resumo')
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço liberado') -Value $freedText
     }
 
     if ($skippedItems -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "$(if ($skippedItems -eq 1) { '1 item em uso ficou' } else { "$skippedItems itens em uso ficaram" }); isso é esperado."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0}; isso é esperado.' "$(if ($skippedItems -eq 1) { (Get-WinForgeText '1 item em uso ficou') } else { (Get-WinForgeText '{0} itens em uso ficaram' "$skippedItems") })")
     }
 
-    $data = @{ FreedBytes = $freed }
+    $data = @{ FreedBytes = $freed; Unmeasured = @($unmeasured) }
 
     if ($problems.Count -gt 0 -and $freed -eq 0) {
-        return New-WinForgeResult -Kind Warning -Detail "nada foi liberado; com problema: $(Join-WinForgeList -Items @($problems))" -Data $data
+        return New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'nada foi liberado; com problema: {0}' "$(Join-WinForgeList -Items @($problems))") -Data $data
     }
 
     if ($problems.Count -gt 0) {
-        return New-WinForgeResult -Kind Warning -Detail "liberou $freedText; com problema: $(Join-WinForgeList -Items @($problems))" -Data $data
+        return New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'liberou {0}; com problema: {1}' "$freedText" "$(Join-WinForgeList -Items @($problems))") -Data $data
     }
 
-    return New-WinForgeResult -Kind Ok -Detail "liberou $freedText" -Data $data
+    return New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'liberou {0}' "$freedText") -Data $data
 }
 
 
 function Get-WinForgeCleanupPageStatus {
     <#
     O resumo no alto da página Limpeza: o espaço livre no disco do Windows, com a regra de "pouco espaço" da tela inicial.
-    Cada linha tem Label, Text e Level (Normal | Warn | Muted). Só lê o tamanho da unidade, que é imediato.
+    Cada linha tem Label, Text, Level (Normal | Warn | Muted) e Opens. Só lê o tamanho da unidade, que é imediato.
+    Com pouco espaço, a linha é um botão que abre a Limpeza personalizada (Opens): o mesmo caminho do "Liberar espaço" do
+    Início, da Verificação do PC e do aviso do monitor, porque ela mede tudo o que dá para tirar e já vem com o que o
+    Windows refaz sozinho marcado. Antes, a faixa dizia "comece pela Limpeza rápida", que só tira os temporários.
     #>
     $space = $null
 
@@ -2979,18 +3035,19 @@ function Get-WinForgeCleanupPageStatus {
     }
 
     if ($null -eq $space -or $space.TotalBytes -le 0) {
-        return @([PSCustomObject]@{ Label = "Disco do sistema"; Text = "não foi possível ler"; Level = "Muted" })
+        return @([PSCustomObject]@{ Label = (Get-WinForgeText 'Disco do sistema'); Text = (Get-WinForgeText 'não foi possível ler'); Level = "Muted"; Opens = "" })
     }
 
-    $text = "$(Format-WinForgeBytes -Bytes $space.FreeBytes -ZeroText '0 B') livres de $(Format-WinForgeBytes -Bytes $space.TotalBytes)"
+    $text = (Get-WinForgeText '{0} livres de {1}' "$(Format-WinForgeBytes -Bytes $space.FreeBytes -ZeroText '0 B')" "$(Format-WinForgeBytes -Bytes $space.TotalBytes)")
     $level = "Normal"
+    $opens = ""
 
     switch (Get-WinForgeDiskSpaceLevel -FreeBytes $space.FreeBytes -TotalBytes $space.TotalBytes) {
-        "Critical" { $text += " · espaço crítico; comece pela Limpeza rápida"; $level = "Warn" }
-        "Low" { $text += " · pouco espaço"; $level = "Warn" }
+        "Critical" { $text += (Get-WinForgeText ' · quase cheio'); $level = "Warn"; $opens = "cleanup.custom" }
+        "Low" { $text += (Get-WinForgeText ' · pouco espaço'); $level = "Warn"; $opens = "cleanup.custom" }
     }
 
-    return @([PSCustomObject]@{ Label = "Disco do sistema"; Text = $text; Level = $level })
+    return @([PSCustomObject]@{ Label = (Get-WinForgeText 'Disco do sistema'); Text = $text; Level = $level; Opens = $opens })
 }
 
 

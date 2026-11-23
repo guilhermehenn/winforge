@@ -24,3 +24,7 @@ charset = latin1
 
 [LICENSE]
 end_of_line = lf
+
+# Os arquivos do git ficam como o git os grava.
+[{.gitattributes,.gitignore,.editorconfig}]
+end_of_line = lf

@@ -8,8 +8,13 @@
 *.yml   text eol=crlf
 *.json  text eol=crlf
 *.svg   text eol=crlf
+*.po    text eol=crlf
+*.pot   text eol=crlf
 
 # O ícone é binário: nenhuma conversão de quebra de linha.
 *.ico   binary
 
 LICENSE text eol=lf
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+.editorconfig  text eol=lf

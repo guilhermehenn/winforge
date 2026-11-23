@@ -40,6 +40,8 @@ if defined WINFORGE_QUIET (
 if not "%EXIT_CODE%"=="0" (
     echo.
     echo   O WinForge terminou com o codigo %EXIT_CODE%: a mensagem acima diz o motivo.
+    echo   WinForge ended with code %EXIT_CODE%: the message above says why.
+    echo   WinForge termino con el codigo %EXIT_CODE%: el mensaje de arriba dice el motivo.
     pause
 )
 
@@ -47,11 +49,19 @@ rem "endlocal & exit" na mesma linha: o valor e lido antes de a variavel ser des
 endlocal & exit /b %EXIT_CODE%
 
 :faltam
+rem Ainda sem o PowerShell, o aviso sai nos tres idiomas do WinForge.
 echo.
 echo   Faltam arquivos do WinForge nesta pasta.
-echo.
 echo   Abra o WinForge.zip, clique em "Extrair tudo" e depois abra
 echo   o WinForge-Console.cmd que estiver na pasta nova.
+echo.
+echo   Some WinForge files are missing from this folder.
+echo   Open WinForge.zip, click "Extract all" and then open
+echo   WinForge-Console.cmd from the new folder.
+echo.
+echo   Faltan archivos de WinForge en esta carpeta.
+echo   Abre WinForge.zip, haz clic en "Extraer todo" y luego abre
+echo   WinForge-Console.cmd en la carpeta nueva.
 echo.
 rem Numa tarefa ou script (-Action Check), sem pausa: o codigo 3 e "nao foi possivel avaliar".
 if defined WINFORGE_QUIET (

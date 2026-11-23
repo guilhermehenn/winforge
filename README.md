@@ -1,107 +1,140 @@
 <p align="center">
-  <img src="assets/WinForge.svg" width="96" height="96" alt="Ícone do WinForge">
+  <img src="assets/WinForge.svg" width="96" height="96" alt="Ícone do WinForge: uma bigorna branca com a face laranja">
 </p>
 
 # WinForge
 
-O **WinForge** é uma ferramenta open-source para manutenção, diagnóstico e gerenciamento do Windows. Desenvolvido em PowerShell, reúne recursos do sistema em uma interface gráfica e em um menu de terminal.
+[![Versão mais recente](https://img.shields.io/github/v/release/guilhermehenn/winforge?label=vers%C3%A3o)](https://github.com/guilhermehenn/winforge/releases/latest)
+[![Licença GPLv3](https://img.shields.io/badge/licen%C3%A7a-GPLv3-blue)](LICENSE)
+[![Windows 10 e 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](#requisitos)
+[![Windows PowerShell 5.1](https://img.shields.io/badge/PowerShell-5.1-5391FE)](#requisitos)
 
-[Baixar a versão mais recente](https://github.com/guilhermehenn/winforge/releases/latest/download/WinForge.zip) · [Ver todas as versões](https://github.com/guilhermehenn/winforge/releases) · [Guia detalhado da build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md)
+**Português** · [English](README.en.md) · [Español](README.es.md)
 
-## O que você pode fazer
+Cuide do seu PC com Windows num lugar só: o WinForge limpa, repara, atualiza e avisa antes do problema, numa janela simples ou, para quem prefere, num menu no terminal. Ele pergunta antes do que tem peso e guarda como as coisas eram, para você poder voltar atrás.
 
-- **Diagnosticar o PC:** consultar informações do Windows, hardware, discos, rede, bateria e proteção.
-- **Cuidar do sistema:** usar a verificação do PC, a manutenção guiada e ferramentas de reparo como DISM, SFC e CHKDSK.
-- **Liberar espaço:** analisar o armazenamento e acessar opções de limpeza, arquivos duplicados e atalhos quebrados.
-- **Gerenciar programas:** instalar, atualizar e remover aplicativos com o winget e revisar itens de inicialização.
-- **Atualizar o Windows:** consultar atualizações e drivers disponíveis e acompanhar a instalação pela interface.
-- **Acompanhar a segurança:** consultar o estado da proteção e usar as verificações do Windows Defender.
-- **Personalizar o Windows:** aplicar ajustes e desfazer os que oferecem suporte à reversão.
-- **Acompanhar o histórico:** gerar relatórios, consultar mudanças e, se desejar, habilitar a manutenção agendada ou o monitor na bandeja.
+[Site](https://usewinforge.com.br) · [**Baixar o WinForge**](https://github.com/guilhermehenn/winforge/releases/latest/download/WinForge.zip) · [Todas as versões](https://github.com/guilhermehenn/winforge/releases) · [O que mudou](CHANGELOG.md)
 
-O WinForge reúne ferramentas do Windows e ações próprias. Algumas operações alteram configurações ou removem arquivos; confira as opções apresentadas antes de executá-las.
+## Por que o WinForge
+
+- **Tudo num lugar só:** limpeza, reparo do Windows, atualizações, rede, segurança, programas e ajustes, em quatro grupos: Cuidar, Consertar, Proteger e Configurar.
+- **Sem sustos:** o que apaga ou mexe fundo no sistema pergunta antes. Cada ajuste guarda o valor original, e o **Otimizar** começa por um ponto de restauração.
+- **Avisa antes do problema:** um ícone perto do relógio, opcional, avisa quando o disco enche ou dá sinais de falha, a proteção desliga ou falta manutenção.
+- **Usa o próprio Windows:** Windows Update, Microsoft Defender, DISM, SFC, CHKDSK e winget, sem "aceleradores" de outra empresa.
+- **Seus dados ficam no PC:** sem conta e sem telemetria.
+
+## Começar
+
+1. Baixe o **WinForge.zip** e extraia a pasta inteira (botão direito > **Extrair tudo**).
+2. Abra o **WinForge-Setup.cmd** e aceite o pedido de Administrador do Windows. O WinForge fica no Menu Iniciar e em **Configurações > Aplicativos**.
+3. Abra o WinForge. No **Início**, a nota de saúde diz como o PC está, e dois botões cuidam do resto:
+   - **Verificar o PC** confere o PC em 11 etapas e corrige num clique o que é seguro;
+   - **Otimizar** faz a manutenção completa, em 20 etapas: as perguntas vêm no começo, e depois ele segue sozinho. Pode passar de uma hora.
+
+Prefere sem instalar? Abra o **WinForge.cmd** direto da pasta extraída.
+
+## O que ele faz
+
+| Grupo | Páginas | Por exemplo |
+|---|---|---|
+| **Cuidar** | Manutenção, Limpeza, Desempenho | Limpeza rápida, análise do espaço, arquivos duplicados, o que abre com o Windows, manutenção agendada |
+| **Consertar** | Reparo, Diagnóstico, Rede | Reparar o Windows (DISM + SFC), CHKDSK, telas azuis com a causa provável, teste de memória, saúde dos discos, reparo da rede e do DNS, a impressão travada |
+| **Proteger** | Segurança, Atualizações | Estado da proteção, auditoria de segurança, chave de recuperação do BitLocker, atualizações do Windows, drivers e programas |
+| **Configurar** | Programas, Ajustes do Windows, Personalização | Instalar e desinstalar programas, backup antes de formatar, 53 ajustes do Windows com perfis prontos |
+
+E também:
+
+- **Monitor na bandeja** (opcional): avisa antes do problema, e o clique no aviso abre a ação certa.
+- **Histórico de mudanças** (em Manutenção): o que o WinForge mudou no PC, com o desfazer do que tem volta.
+- **Três idiomas:** português, inglês e espanhol, seguindo o idioma do Windows (a escolha fica em **Sobre o WinForge > Idioma**).
 
 ## Requisitos
 
-- Windows 10 ou Windows 11.
-- Windows PowerShell 5.1, incluído no Windows 10 e 11.
-- Permissão de administrador para funções que precisam alterar ou consultar partes protegidas do sistema.
-- [winget](https://learn.microsoft.com/pt-br/windows/package-manager/winget/) para os recursos de gerenciamento de programas.
-- Conexão com a internet para downloads, atualizações e demais recursos online.
+- Windows 10 ou 11, com o Windows PowerShell 5.1 que já vem nele.
+- A permissão de Administrador para boa parte das ações. O WinForge abre pedindo; sem ela, abre assim mesmo e pede de novo quando uma ação precisa.
+- O Instalador de Aplicativo (winget) para instalar, atualizar e desinstalar programas. Ele vem com o Windows; se faltar, o WinForge oferece repará-lo.
+- Internet só para o que depende dela: as atualizações, os programas, os testes de rede e a busca de uma versão nova.
 
-## Download e primeiros passos
+## Segurança e privacidade
 
-1. Baixe **WinForge.zip** pela [release mais recente](https://github.com/guilhermehenn/winforge/releases/latest).
-2. Confira se o arquivo veio do repositório oficial. Para verificar a integridade, compare o SHA-256 do ZIP com o informado junto ao arquivo na release:
+> [!IMPORTANT]
+> Os scripts não são assinados digitalmente, e o Windows pode avisar ao abrir. Baixe só da [página de versões](https://github.com/guilhermehenn/winforge/releases) e, se quiser, confira o zip no PowerShell: o resultado deve ser igual ao SHA-256 publicado na página da versão.
+>
+> ```powershell
+> Get-FileHash .\WinForge.zip -Algorithm SHA256
+> ```
 
-   ```powershell
-   Get-FileHash -LiteralPath "$env:USERPROFILE\Downloads\WinForge.zip" -Algorithm SHA256
-   ```
+- **Nada do seu PC é enviado.** O WinForge só vai à internet para procurar uma versão nova e baixar a lista de programas e as datas de suporte do Windows (no GitHub), e nos testes de rede que você pede (velocidade, conectividade e IP público). O resto passa pelas ferramentas do Windows e dos programas: Windows Update, Microsoft Defender, winget, Microsoft Store e os atualizadores dos navegadores.
+- **Nem tudo tem volta:** o que a limpeza apaga e os programas desinstalados não voltam pelo WinForge. Por isso ele pergunta antes.
+- **Os dados do WinForge** (logs, relatórios e históricos) ficam em `%LOCALAPPDATA%\WinForge`. O backup antes de formatar não copia seus arquivos pessoais e guarda as senhas do Wi-Fi em texto: proteja o backup.
 
-   Se o arquivo estiver em outra pasta, ajuste o caminho no comando.
+## Atualizar e desinstalar
 
-3. Nas propriedades do ZIP, marque **Desbloquear** se a opção aparecer e você confiar na origem do arquivo.
-4. Extraia a pasta inteira. Uma opção é extrair para `C:\Program Files`, criando `C:\Program Files\WinForge`; o Windows pode pedir permissão para gravar nesse local.
-5. Abra **WinForge.cmd** para a interface gráfica ou **WinForge-Console.cmd** para o menu de terminal.
-6. Leia o pedido de permissão do Windows. A janela pode abrir sem administrador se o pedido for recusado; funções que precisarem de elevação poderão solicitá-la novamente.
-
-Não execute os arquivos de dentro do ZIP: o WinForge precisa da estrutura completa de pastas.
-
-## Segurança e dados
-
-- **Permissões:** ações de limpeza, reparo, atualização e ajustes podem alterar o sistema. Mantenha seus backups e confira o que será executado; nem toda ação pode ser desfeita.
-- **Inicialização:** os lançadores `.cmd` iniciam o PowerShell com `ExecutionPolicy Bypass` para o processo e, ao abrir a janela ou o menu, removem recursivamente o bloqueio de arquivos baixados dentro da pasta do WinForge. Use uma pasta exclusiva para o aplicativo e confira a origem dos arquivos.
-- **Assinatura:** os scripts da versão 3.69 não estão assinados digitalmente. O Windows pode apresentar avisos ao abrir arquivos baixados.
-- **Dados locais:** logs, relatórios e arquivos de estado ficam principalmente em `%LOCALAPPDATA%\WinForge`. Relatórios e logs podem conter informações do computador; confira seu conteúdo antes de compartilhá-los.
-- **Recursos online:** algumas funções acessam serviços externos, como GitHub, winget, Windows Update e serviços de rede. O monitor na bandeja e a manutenção agendada são opcionais.
-- **Backup antes de formatar:** o recurso pode guardar lista de programas, drivers, ajustes e, opcionalmente, redes Wi-Fi. Ele **não copia documentos, fotos ou outros arquivos pessoais**. Se você incluir redes Wi-Fi, as senhas são armazenadas em texto puro; proteja o backup.
-
-## Atualizar o WinForge
-
-Em **Sobre o WinForge > Verificar nova versão**, o aplicativo consulta a release mais recente e pode baixar o ZIP, conferindo seu SHA-256. A substituição dos arquivos é manual.
-
-Para atualizar uma cópia existente, feche o WinForge e o monitor na bandeja, se estiver aberto. Extraia a nova versão em outra pasta e copie o conteúdo da pasta `WinForge` extraída para a pasta da instalação anterior, substituindo os arquivos. Mantenha a estrutura de pastas completa.
-
-Os dados locais ficam em `%LOCALAPPDATA%\WinForge`; não apague essa pasta se quiser preservar logs, histórico e backups. Se você mover a pasta do programa, confira seus atalhos e o agendamento, caso estejam configurados.
+- **Atualizar:** **Sobre o WinForge > Verificar nova versão** baixa a versão nova, confere o SHA-256 e instala com um clique; o WinForge fecha e abre de novo já atualizado. Se algo falhar no meio, os arquivos anteriores voltam. Com o monitor na bandeja ligado, o WinForge avisa quando sai uma versão nova. Vale da 4.0 em diante: de uma versão anterior, instale a 4.0 pelo **WinForge-Setup.cmd**.
+- **Desinstalar:** por **Configurações > Aplicativos**, ou abrindo o **WinForge-Setup.cmd** da pasta instalada. Ele pergunta se apaga também os dados em `%LOCALAPPDATA%\WinForge`. Os ajustes do Windows continuam como estão: para voltar ao que era, use antes **Ajustes do Windows > Desfazer ajustes do WinForge**.
 
 ## Linha de comando
 
-No PowerShell, dentro da pasta do WinForge:
-
 ```powershell
-.\WinForge-Console.cmd -Action Check        # verificação rápida
-.\WinForge-Console.cmd -Action Check -Json  # saída em JSON
+.\WinForge-Console.cmd                      # menu no terminal
+.\WinForge-Console.cmd -Action Check -Json  # verificação rápida, em JSON
 .\WinForge-Console.cmd -Action Report       # relatório HTML e texto
+.\WinForge-Console.cmd -Language en         # pt, en ou es
 ```
 
-A ação `Check` faz consultas e não exige administrador; algumas informações podem ficar indisponíveis sem elevação.
+A verificação rápida não pede Administrador e diz o resultado no código de saída: 0 tudo em dia, 1 pontos de atenção, 2 algo crítico, 3 não foi possível avaliar.
 
-## Como relatar um problema
+## Perguntas frequentes
 
-[Abra uma issue](https://github.com/guilhermehenn/winforge/issues/new)
-informando:
+<details>
+<summary><strong>O WinForge deixa o PC mais rápido?</strong></summary>
 
-- Versão do WinForge.
-- Versão e build do Windows.
-- Interface utilizada: gráfica ou terminal.
-- Função executada e passos para reproduzir o problema.
-- Resultado esperado e o que aconteceu.
-- Mensagem de erro completa ou captura de tela.
+Ele tira o que pesa sem necessidade (temporários, o que abre com o Windows, programas pesando agora), repara o Windows e mantém tudo em dia. Não promete um número de velocidade: o ganho depende de como o PC estava.
+</details>
 
-Se compartilhar logs ou relatórios de
-`%LOCALAPPDATA%\WinForge`, confira o conteúdo
-e remova informações pessoais antes de enviar.
+<details>
+<summary><strong>Ele substitui o antivírus?</strong></summary>
 
-## Documentação e projeto
+Não. A segurança do WinForge usa o Microsoft Defender do próprio Windows: confere a proteção, atualiza as assinaturas e roda a verificação. Com outro antivírus instalado, as ações do Defender ficam de fora.
+</details>
 
-- [Guia detalhado da build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md) — referência arquivada da versão publicada; pode não refletir versões posteriores.
-- [Histórico de mudanças](CHANGELOG.md) e [releases](https://github.com/guilhermehenn/winforge/releases).
-- `WinForge.Gui.ps1` e `gui/`: interface gráfica.
-- `WinForge.Console.ps1`: interface de terminal.
-- `modules/`: funcionalidades compartilhadas; `assets/`: ícones.
+<details>
+<summary><strong>Mudou algo que eu não queria. Como volto?</strong></summary>
+
+Em **Manutenção > Histórico de mudanças**, cada mudança que tem volta tem o desfazer. Para os ajustes do Windows de uma vez, **Ajustes do Windows > Desfazer ajustes do WinForge**. E o ponto de restauração que o Otimizar cria no começo volta o sistema pela Restauração do Sistema do Windows.
+</details>
+
+<details>
+<summary><strong>Funciona sem internet?</strong></summary>
+
+A limpeza, o diagnóstico, os ajustes e boa parte dos reparos, sim. As atualizações, os programas, os testes de rede e a busca de uma versão nova precisam de internet.
+</details>
+
+<details>
+<summary><strong>Por que ele pede Administrador?</strong></summary>
+
+Reparar o Windows, instalar atualizações e mudar ajustes do sistema exigem essa permissão. Se você recusar, o WinForge abre assim mesmo, e as ações que precisam dela mostram o escudo e pedem de novo.
+</details>
+
+## Ajuda
+
+Achou um problema ou tem uma sugestão? [Abra uma issue](https://github.com/guilhermehenn/winforge/issues/new). Para ajudar na análise de um problema, informe:
+
+- A versão do WinForge e a versão e build do Windows.
+- A interface usada: janela ou terminal.
+- A função executada e os passos para reproduzir o problema.
+- O resultado esperado e o que aconteceu.
+- A mensagem de erro completa ou uma captura de tela.
+
+**Sobre o WinForge > Pacote de suporte** reúne os logs, a verificação rápida e o último relatório em um zip. Antes de compartilhar logs, relatórios ou o pacote, confira o conteúdo e remova informações pessoais.
+
+## Para quem desenvolve
+
+- [Documentação técnica](https://github.com/guilhermehenn/winforge/blob/main/docs/documentacao-tecnica-4.0.md): como o WinForge é feito, onde fica cada coisa e como mudar o código. Quem chega agora começa por "Comece por aqui".
+- [Índice da documentação](https://github.com/guilhermehenn/winforge/blob/main/docs/README.md): o mapa de funcionalidades, o histórico da 4.0 e as revisões de cada tela.
+- `modules/`: as funções; `gui/`: a janela; `lang/`: as traduções (gettext); `tools/`: assinatura, o zip da versão e traduções.
+- [O que mudou em cada versão](CHANGELOG.md) e o [guia detalhado da build 3.69](https://github.com/guilhermehenn/winforge/blob/v3.69.0/README.md) (arquivado).
 
 ## Licença
 
-Distribuído sob a licença [GNU GPLv3](LICENSE).
-
-© 2026 Guilherme Henn
+[GNU GPLv3](LICENSE) · © 2026 [Guilherme Henn](https://github.com/guilhermehenn), que mantém o WinForge.

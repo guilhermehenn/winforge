@@ -1,7 +1,8 @@
 ﻿# Monitor na bandeja: um ícone perto do relógio que fica de olho no PC e avisa quando algo pede atenção.
 #
 # O monitor é o WinForge.Agent.ps1, na pasta do WinForge. Ele começa com o Windows (uma entrada em Run, do usuário) e só
-# lê: espaço no disco, proteção, reinício pendente, manutenção, suporte do Windows e programas desatualizados. Cada aviso
+# lê: espaço no disco, disco com sinais de falha, proteção, reinício pendente, manutenção, suporte do Windows, programas
+# desatualizados e o resultado do teste de memória, quando ele foi pedido. Cada aviso
 # aparece no máximo uma vez a cada tanto tempo (veja Get-WinForgeAgentChecks) e pode ser pausado por 24 horas no menu do
 # ícone. Este módulo tem as regras (o que avisar e quando) e o liga/desliga; o script cuida do ícone.
 
@@ -17,13 +18,18 @@ $script:WinForgeAgentStartWaitSeconds = 8
 function Get-WinForgeAgentActionIds {
     # As ações que o monitor pede à janela: as do menu do ícone e as dos avisos. A janela só roda estas quando o pedido
     # chega de outra abertura (Receive-WinForgeWindowRequest).
-    # app.monitor (Configurar o monitor) só mostra a tela de escolha: nada muda sem um clique nela.
-    return @("performance.boost", "cleanup.quick", "maintenance.checkup", "diagnostics.pending-reboot", "security.status", "diagnostics.windows-support", "updates.winget", "app.monitor")
+    # app.monitor (Configurar o monitor) e cleanup.custom (Limpeza personalizada, do aviso de pouco espaço) só mostram a
+    # tela de escolha, e app.update (Verificar nova versão, do aviso da versão nova) só consulta e pergunta antes de
+    # baixar: nada muda sem um clique nelas.
+    return @("performance.boost", "cleanup.quick", "cleanup.custom", "maintenance.checkup", "diagnostics.pending-reboot", "security.status", "diagnostics.windows-support", "updates.winget", "app.monitor", "diagnostics.disk-health", "diagnostics.memory-test", "diagnostics.blue-screens", "app.update")
 }
 
 
 function Get-WinForgeAgentScriptPath {
-    return (Join-Path (Get-WinForgeAppRoot) "WinForge.Agent.ps1")
+    # O script do monitor desta pasta do WinForge (-Root: de outra, como a que o instalador acabou de atualizar).
+    param ([string]$Root = (Get-WinForgeAppRoot))
+
+    return (Join-Path $Root "WinForge.Agent.ps1")
 }
 
 
@@ -33,8 +39,11 @@ function Get-WinForgeAgentStopEventName {
 
 
 function Get-WinForgeAgentCommandLine {
-    # A linha que o Windows roda ao entrar: o PowerShell, oculto, com o script do monitor.
-    $script = Get-WinForgeAgentScriptPath
+    # A linha que o Windows roda ao entrar: o PowerShell, oculto, com o script do monitor (-Root: o de outra pasta do
+    # WinForge, como a que o instalador acabou de criar).
+    param ([string]$Root = (Get-WinForgeAppRoot))
+
+    $script = Get-WinForgeAgentScriptPath -Root $Root
 
     return "$(ConvertTo-WinForgeCommandLineArgument -Value (Get-WinForgePowerShellPath)) -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File $(ConvertTo-WinForgeCommandLineArgument -Value $script)"
 }
@@ -80,7 +89,7 @@ function Get-WinForgeAgentProcesses {
     try {
         $session = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
 
-        return @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" -ErrorAction Stop |
+        return @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" -OperationTimeoutSec 15 -ErrorAction Stop |
                 Where-Object { [string]$_.CommandLine -like "*WinForge.Agent.ps1*" -and [int](Get-WinForgeJsonValue -Object $_ -Name "SessionId" -Default $session) -eq $session })
     }
     catch {
@@ -102,14 +111,17 @@ function Start-WinForgeAgent {
     nunca roda como Administrador: aberto direto da janela elevada, ele herdaria a elevação até o fim da sessão (e o "Abrir
     o WinForge" do menu abriria a janela elevada sem perguntar). Por isso, da janela elevada, ele abre por um atalho
     (monitor.lnk, na pasta de dados) entregue ao Explorador, que o abre na sessão da pessoa, sem elevação. Quem chama
-    confere Test-WinForgeAgentStartBlocked. Uma falha ao pedir a abertura vira um erro em português.
+    confere Test-WinForgeAgentStartBlocked. Uma falha ao pedir a abertura vira um erro em português. -Root: o monitor de
+    outra pasta do WinForge (a que o instalador acabou de atualizar).
     #>
-    $arguments = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File $(ConvertTo-WinForgeCommandLineArgument -Value (Get-WinForgeAgentScriptPath))"
+    param ([string]$Root = (Get-WinForgeAppRoot))
+
+    $arguments = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File $(ConvertTo-WinForgeCommandLineArgument -Value (Get-WinForgeAgentScriptPath -Root $Root))"
 
     try {
         if (Test-WinForgeAdministrator) {
             $link = Join-Path (Get-WinForgeDataPath) "monitor.lnk"
-            [void](Save-WinForgeShortcutFile -Path $link -Target (Get-WinForgePowerShellPath) -Arguments $arguments -WorkingDirectory (Get-WinForgeAppRoot) -Description "Monitor do WinForge")
+            [void](Save-WinForgeShortcutFile -Path $link -Target (Get-WinForgePowerShellPath) -Arguments $arguments -WorkingDirectory $Root -Description (Get-WinForgeText 'Monitor do WinForge'))
             Start-Process -FilePath "explorer.exe" -ArgumentList "`"$link`"" -ErrorAction Stop
         }
         else {
@@ -117,7 +129,7 @@ function Start-WinForgeAgent {
         }
     }
     catch {
-        throw "o Windows não deixou abrir o monitor agora"
+        throw (Get-WinForgeText 'o Windows não deixou abrir o monitor agora')
     }
 
     # O Explorador abre o atalho por conta própria, um instante depois: confere por alguns segundos se o monitor apareceu e
@@ -168,14 +180,14 @@ function Enable-WinForgeAgent {
     deixou abrir agora). Sem conseguir gravar a entrada, lança um erro em português e nada muda.
     #>
     if (-not (Test-Path -LiteralPath (Get-WinForgeAgentScriptPath) -PathType Leaf)) {
-        throw "o arquivo WinForge.Agent.ps1 não está na pasta do WinForge"
+        throw (Get-WinForgeText 'o arquivo WinForge.Agent.ps1 não está na pasta do WinForge')
     }
 
     # O Windows não roda uma entrada de Run com 260 caracteres ou mais.
     $line = Get-WinForgeAgentCommandLine
 
     if ($line.Length -ge 260) {
-        throw "o caminho da pasta do WinForge é longo demais para o Windows abrir o monitor sozinho; mova a pasta do WinForge para um caminho mais curto"
+        throw (Get-WinForgeText 'o caminho da pasta do WinForge é longo demais para o Windows abrir o monitor sozinho; mova a pasta do WinForge para um caminho mais curto')
     }
 
     # -ErrorAction Stop nos dois: sem ele, uma chave que não pode ser criada só escrevia um erro do Windows (em inglês) na
@@ -188,7 +200,7 @@ function Enable-WinForgeAgent {
         Set-ItemProperty -LiteralPath $script:WinForgeAgentRunKey -Name $script:WinForgeAgentRunName -Value $line -Type String -ErrorAction Stop
     }
     catch {
-        throw "o Windows não deixou gravar a entrada que faz o monitor abrir com o Windows"
+        throw (Get-WinForgeText 'o Windows não deixou gravar a entrada que faz o monitor abrir com o Windows')
     }
 
     # Desativado antes no Gerenciador de Tarefas, o Windows continuaria sem rodar a entrada.
@@ -213,15 +225,43 @@ function Enable-WinForgeAgent {
 }
 
 
-function Remove-WinForgeAgentStaleEntry {
-    # Tira a entrada de início quando ela aponta para o script dado (a pasta antiga, que não existe mais). Devolve se tirou.
-    param ([Parameter(Mandatory)][string]$ScriptPath)
+function Move-WinForgeAgentEntry {
+    <#
+    Faz a entrada de início do monitor abrir o da pasta Root quando ela abre o de outra pasta do WinForge (a extraída do
+    zip, antes de instalar). A marca de desativado do Gerenciador de Tarefas fica como estava. Devolve se mudou; sem
+    conseguir gravar, lança erro.
+    #>
+    param ([Parameter(Mandatory)][string]$Root)
 
     $value = [string](Get-WinForgeRegistryValueOrNull -Path $script:WinForgeAgentRunKey -Name $script:WinForgeAgentRunName)
+    $script = Get-WinForgeAgentScriptPath -Root $Root
+
+    if ([string]::IsNullOrWhiteSpace($value) -or $value -notmatch '(?i)WinForge\.Agent\.ps1') { return $false }
+    if ($value.IndexOf($script, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $false }
+    if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { return $false }
+
+    # O Windows não roda uma entrada de Run com 260 caracteres ou mais (Enable-WinForgeAgent).
+    $line = Get-WinForgeAgentCommandLine -Root $Root
+    if ($line.Length -ge 260) { return $false }
+
+    Set-ItemProperty -LiteralPath $script:WinForgeAgentRunKey -Name $script:WinForgeAgentRunName -Value $line -Type String -ErrorAction Stop
+    return $true
+}
+
+
+function Remove-WinForgeAgentStaleEntry {
+    # Tira a entrada de início quando ela aponta para o script dado (a pasta antiga, que não existe mais). Devolve se tirou.
+    # -RunKey: a chave Run de outra conta (a de quem usa o PC, com o WinForge elevado pela conta de outro Administrador).
+    param (
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [string]$RunKey = $script:WinForgeAgentRunKey
+    )
+
+    $value = [string](Get-WinForgeRegistryValueOrNull -Path $RunKey -Name $script:WinForgeAgentRunName)
 
     if ([string]::IsNullOrWhiteSpace($value) -or $value.IndexOf($ScriptPath, [StringComparison]::OrdinalIgnoreCase) -lt 0) { return $false }
 
-    Remove-WinForgeRegistryValue -Path $script:WinForgeAgentRunKey -Name $script:WinForgeAgentRunName
+    Remove-WinForgeRegistryValue -Path $RunKey -Name $script:WinForgeAgentRunName
     return $true
 }
 
@@ -233,7 +273,7 @@ function Disable-WinForgeAgent {
         Remove-WinForgeRegistryValue -Path $script:WinForgeAgentRunKey -Name $script:WinForgeAgentRunName
     }
     catch {
-        throw "o Windows não deixou remover a entrada que faz o monitor abrir com o Windows"
+        throw (Get-WinForgeText 'o Windows não deixou remover a entrada que faz o monitor abrir com o Windows')
     }
 
     try { Remove-WinForgeRegistryValue -Path $script:WinForgeAgentApprovedKey -Name $script:WinForgeAgentRunName } catch { Write-Verbose "Marca de inicialização: $($_.Exception.Message)" }
@@ -248,7 +288,8 @@ function Disable-WinForgeAgent {
 
 function Get-WinForgeAgentChecks {
     # O que o monitor confere, de quanto em quanto tempo (minutos) e o intervalo mínimo entre dois avisos iguais (horas).
-    # Heavy = leitura demorada, feita em segundo plano.
+    # RepeatHours = 0: o aviso aparece uma vez por leitura que o traz (uma tela azul nova, um resultado do teste de memória,
+    # uma versão nova do WinForge), e não de novo a cada volta. Heavy = leitura demorada, feita em segundo plano.
     return @(
         @{ Id = "disk"; EveryMinutes = 15; RepeatHours = 24; Heavy = $false },
         @{ Id = "reboot"; EveryMinutes = 60; RepeatHours = 24; Heavy = $false },
@@ -256,7 +297,11 @@ function Get-WinForgeAgentChecks {
         @{ Id = "protection"; EveryMinutes = 60; RepeatHours = 12; Heavy = $true },
         @{ Id = "windows"; EveryMinutes = 1440; RepeatHours = 168; Heavy = $false },
         @{ Id = "programs"; EveryMinutes = 1440; RepeatHours = 72; Heavy = $true },
-        @{ Id = "catalog"; EveryMinutes = 1440; RepeatHours = 0; Heavy = $true }
+        @{ Id = "catalog"; EveryMinutes = 1440; RepeatHours = 0; Heavy = $true },
+        @{ Id = "diskhealth"; EveryMinutes = 360; RepeatHours = 72; Heavy = $true },
+        @{ Id = "memtest"; EveryMinutes = 30; RepeatHours = 0; Heavy = $false },
+        @{ Id = "bluescreen"; EveryMinutes = 60; RepeatHours = 0; Heavy = $false },
+        @{ Id = "winforge"; EveryMinutes = 360; RepeatHours = 0; Heavy = $true }
     )
 }
 
@@ -371,10 +416,10 @@ function Format-WinForgeAgentPauseEnd {
 
     $time = Format-WinForgeDateTime -When $Until -Pattern 'HH:mm'
 
-    if ($Until.Date -eq $Now.Date) { return "hoje, às $time" }
-    if ($Until.Date -eq $Now.Date.AddDays(1)) { return "amanhã, às $time" }
+    if ($Until.Date -eq $Now.Date) { return (Get-WinForgeText 'hoje, às {0}' "$time") }
+    if ($Until.Date -eq $Now.Date.AddDays(1)) { return (Get-WinForgeText 'amanhã, às {0}' "$time") }
 
-    return "$(Format-WinForgeDateTime -When $Until -Pattern 'dd/MM'), às $time"
+    return (Get-WinForgeText '{0}, às {1}' "$(Format-WinForgeDateTime -When $Until -Pattern 'dd/MM')" "$time")
 }
 
 
@@ -401,11 +446,11 @@ function Get-WinForgeAgentTooltip {
     $sorted = @(Get-WinForgeAgentSortedAlerts -Alerts $Alerts)
 
     $text = $(
-        if ($null -ne $PausedUntil) { "WinForge: avisos pausados até $(Format-WinForgeAgentPauseEnd -Until ([datetime]$PausedUntil) -Now $Now)" }
-        elseif (-not $FirstReading) { "WinForge: conferindo o PC..." }
-        elseif ($sorted.Count -eq 0) { "WinForge: nada pedindo atenção" }
+        if ($null -ne $PausedUntil) { (Get-WinForgeText 'WinForge: avisos pausados até {0}' "$(Format-WinForgeAgentPauseEnd -Until ([datetime]$PausedUntil) -Now $Now)") }
+        elseif (-not $FirstReading) { (Get-WinForgeText 'WinForge: conferindo o PC...') }
+        elseif ($sorted.Count -eq 0) { (Get-WinForgeText 'WinForge: nada pedindo atenção') }
         elseif ($sorted.Count -eq 1) { "WinForge: $($sorted[0].Title)" }
-        else { "WinForge: $($sorted[0].Title) e mais $(Format-WinForgeCount -Count ($sorted.Count - 1) -One 'aviso' -Many 'avisos')" }
+        else { (Get-WinForgeText 'WinForge: {0} e mais {1}' "$($sorted[0].Title)" "$(Format-WinForgeCount -Count ($sorted.Count - 1) -One (Get-WinForgeText 'aviso') -Many (Get-WinForgeText 'avisos'))") }
     )
 
     if ($text.Length -gt 63) { $text = $text.Substring(0, 60).TrimEnd() + "..." }
@@ -421,20 +466,22 @@ function Get-WinForgeAgentPauseNotice {
         [datetime]$Now = (Get-Date)
     )
 
-    return "O WinForge volta a avisar $(Format-WinForgeAgentPauseEnd -Until $Until -Now $Now). Para retomar antes, use o menu do ícone."
+    return (Get-WinForgeText 'O WinForge volta a avisar {0}. Para retomar antes, use o menu do ícone.' "$(Format-WinForgeAgentPauseEnd -Until $Until -Now $Now)")
 }
 
 
 function New-WinForgeAgentAlert {
+    # Quiet: o aviso fica no menu do ícone e no texto dele, sem balão (a versão nova do WinForge que o balão já mostrou).
     param (
         [Parameter(Mandatory)][string]$Id,
         [Parameter(Mandatory)][string]$Title,
         [Parameter(Mandatory)][string]$Text,
         [string]$Action = "",
-        [ValidateSet("Info", "Warning")][string]$Level = "Warning"
+        [ValidateSet("Info", "Warning")][string]$Level = "Warning",
+        [switch]$Quiet
     )
 
-    return [PSCustomObject]@{ Id = $Id; Title = $Title; Text = $Text; Action = $Action; Level = $Level }
+    return [PSCustomObject]@{ Id = $Id; Title = $Title; Text = $Text; Action = $Action; Level = $Level; Quiet = [bool]$Quiet }
 }
 
 
@@ -454,15 +501,16 @@ function Get-WinForgeAgentReading {
                 $level = Get-WinForgeDiskSpaceLevel -FreeBytes $space.FreeBytes -TotalBytes $space.TotalBytes
                 if ($level -notin @("Low", "Critical")) { return $null }
 
-                # O disco pelo nome que a pessoa vê no Explorador (C:), e qual é: o do Windows.
+                # O disco pelo nome que a pessoa vê no Explorador (C:), e qual é: o do Windows. O clique abre a Limpeza
+                # personalizada, como o "Liberar espaço" do Início: ela mede tudo o que dá para tirar, e não só os temporários.
                 $drive = $(if ([string]$env:SystemRoot -match '^([A-Za-z]:)') { $Matches[1].ToUpperInvariant() } else { "C:" })
 
-                return (New-WinForgeAgentAlert -Id "disk" -Title "Pouco espaço no disco $drive" -Text "Restam $(Format-WinForgeBytes -Bytes $space.FreeBytes) livres no disco do Windows ($drive). Clique para fazer uma limpeza rápida." -Action "cleanup.quick")
+                return (New-WinForgeAgentAlert -Id "disk" -Title (Get-WinForgeText 'Pouco espaço no disco {0}' "$drive") -Text (Get-WinForgeText 'Restam {0} livres no disco do Windows ({1}). Clique para ver o que dá para apagar.' "$(Format-WinForgeBytes -Bytes $space.FreeBytes)" "$drive") -Action "cleanup.custom")
             }
             "reboot" {
                 if (-not (Test-WinForgePendingReboot)) { return $null }
 
-                return (New-WinForgeAgentAlert -Id "reboot" -Title "Reinício pendente" -Text "O Windows espera o PC reiniciar para terminar uma atualização ou mudança. Clique para ver o motivo." -Action "diagnostics.pending-reboot" -Level Info)
+                return (New-WinForgeAgentAlert -Id "reboot" -Title (Get-WinForgeText 'Reinício pendente') -Text (Get-WinForgeText 'O Windows espera o PC reiniciar para terminar uma atualização ou mudança. Clique para ver o motivo.') -Action "diagnostics.pending-reboot" -Level Info)
             }
             "maintenance" {
                 # A mesma conta do Início (Get-WinForgeLastCare): uma data no futuro não cala o lembrete. Registros que
@@ -475,9 +523,9 @@ function Get-WinForgeAgentReading {
                 if ($null -ne $latest -and ((Get-Date) - $latest).TotalDays -lt 30) { return $null }
 
                 # Sem nenhuma verificação ainda, "faz mais de um mês" não seria verdade (como no Início: "ainda não verificado").
-                $text = $(if ($null -eq $latest) { "O WinForge ainda não verificou este PC. Clique para verificar." } else { "Faz mais de um mês sem verificação. Clique para verificar o PC." })
+                $text = $(if ($null -eq $latest) { (Get-WinForgeText 'O WinForge ainda não verificou este PC. Clique para verificar.') } else { (Get-WinForgeText 'Faz mais de um mês sem verificação. Clique para verificar o PC.') })
 
-                return (New-WinForgeAgentAlert -Id "maintenance" -Title "Hora de cuidar do PC" -Text $text -Action "maintenance.checkup" -Level Info)
+                return (New-WinForgeAgentAlert -Id "maintenance" -Title (Get-WinForgeText 'Hora de cuidar do PC') -Text $text -Action "maintenance.checkup" -Level Info)
             }
             "protection" {
                 $protection = Get-WinForgeSecurityStatus
@@ -486,15 +534,15 @@ function Get-WinForgeAgentReading {
                 $antivirus = $protection.Antivirus
 
                 if ($null -ne $protection.Threats -and @($protection.Threats).Count -gt 0) {
-                    return (New-WinForgeAgentAlert -Id "protection" -Title "Ameaça encontrada" -Text "O antivírus encontrou uma ameaça que ainda está ativa. Clique para ver." -Action "security.status")
+                    return (New-WinForgeAgentAlert -Id "protection" -Title (Get-WinForgeText 'Ameaça encontrada') -Text (Get-WinForgeText 'O antivírus encontrou uma ameaça que ainda está ativa. Clique para ver.') -Action "security.status")
                 }
 
                 if ($antivirus.Mode -eq "Off") {
-                    return (New-WinForgeAgentAlert -Id "protection" -Title "PC sem antivírus ativo" -Text "Nenhum antivírus está protegendo o PC. Clique para ver." -Action "security.status")
+                    return (New-WinForgeAgentAlert -Id "protection" -Title (Get-WinForgeText 'PC sem antivírus ativo') -Text (Get-WinForgeText 'Nenhum antivírus está protegendo o PC. Clique para ver.') -Action "security.status")
                 }
 
                 if ($antivirus.Mode -eq "Active" -and $antivirus.RealTime -eq $false) {
-                    return (New-WinForgeAgentAlert -Id "protection" -Title "Proteção em tempo real desligada" -Text "O Windows Defender não está vigiando os arquivos abertos. Clique para ver." -Action "security.status")
+                    return (New-WinForgeAgentAlert -Id "protection" -Title (Get-WinForgeText 'Proteção em tempo real desligada') -Text (Get-WinForgeText 'O Windows Defender não está vigiando os arquivos abertos. Clique para ver.') -Action "security.status")
                 }
 
                 return $null
@@ -509,9 +557,9 @@ function Get-WinForgeAgentReading {
                 if ($support.State -eq "EsuAvailable" -and -not [bool](Get-WinForgeJsonValue -Object $support -Name "EsuChecked" -Default $true)) { return $null }
 
                 # Sem atualizações de segurança (o ponto grave da nota) o título diz isso; perto do fim, só "Suporte do Windows".
-                $title = $(if ([int]$issue.Weight -ge 20) { "Windows sem atualizações de segurança" } else { "Suporte do Windows" })
+                $title = $(if ([int]$issue.Weight -ge 20) { (Get-WinForgeText 'Windows sem atualizações de segurança') } else { (Get-WinForgeText 'Suporte do Windows') })
 
-                return (New-WinForgeAgentAlert -Id "windows" -Title $title -Text "$($issue.Text). Clique para ver o que fazer." -Action "diagnostics.windows-support")
+                return (New-WinForgeAgentAlert -Id "windows" -Title $title -Text (Get-WinForgeText '{0}. Clique para ver o que fazer.' "$($issue.Text)") -Action "diagnostics.windows-support")
             }
             "programs" {
                 # Numa conexão limitada (plano de dados) ou na bateria, o monitor não consulta a internet por conta própria.
@@ -525,12 +573,90 @@ function Get-WinForgeAgentReading {
                 $count = @(ConvertFrom-WinForgeWingetTable -Lines $upgrade.Lines).Count
                 if ($count -lt 3) { return $null }
 
-                return (New-WinForgeAgentAlert -Id "programs" -Title "Programas desatualizados" -Text "$(Format-WinForgeCount -Count $count -One 'programa tem' -Many 'programas têm') versão nova. Clique para atualizar." -Action "updates.winget" -Level Info)
+                return (New-WinForgeAgentAlert -Id "programs" -Title (Get-WinForgeText 'Programas desatualizados') -Text (Get-WinForgeText '{0} versão nova. Clique para atualizar.' "$(Format-WinForgeCount -Count $count -One (Get-WinForgeText 'programa tem') -Many (Get-WinForgeText 'programas têm'))") -Action "updates.winget" -Level Info)
             }
             "catalog" {
                 if ((Test-WinForgeMeteredConnection) -or (Test-WinForgeOnBattery)) { return $null }
                 if (Test-WinForgeCatalogStale -Days 7) { [void](Update-WinForgeCatalog) }
                 return $null
+            }
+            "diskhealth" {
+                # Só o que diz que o disco pode falhar (Test-WinForgeDiskFailing); sem Administrador, os contadores de erro
+                # e de desgaste não vêm, e valem o estado do Windows e a previsão do próprio disco.
+                $disk = @(Get-WinForgeDiskHealth | Where-Object { Test-WinForgeDiskFailing -Disk $_ })[0]
+                if ($null -eq $disk) { return $null }
+
+                $drives = @(Get-WinForgeJsonValue -Object $disk -Name "Drives" -Default @())
+                $name = $(if ($drives.Count -gt 0) { Get-WinForgeText '{0} ({1})' "$($disk.Name)" "$(Join-WinForgeList -Items $drives)" } else { [string]$disk.Name })
+
+                return (New-WinForgeAgentAlert -Id "diskhealth" -Title (Get-WinForgeText 'Disco pode falhar') -Text (Get-WinForgeText '{0}: {1}. Faça backup dos seus arquivos e clique para ver.' "$name" "$(Get-WinForgeDiskFailingText -Disk $disk)") -Action "diagnostics.disk-health")
+            }
+            "winforge" {
+                # Uma versão nova do WinForge: a consulta ao GitHub (a mesma de Verificar nova versão) é feita no máximo uma vez
+                # a cada 20 horas, e nunca numa conexão limitada (plano de dados) ou na bateria; sem ela, vale a última
+                # guardada. O balão aparece uma vez por versão; depois, o aviso só fica no menu do ícone, até a atualização.
+                $checked = Get-WinForgeSettingDate -Name "UpdateCheckedAt"
+                $stale = ($null -eq $checked -or $checked -gt (Get-Date).AddDays(1) -or ((Get-Date) - $checked).TotalHours -ge 20)
+
+                if ($stale -and -not (Test-WinForgeMeteredConnection) -and -not (Test-WinForgeOnBattery)) {
+                    Save-WinForgeUpdateCheck -Check (Get-WinForgeUpdateStatus)
+                }
+
+                $known = Get-WinForgeKnownUpdate
+                if ($null -eq $known -or -not $known.Newer) { return $null }
+
+                $announced = ([string](Get-WinForgeSetting -Name "UpdateAnnounced" -Default "") -eq [string]$known.Latest)
+                if (-not $announced) { [void](Set-WinForgeSetting -Name "UpdateAnnounced" -Value ([string]$known.Latest)) }
+
+                return (New-WinForgeAgentAlert -Id "winforge" -Title (Get-WinForgeText 'WinForge {0} disponível' "$($known.Latest)") -Text (Get-WinForgeText 'A versão {0} do WinForge foi publicada. Clique para ver o que mudou e atualizar.' "$($known.Latest)") -Action "app.update" -Level Info -Quiet:$announced)
+            }
+            "bluescreen" {
+                # Uma tela azul nova (registrada depois da última que o monitor viu) vira aviso uma vez, com a causa
+                # provável e o caminho para Diagnóstico > Telas azuis. A primeira leitura só marca onde a conta está:
+                # telas azuis antigas não viram aviso.
+                $latest = @(Get-WinForgeBlueScreens -Days 30) | Select-Object -First 1
+                if ($null -eq $latest) { return $null }
+
+                $seen = Get-WinForgeSettingDate -Name "BlueScreenSeenAt"
+                $new = ($null -ne $seen -and $latest.When -gt $seen)
+
+                if ($null -eq $seen -or $new) { [void](Set-WinForgeSetting -Name "BlueScreenSeenAt" -Value ($latest.When.ToString("o", [System.Globalization.CultureInfo]::InvariantCulture))) }
+                if (-not $new) { return $null }
+
+                $about = Get-WinForgeBugCheckCauseText -Cause ([string]$latest.Info.Cause)
+
+                return (New-WinForgeAgentAlert -Id "bluescreen" -Title (Get-WinForgeText 'O PC teve uma tela azul') -Text (Get-WinForgeText 'Causa provável: {0}. Clique para ver o que fazer.' "$($about.Cause)") -Action "diagnostics.blue-screens")
+            }
+            "memtest" {
+                # O resultado do Diagnóstico de Memória do Windows (o teste roda no reinício) aparece uma vez, quando chega
+                # um novo. Com erros, o aviso vem mesmo que o teste tenha sido pedido por outra conta (o WinForge elevado
+                # pela conta de outro Administrador guarda o pedido nas preferências dela); sem erros, só quando esta
+                # conta pediu (Diagnóstico > Teste de memória). O primeiro resultado que o monitor vê sem pedido só marca
+                # onde ele está: um teste antigo não vira aviso. Sem resultado em 14 dias, o pedido sai calado.
+                $pending = Get-WinForgeMemoryTestPendingSince
+                $result = Get-WinForgeMemoryTestResult -Days 60
+                $seen = Get-WinForgeSettingDate -Name "MemoryTestSeenAt"
+
+                if ($null -ne $pending -and ($null -eq $result -or $result.When -lt $pending) -and ((Get-Date) - $pending).TotalDays -gt 14) {
+                    [void](Set-WinForgeSetting -Name "MemoryTestRequestedAt" -Value $null)
+                }
+
+                if ($null -eq $result) { return $null }
+
+                $requested = ($null -ne $pending -and $result.When -ge $pending)
+                $new = $(if ($null -ne $seen) { $result.When -gt $seen } else { $requested })
+
+                if ($null -eq $seen -or $new) { [void](Set-WinForgeSetting -Name "MemoryTestSeenAt" -Value ($result.When.ToString("o", [System.Globalization.CultureInfo]::InvariantCulture))) }
+                if (-not $new) { return $null }
+                if ($requested) { [void](Set-WinForgeSetting -Name "MemoryTestRequestedAt" -Value $null) }
+
+                if ($result.Errors) {
+                    return (New-WinForgeAgentAlert -Id "memtest" -Title (Get-WinForgeText 'O teste de memória achou erros') -Text (Get-WinForgeText 'A memória (RAM) tem defeito: é a causa provável de telas azuis e travamentos. Clique para ver o que fazer.') -Action "diagnostics.memory-test")
+                }
+
+                if (-not $requested) { return $null }
+
+                return (New-WinForgeAgentAlert -Id "memtest" -Title (Get-WinForgeText 'Teste de memória sem erros') -Text (Get-WinForgeText 'O Diagnóstico de Memória do Windows não achou problemas na RAM.') -Action "diagnostics.memory-test" -Level Info)
             }
         }
     }
@@ -569,8 +695,19 @@ function Select-WinForgeAgentAlerts {
 
     return @(
         foreach ($alert in @($Alerts | Where-Object { $null -ne $_ })) {
+            if ([bool](Get-WinForgeJsonValue -Object $alert -Name "Quiet" -Default $false)) { continue }
+
             $repeat = $(if ($checks.ContainsKey($alert.Id)) { [double]$checks[$alert.Id].RepeatHours } else { 24 })
-            if (Test-WinForgeAgentDue -Last $State.Shown[$alert.Id] -Minutes ($repeat * 60) -Now $Now) { $alert }
+            $last = $State.Shown[$alert.Id]
+
+            if ($repeat -le 0) {
+                # Uma vez por leitura: o balão volta só se uma leitura mais nova que ele trouxe o aviso de novo.
+                $read = $State.Checked[$alert.Id]
+                if ($null -eq $last -or ($null -ne $read -and [datetime]$last -lt [datetime]$read)) { $alert }
+                continue
+            }
+
+            if (Test-WinForgeAgentDue -Last $last -Minutes ($repeat * 60) -Now $Now) { $alert }
         }
     )
 }
@@ -581,11 +718,16 @@ function Select-WinForgeAgentAlerts {
 # ---------------------------------------------------------------------------
 
 function Set-WinForgeMonitor {
-    $title = "Monitor na bandeja"
+    # -Choose On: liga direto, sem a tela de escolha (a configuração inicial, no fim do Início). Já ligado, ou com a
+    # conta de outro Administrador, a tela de sempre aparece.
+    param ([ValidateSet("", "On")][string]$Choose = "")
+
+    $title = (Get-WinForgeText 'Monitor na bandeja')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
+    $answer = ""
 
     try {
         $runState = Get-WinForgeAgentRunState
@@ -595,24 +737,24 @@ function Set-WinForgeMonitor {
         $pausedUntil = Get-WinForgeAgentPausedUntil
 
         $startText = switch ($runState) {
-            "On" { "sim" }
-            "Elsewhere" { "não: foi ligado de outra pasta do WinForge; Ligar o monitor passa a usar esta" }
-            "Disabled" { "não: desligado em Configurações, Aplicativos, Inicialização (ou no Gerenciador de Tarefas); Ligar o monitor religa" }
-            default { "não" }
+            "On" { (Get-WinForgeText 'sim') }
+            "Elsewhere" { (Get-WinForgeText 'não: foi ligado de outra pasta do WinForge; Ligar o monitor passa a usar esta') }
+            "Disabled" { (Get-WinForgeText 'não: desligado em Configurações, Aplicativos, Inicialização (ou no Gerenciador de Tarefas); Ligar o monitor religa') }
+            default { (Get-WinForgeText 'não') }
         }
 
-        Write-WinForgeKeyValue -Label "Começa com o Windows" -Value $startText
-        Write-WinForgeKeyValue -Label "Aberto agora" -Value $(if ($running) { "sim" } else { "não" })
-        if ($null -ne $pausedUntil) { Write-WinForgeKeyValue -Label "Avisos" -Value "pausados até $(Format-WinForgeAgentPauseEnd -Until $pausedUntil)" }
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Começa com o Windows') -Value $startText
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Aberto agora') -Value $(if ($running) { (Get-WinForgeText 'sim') } else { (Get-WinForgeText 'não') })
+        if ($null -ne $pausedUntil) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Avisos') -Value (Get-WinForgeText 'pausados até {0}' "$(Format-WinForgeAgentPauseEnd -Until $pausedUntil)") }
         Write-Host ""
 
         # Os avisos: disco enchendo, proteção desligada, reinício ou manutenção faltando, Windows sem suporte e programas
         # desatualizados. Pelo menu do ícone dá para ver os avisos, verificar, acelerar e limpar o PC, ou pausar os avisos.
-        Write-WinForgeStatus -Type Info -Message "O monitor fica perto do relógio e avisa quando o PC precisa de cuidado; nada muda sem você clicar."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O monitor fica perto do relógio e avisa quando o PC precisa de cuidado; nada muda sem você clicar.')
 
         # Com a conta de outro Administrador, ligar gravaria o monitor no perfil dele: não oferece.
         if ($mismatch) {
-            Write-WinForgeStatus -Type Warning -Message "O WinForge está aberto com a conta de outro Administrador. Para ligar ou desligar o monitor na sua conta, $(Get-WinForgeUnelevatedHint)."
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está aberto com a conta de outro Administrador. Para ligar ou desligar o monitor na sua conta, {0}.' "$(Get-WinForgeUnelevatedHint)")
         }
 
         Write-Host ""
@@ -623,92 +765,99 @@ function Set-WinForgeMonitor {
             # Só informa.
         }
         elseif ($enabled) {
-            $options += @{ Key = "D"; Label = "Desligar o monitor"; Description = "Fecha o ícone e não abre mais com o Windows" }
-            if (-not $running) { $options += @{ Key = "A"; Label = "Abrir agora"; Description = "Ele está configurado, mas não está aberto" } }
+            $options += @{ Key = "D"; Label = (Get-WinForgeText 'Desligar o monitor'); Description = (Get-WinForgeText 'Fecha o ícone e não abre mais com o Windows') }
+            if (-not $running) { $options += @{ Key = "A"; Label = (Get-WinForgeText 'Abrir agora'); Description = (Get-WinForgeText 'Ele está configurado, mas não está aberto') } }
         }
         else {
-            $options += @{ Key = "L"; Label = "Ligar o monitor"; Description = "Abre agora e passa a abrir com o Windows"; Accent = $true }
-            if ($running -or $runState -ne "Off") { $options += @{ Key = "D"; Label = "Desligar o monitor"; Description = "Fecha o ícone e tira a entrada que sobrou" } }
+            $options += @{ Key = "L"; Label = (Get-WinForgeText 'Ligar o monitor'); Description = (Get-WinForgeText 'Abre agora e passa a abrir com o Windows'); Accent = $true }
+            if ($running -or $runState -ne "Off") { $options += @{ Key = "D"; Label = (Get-WinForgeText 'Desligar o monitor'); Description = (Get-WinForgeText 'Fecha o ícone e tira a entrada que sobrou') } }
         }
 
         # A pausa (do menu do ícone) também se desfaz daqui.
         if ($null -ne $pausedUntil -and -not $mismatch) {
-            $options += @{ Key = "R"; Label = "Retomar os avisos"; Description = "Os avisos voltam na próxima conferência" }
+            $options += @{ Key = "R"; Label = (Get-WinForgeText 'Retomar os avisos'); Description = (Get-WinForgeText 'Os avisos voltam na próxima conferência') }
         }
 
-        $options += @{ Key = "X"; Label = "Voltar"; Exit = $true }
+        $options += @{ Key = "X"; Label = (Get-WinForgeText 'Voltar'); Exit = $true }
 
-        $answer = Read-WinForgeChoice -Message "O que deseja fazer?" -Options $options -DefaultKey "X" -ShowMenu -TextPrompt "Opção (0 ou Enter = voltar)"
+        $answer = $(if ($Choose -eq "On" -and -not $enabled -and -not $mismatch) { "L" } else { Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja fazer?') -Options $options -DefaultKey "X" -ShowMenu -TextPrompt (Get-WinForgeText 'Opção (0 ou Enter = voltar)') })
 
         switch ($answer) {
             "L" {
                 $open = Enable-WinForgeAgent
-                [void](Add-WinForgeChange -Action "Monitor na bandeja" -Text "ligado (abre com o Windows)")
+                [void](Add-WinForgeChange -Action (Get-WinForgeText 'Monitor na bandeja') -Text (Get-WinForgeText 'ligado (abre com o Windows)'))
 
                 if ($open -eq "Open") {
-                    Write-WinForgeStatus -Type Success -Message "Monitor ligado; se o ícone não aparecer, ele está na setinha (^) ao lado do relógio."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "monitor ligado" -Title $title) `
-                        -Headline "Monitor ligado" -Note "Se o ícone não aparecer, ele está na setinha (^) ao lado do relógio."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Monitor ligado; se o ícone não aparecer, ele está na setinha (^) ao lado do relógio.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'monitor ligado') -Title $title) `
+                        -Headline (Get-WinForgeText 'Monitor ligado') -Note (Get-WinForgeText 'Se o ícone não aparecer, ele está na setinha (^) ao lado do relógio.')
                 }
                 elseif ($open -eq "Later") {
-                    Write-WinForgeStatus -Type Success -Message "Monitor ligado; o ícone aparece em instantes ou na próxima entrada no Windows."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "monitor ligado; o ícone aparece em instantes ou na próxima entrada no Windows" -Title $title) `
-                        -Headline "Monitor ligado" -Note "O ícone aparece em instantes ou na próxima entrada no Windows."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Monitor ligado; o ícone aparece em instantes ou na próxima entrada no Windows.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'monitor ligado; o ícone aparece em instantes ou na próxima entrada no Windows') -Title $title) `
+                        -Headline (Get-WinForgeText 'Monitor ligado') -Note (Get-WinForgeText 'O ícone aparece em instantes ou na próxima entrada no Windows.')
                 }
                 else {
-                    Write-WinForgeStatus -Type Warning -Message "Monitor ligado, mas o Windows não deixou abri-lo agora: ele abre sozinho na próxima vez que você entrar no Windows."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "monitor ligado, mas não abriu agora; abre na próxima entrada no Windows" -Title $title) `
-                        -Headline "Monitor ligado, mas não abriu agora" -Note "Ele abre sozinho na próxima vez que você entrar no Windows."
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Monitor ligado, mas o Windows não deixou abri-lo agora: ele abre sozinho na próxima vez que você entrar no Windows.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'monitor ligado, mas não abriu agora; abre na próxima entrada no Windows') -Title $title) `
+                        -Headline (Get-WinForgeText 'Monitor ligado, mas não abriu agora') -Note (Get-WinForgeText 'Ele abre sozinho na próxima vez que você entrar no Windows.')
                 }
             }
             "D" {
                 $closed = Disable-WinForgeAgent
-                [void](Add-WinForgeChange -Action "Monitor na bandeja" -Text "desligado")
+                [void](Add-WinForgeChange -Action (Get-WinForgeText 'Monitor na bandeja') -Text (Get-WinForgeText 'desligado'))
 
                 if ($closed) {
-                    Write-WinForgeStatus -Type Success -Message "Monitor desligado."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "monitor desligado" -Title $title) `
-                        -Headline "Monitor desligado" -Note $(if ($running) { "O ícone fechou e não abre mais com o Windows." } else { "Ele não abre mais com o Windows." })
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Monitor desligado.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'monitor desligado') -Title $title) `
+                        -Headline (Get-WinForgeText 'Monitor desligado') -Note $(if ($running) { (Get-WinForgeText 'O ícone fechou e não abre mais com o Windows.') } else { (Get-WinForgeText 'Ele não abre mais com o Windows.') })
                 }
                 else {
-                    Write-WinForgeStatus -Type Warning -Message "O monitor não abre mais com o Windows, mas o ícone aberto não fechou: feche pelo menu dele, em Fechar o monitor."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "o ícone aberto não fechou; feche pelo menu dele" -Title $title) `
-                        -Headline "O ícone do monitor não fechou" -Note "Ele não abre mais com o Windows; feche o ícone pelo menu dele, em Fechar o monitor."
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O monitor não abre mais com o Windows, mas o ícone aberto não fechou: feche pelo menu dele, em Fechar o monitor.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o ícone aberto não fechou; feche pelo menu dele') -Title $title) `
+                        -Headline (Get-WinForgeText 'O ícone do monitor não fechou') -Note (Get-WinForgeText 'Ele não abre mais com o Windows; feche o ícone pelo menu dele, em Fechar o monitor.')
                 }
             }
             "A" {
                 if (Start-WinForgeAgent) {
-                    Write-WinForgeStatus -Type Success -Message "Monitor aberto; se o ícone não aparecer, ele está na setinha (^) ao lado do relógio."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "monitor aberto" -Title $title) `
-                        -Headline "Monitor aberto" -Note "Se o ícone não aparecer, ele está na setinha (^) ao lado do relógio."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Monitor aberto; se o ícone não aparecer, ele está na setinha (^) ao lado do relógio.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'monitor aberto') -Title $title) `
+                        -Headline (Get-WinForgeText 'Monitor aberto') -Note (Get-WinForgeText 'Se o ícone não aparecer, ele está na setinha (^) ao lado do relógio.')
                 }
                 else {
-                    Write-WinForgeStatus -Type Warning -Message "O ícone não apareceu agora; ele abre sozinho na próxima entrada no Windows."
-                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "o ícone não apareceu agora; abre na próxima entrada no Windows" -Title $title) `
-                        -Headline "O ícone não apareceu agora" -Note "Ele abre sozinho na próxima vez que você entrar no Windows."
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O ícone não apareceu agora; ele abre sozinho na próxima entrada no Windows.')
+                    $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o ícone não apareceu agora; abre na próxima entrada no Windows') -Title $title) `
+                        -Headline (Get-WinForgeText 'O ícone não apareceu agora') -Note (Get-WinForgeText 'Ele abre sozinho na próxima vez que você entrar no Windows.')
                 }
             }
             "R" {
                 Set-WinForgeAgentPause -Hours 0
-                Write-WinForgeStatus -Type Success -Message "Avisos retomados."
-                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "avisos retomados" -Title $title) `
-                    -Headline "Avisos retomados" -Note "Eles voltam na próxima conferência do monitor."
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Avisos retomados.')
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'avisos retomados') -Title $title) `
+                    -Headline (Get-WinForgeText 'Avisos retomados') -Note (Get-WinForgeText 'Eles voltam na próxima conferência do monitor.')
             }
             default {
                 # Voltar sem mudar nada é "Cancelado", como nas outras telas de escolha; com a conta de outro Administrador não
                 # havia o que escolher, então é "Nada a fazer", com o motivo.
                 if ($mismatch) {
-                    $final = New-WinForgeResult -Kind Skipped -Detail "com a conta de outro Administrador, o monitor só muda com o WinForge aberto sem Administrador" -Title $title
+                    $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'com a conta de outro Administrador, o monitor só muda com o WinForge aberto sem Administrador') -Title $title
                 }
                 else {
-                    $final = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title
+                    $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
                 }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível mudar o monitor: $($_.Exception.Message.TrimEnd('.'))."
-        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível mudar o monitor: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
+        # O título diz o que não aconteceu (ligar, desligar, abrir); a frase, o porquê.
+        $headline = switch ($answer) {
+            "L" { (Get-WinForgeText 'O monitor não foi ligado') }
+            "D" { (Get-WinForgeText 'O monitor não foi desligado') }
+            "A" { (Get-WinForgeText 'O monitor não abriu') }
+            default { (Get-WinForgeText 'Não foi possível mudar o monitor') }
+        }
+        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title) -Headline $headline -Note (Format-WinForgeReasonNote -Text $_.Exception.Message)
     }
 
     Exit-WinForgeAction -Result $final

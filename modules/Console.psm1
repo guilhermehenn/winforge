@@ -223,8 +223,8 @@ function Show-WinForgeHeader {
     Write-Host ""
 
     if ($Title -eq "WinForge") {
-        $titleText = "WinForge  $($glyphs.Dot)  Build $(Get-WinForgeBuild)"
-        $subtitleText = "Manutenção, diagnóstico e ajustes do Windows"
+        $titleText = (Get-WinForgeText 'WinForge  {0}  versão {1}' "$($glyphs.Dot)" "$(Get-WinForgeBuild)")
+        $subtitleText = (Get-WinForgeText 'Manutenção, diagnóstico e ajustes do Windows')
 
         Write-Host ("  " + $glyphs.TL + ($glyphs.H * $inner) + $glyphs.TR) -ForegroundColor DarkCyan
         Write-Host ("  " + $glyphs.V) -ForegroundColor DarkCyan -NoNewline
@@ -271,15 +271,15 @@ function Write-WinForgeStatusBar {
     $items = @()
 
     if (-not $session.IsAdmin) {
-        $items += [PSCustomObject]@{ Text = "Sem Administrador"; Color = "Yellow" }
+        $items += [PSCustomObject]@{ Text = (Get-WinForgeText 'Sem Administrador'); Color = "Yellow" }
     }
 
     $items += [PSCustomObject]@{ Text = $user; Color = $(if ($session.UserMismatch) { "Yellow" } else { "Gray" }) }
-    $items += [PSCustomObject]@{ Text = $(if ($session.IsLaptop) { "Notebook" } else { "Desktop" }); Color = "Gray" }
+    $items += [PSCustomObject]@{ Text = $(if ($session.IsLaptop) { (Get-WinForgeText 'Notebook') } else { "Desktop" }); Color = "Gray" }
     $items += [PSCustomObject]@{ Text = $windows; Color = "Gray" }
 
     if ((Get-Command Test-WinForgePendingReboot -ErrorAction SilentlyContinue) -and (Test-WinForgePendingReboot)) {
-        $items += [PSCustomObject]@{ Text = "Reinício pendente"; Color = "Yellow" }
+        $items += [PSCustomObject]@{ Text = (Get-WinForgeText 'Reinício pendente'); Color = "Yellow" }
     }
 
     Write-Host "  " -NoNewline
@@ -293,7 +293,7 @@ function Write-WinForgeStatusBar {
     Write-Host ""
 
     if ($session.UserMismatch) {
-        Write-Host "  [!] Elevado com outra conta: ajustes de usuário e Downloads afetam este perfil, não o usuário logado." -ForegroundColor Yellow
+        Write-Host (Get-WinForgeText '  [!] Elevado com outra conta: ajustes de usuário e Downloads afetam este perfil, não o usuário logado.') -ForegroundColor Yellow
     }
 }
 
@@ -327,7 +327,7 @@ function Write-WinForgeMenuItem {
     }
 
     $keyText = $Key.PadLeft(2)
-    $tag = $(if ($Recommended -and $Label -notmatch '(?i)recomendad') { " (recomendado)" } else { "" })
+    $tag = $(if ($Recommended -and $Label -notmatch '(?i)recomendad') { (Get-WinForgeText ' (recomendado)') } else { "" })
 
     Write-Host "  [" -ForegroundColor DarkGray -NoNewline
     Write-Host $keyText -ForegroundColor $keyColor -NoNewline
@@ -384,13 +384,13 @@ function Write-WinForgeKeyValue {
     )
 
     $valueText = if ($null -eq $Value) {
-        "Não disponível"
+        (Get-WinForgeText 'Não disponível')
     }
     elseif ($Value -is [System.Array]) {
         ($Value | ForEach-Object { $_.ToString() }) -join ", "
     }
     elseif ([string]::IsNullOrWhiteSpace($Value.ToString())) {
-        "Não disponível"
+        (Get-WinForgeText 'Não disponível')
     }
     else {
         $Value.ToString()
@@ -407,7 +407,7 @@ function ConvertTo-WinForgeReadableError {
     <#
     Um texto de erro do jeito que a pessoa deve ler, numa linha: sem o embrulho do PowerShell em volta da mensagem do
     Windows ('Exception calling "Search" with "1" argument(s): "..."', ou 'Exceção ao chamar ... com ... argumento(s)'),
-    e com um comando que não existe neste Windows dito em português, sem as duas linhas de "verifique a grafia" que o
+    e com um comando que não existe neste Windows dito no idioma da tela, sem as duas linhas de "verifique a grafia" que o
     PowerShell acrescenta. Texto sem nada disso volta igual.
     #>
     param ([AllowEmptyString()][AllowNull()][string]$Text)
@@ -415,24 +415,27 @@ function ConvertTo-WinForgeReadableError {
     if ([string]::IsNullOrEmpty($Text)) { return [string]$Text }
 
     $result = $Text
-    $wrapper = '(?s)(Exception calling|Exceção ao chamar) "[^"]+" (with|com) "[0-9]+" argument[o]?\(s\): "(?<inner>.*)"(?<tail>[.\s]*)\z'
+    # Em espanhol, 'Excepción al llamar a "..." con "1" argumento(s)': o que vem depois do número varia por idioma.
+    $wrapper = '(?s)(Exception calling|Exceção ao chamar|Excepci.n al llamar a) "[^"]+" (with|com|con) "[0-9]+" [^:"]{1,24}: "(?<inner>.*)"(?<tail>[.\s]*)\z'
 
     for ($i = 0; $i -lt 5 -and $result -match $wrapper; $i++) {
         $result = $result.Substring(0, $result.Length - $Matches[0].Length) + $Matches['inner'] + $Matches['tail']
     }
 
-    $missing = "(?s)(The term|O termo) '(?<name>[^']+)' (is not recognized as|não é reconhecido como).*\z"
+    $missing = "(?s)(The term|O termo|El t.rmino) '(?<name>[^']+)' (is not recognized as|não é reconhecido como|no se reconoce como).*\z"
 
     if ($result -match $missing) {
-        $result = $result.Substring(0, $result.Length - $Matches[0].Length) + "o comando '$($Matches['name'])' não está disponível neste Windows"
+        $result = $result.Substring(0, $result.Length - $Matches[0].Length) + (Get-WinForgeText 'o comando ''{0}'' não está disponível neste Windows' "$($Matches['name'])")
     }
 
     # As recusas de acesso do .NET chegam em inglês na maioria dos Windows em português (sem o pacote de idioma do .NET).
     $denied = @{
-        "Attempted to perform an unauthorized operation."   = "o Windows negou a alteração (acesso negado)"
-        "Tentativa de executar uma operação não autorizada." = "o Windows negou a alteração (acesso negado)"
-        "Requested registry access is not allowed."          = "o Windows negou o acesso ao registro"
-        "O acesso ao Registro solicitado não é permitido."   = "o Windows negou o acesso ao registro"
+        "Attempted to perform an unauthorized operation."   = (Get-WinForgeText 'o Windows negou a alteração (acesso negado)')
+        "Tentativa de executar uma operação não autorizada." = (Get-WinForgeText 'o Windows negou a alteração (acesso negado)')
+        "Requested registry access is not allowed."          = (Get-WinForgeText 'o Windows negou o acesso ao registro')
+        "O acesso ao Registro solicitado não é permitido."   = (Get-WinForgeText 'o Windows negou o acesso ao registro')
+        "Intento de realizar una operación no autorizada."  = (Get-WinForgeText 'o Windows negou a alteração (acesso negado)')
+        "No se permite el acceso al Registro solicitado."    = (Get-WinForgeText 'o Windows negou o acesso ao registro')
     }
 
     foreach ($english in $denied.Keys) {
@@ -441,6 +444,22 @@ function ConvertTo-WinForgeReadableError {
 
     # Uma mensagem do Windows com quebras de linha vira uma linha só (o resumo e a faixa de resultado são de uma linha).
     return ([regex]::Replace($result, '\s*\r?\n\s*', ' ')).TrimEnd()
+}
+
+
+function Format-WinForgeReasonNote {
+    # O motivo de uma falha como a frase embaixo do título da faixa de resultado: legível (ConvertTo-WinForgeReadableError),
+    # com a primeira letra maiúscula e o ponto final. Vazio volta vazio.
+    param ([AllowEmptyString()][AllowNull()][string]$Text)
+
+    $why = ([string](ConvertTo-WinForgeReadableError -Text $Text)).Trim()
+
+    if (-not $why) { return "" }
+
+    $why = "$($why.Substring(0, 1).ToUpperInvariant())$($why.Substring(1))"
+    if ($why -notmatch '[.!?]$') { $why = "$why." }
+
+    return $why
 }
 
 
@@ -489,6 +508,18 @@ function Write-WinForgeCommand {
 
     Write-Host "  > " -ForegroundColor DarkGray -NoNewline
     Write-Host $Command -ForegroundColor DarkCyan
+}
+
+
+function Write-WinForgePhase {
+    # Uma parte de um fluxo em etapas numeradas que não é uma das etapas (no Otimizar, as perguntas antes da parte
+    # automática e o fim). Na janela, ela toma o lugar da etapa em destaque, sem mudar a conta das etapas: as perguntas
+    # não aparecem embaixo do nome da etapa que já terminou.
+    param ([Parameter(Mandatory)][string]$Title)
+
+    Write-Host ""
+    Write-Host "  [>>] " -ForegroundColor Cyan -NoNewline
+    Write-Host $Title -ForegroundColor White
 }
 
 
@@ -541,7 +572,7 @@ function Write-WinForgeResultTable {
     )
 
     if (@($Results).Count -eq 0) {
-        Write-Host "  Nenhuma etapa foi executada." -ForegroundColor DarkGray
+        Write-Host (Get-WinForgeText '  Nenhuma etapa foi executada.') -ForegroundColor DarkGray
         return
     }
 
@@ -556,12 +587,14 @@ function Write-WinForgeResultTable {
         $kind = [string]$result.Kind
 
         if ([string]::IsNullOrEmpty($kind)) {
-            $kind = switch -Wildcard ([string]$result.Status) {
-                "OK*"      { "Ok" }
-                "Falhou*"  { "Failed" }
-                "Ignorad*" { "Skipped" }
-                default    { "Warning" }
-            }
+            # Sem Kind (um resultado de outra origem): o texto do Status, em português ou no idioma da tela.
+            $statusText = [string]$result.Status
+            $kind = $(
+                if ($statusText -like "OK*") { "Ok" }
+                elseif ($statusText -like "Falhou*" -or $statusText -like "$(Get-WinForgeText 'Falhou')*") { "Failed" }
+                elseif ($statusText -like "Ignorad*" -or $statusText -like "$(Get-WinForgeText 'Ignorado')*") { "Skipped" }
+                else { "Warning" }
+            )
         }
 
         switch ($kind) {
@@ -653,12 +686,16 @@ function Exit-WinForgeAction {
         if (-not (Test-WinForgeGuiMode)) {
             $outcome = Get-WinForgeOutcome
 
-            if ($outcome.Kind -eq "Skipped" -and $outcome.Detail -match "(?i)cancelad") {
+            if ($outcome.Kind -eq "Skipped" -and (Test-WinForgeCanceledText -Text ([string]$outcome.Detail))) {
                 return
             }
 
             Write-WinForgeOutcomeLine -Outcome $outcome
         }
+
+        # O WinForge vai fechar para a atualização: o instalador espera este menu fechar, e uma tecla pedida aqui o
+        # deixaria esperando até desistir.
+        if (Get-WinForgeAppExitRequest) { return }
 
         Write-Host ""
         Wait-WinForgeKey
@@ -714,6 +751,13 @@ function Invoke-WinForgeNestedAction {
 }
 
 
+function Test-WinForgeNestedAction {
+    # Se a ação roda dentro de um fluxo (Invoke-WinForgeNestedAction, as etapas com você do Otimizar): ali, quem oferece
+    # reiniciar no fim é o fluxo, e não cada ação.
+    return ($script:WinForgeNestedDepth -gt 0)
+}
+
+
 function Get-WinForgeRebootSentence {
     <#
     O que dizer do reinício no fim do resultado: "Reinicie o PC para concluir." quando a ação terminou e falta reiniciar;
@@ -726,10 +770,14 @@ function Get-WinForgeRebootSentence {
         [string]$Detail = ""
     )
 
+    # Nos três idiomas (os detalhes saem no idioma da tela): "reinicie", "depois de reiniciar"; "restart the PC",
+    # "after restarting"; "reinicie", "después de reiniciar", "al reiniciar".
     if ($Detail -match '(?i)\breinicie\b|(depois|antes|ao) de reiniciar|\bao reiniciar') { return "" }
-    if ($Kind -eq "Failed") { return " Reinicie o PC e tente de novo." }
+    if ($Detail -match '(?i)\brestart (the|your) PC\b|\b(after|before|when) restarting\b') { return "" }
+    if ($Detail -match '(?i)(después|antes) de reiniciar|\bal reiniciar') { return "" }
+    if ($Kind -eq "Failed") { return (Get-WinForgeText ' Reinicie o PC e tente de novo.') }
 
-    return " Reinicie o PC para concluir."
+    return (Get-WinForgeText ' Reinicie o PC para concluir.')
 }
 
 
@@ -784,9 +832,9 @@ function New-WinForgeResult {
 
     $status = switch ($Kind) {
         "Ok"      { "OK" }
-        "Skipped" { "Ignorado" }
-        "Warning" { "Atenção" }
-        "Failed"  { "Falhou" }
+        "Skipped" { (Get-WinForgeText 'Ignorado') }
+        "Warning" { (Get-WinForgeText 'Atenção') }
+        "Failed"  { (Get-WinForgeText 'Falhou') }
     }
 
     if (-not [string]::IsNullOrWhiteSpace($Detail)) {
@@ -897,7 +945,7 @@ function Set-WinForgeOutcome {
     }
 
     $reboot = $false
-    $view = @{ Headline = ""; Note = ""; Tone = ""; Next = ""; NextLabel = ""; HideSummary = $false }
+    $view = @{ Headline = ""; Note = ""; Tone = ""; Next = ""; NextLabel = ""; HideSummary = $false; Quiet = $false }
 
     if ($null -ne $Result) {
         $Kind = [string]$Result.Kind
@@ -910,6 +958,7 @@ function Set-WinForgeOutcome {
         }
 
         $view.HideSummary = Test-WinForgeResultFlag -Result $Result -Name "HideSummary"
+        $view.Quiet = Test-WinForgeResultFlag -Result $Result -Name "Quiet"
     }
 
     if ([string]::IsNullOrEmpty($Kind)) {
@@ -919,6 +968,7 @@ function Set-WinForgeOutcome {
     $script:WinForgeOutcomeState.Explicit = [PSCustomObject]@{
         Kind = $Kind; Detail = $Detail; RebootRequired = $reboot
         Headline = $view.Headline; Note = $view.Note; Tone = $view.Tone; Next = $view.Next; NextLabel = $view.NextLabel; HideSummary = $view.HideSummary
+        Quiet = $view.Quiet
     }
 }
 
@@ -928,8 +978,10 @@ function Set-WinForgeResultView {
     Como a janela apresenta um resultado quando o genérico ("Concluído com ressalvas: 4 ameaças encontradas; 3 ainda
     pedem ação") não basta. Headline é o título da faixa ("3 ameaças pedem ação"); Note, a frase embaixo dele; Tone, a
     cor (Ok, Warn ou Bad) quando ela não é a do Kind; Next, o próximo passo (um item da navegação ou um atalho do
-    Windows), com NextLabel no botão; HideSummary esconde o resumo quando a faixa já diz tudo. Fica em Data: o console, o
-    Otimizar e o histórico continuam com Kind e Detail. Devolve o próprio resultado.
+    Windows), com NextLabel no botão; HideSummary esconde o resumo quando a faixa já diz tudo. Quiet: além do novo estado,
+    não há nada a ler (a chave de um ajuste que mudou sem aviso): a janela pode mostrar o resultado na própria linha, sem a
+    tela de execução. Fica em Data: o console, o Otimizar e o histórico continuam com Kind e Detail. Devolve o próprio
+    resultado.
     #>
     param (
         [Parameter(Mandatory)]
@@ -943,7 +995,8 @@ function Set-WinForgeResultView {
 
         [string]$Next = "",
         [string]$NextLabel = "",
-        [switch]$HideSummary
+        [switch]$HideSummary,
+        [switch]$Quiet
     )
 
     if (-not ($Result.Data -is [System.Collections.IDictionary])) { $Result.Data = @{} }
@@ -954,6 +1007,7 @@ function Set-WinForgeResultView {
     $Result.Data["Next"] = $Next
     $Result.Data["NextLabel"] = $NextLabel
     $Result.Data["HideSummary"] = [bool]$HideSummary
+    $Result.Data["Quiet"] = [bool]$Quiet
 
     return $Result
 }
@@ -975,15 +1029,15 @@ function Format-WinForgeOutcomeSummary {
     }
 
     switch ($Kind) {
-        "Ok"      { if ($detail) { return "Concluído: $detail." } else { return "Concluído com sucesso." } }
-        "Warning" { if ($detail) { return "Concluído com ressalvas: $detail." } else { return "Concluído com ressalvas; revise a saída." } }
-        "Failed"  { if ($detail) { return "Não foi concluído: $detail." } else { return "Não foi concluído; revise a saída." } }
+        "Ok"      { if ($detail) { return (Get-WinForgeText 'Concluído: {0}.' "$detail") } else { return (Get-WinForgeText 'Concluído com sucesso.') } }
+        "Warning" { if ($detail) { return (Get-WinForgeText 'Concluído com ressalvas: {0}.' "$detail") } else { return (Get-WinForgeText 'Concluído com ressalvas; revise a saída.') } }
+        "Failed"  { if ($detail) { return (Get-WinForgeText 'Não foi concluído: {0}.' "$detail") } else { return (Get-WinForgeText 'Não foi concluído; revise a saída.') } }
         "Skipped" {
             # "cancelado pelo usuário" e "operação cancelada" são o mesmo fato; a faixa diz sempre a mesma frase.
-            if ($detail -match "(?i)cancelad") { return "Operação cancelada." }
-            if ($detail) { return "Nada foi feito: $detail." } else { return "Nada a fazer." }
+            if (Test-WinForgeCanceledText -Text $detail) { return (Get-WinForgeText 'Operação cancelada.') }
+            if ($detail) { return (Get-WinForgeText 'Nada foi feito: {0}.' "$detail") } else { return (Get-WinForgeText 'Nada a fazer.') }
         }
-        default   { return "Concluído." }
+        default   { return (Get-WinForgeText 'Concluído.') }
     }
 }
 
@@ -1002,7 +1056,7 @@ function Get-WinForgeOutcome {
     $kind = "Done"
     $detail = ""
     $reboot = $false
-    $view = @{ Headline = ""; Note = ""; Tone = ""; Next = ""; NextLabel = ""; HideSummary = $false }
+    $view = @{ Headline = ""; Note = ""; Tone = ""; Next = ""; NextLabel = ""; HideSummary = $false; Quiet = $false }
 
     if ($null -ne $state.Explicit) {
         $kind = [string]$state.Explicit.Kind
@@ -1014,6 +1068,7 @@ function Get-WinForgeOutcome {
         }
 
         $view.HideSummary = [bool](Get-WinForgeJsonValue -Object $state.Explicit -Name "HideSummary" -Default $false)
+        $view.Quiet = [bool](Get-WinForgeJsonValue -Object $state.Explicit -Name "Quiet" -Default $false)
     }
     elseif ($state.Error -gt 0) {
         $detail = [string]$state.LastError
@@ -1023,9 +1078,9 @@ function Get-WinForgeOutcome {
     elseif ($state.Warning -gt 0) {
         $detail = [string]$state.LastWarning
 
-        if ($state.Success -eq 0 -and $detail -match "(?i)cancelad") {
+        if ($state.Success -eq 0 -and (Test-WinForgeCanceledText -Text $detail)) {
             $kind = "Skipped"
-            $detail = "operação cancelada"
+            $detail = (Get-WinForgeText 'operação cancelada')
         }
         else {
             $kind = "Warning"
@@ -1036,12 +1091,12 @@ function Get-WinForgeOutcome {
     }
 
     $title = switch ($kind) {
-        "Ok"      { "Concluído" }
-        "Warning" { "Concluído com ressalvas" }
-        "Failed"  { "Não foi concluído" }
+        "Ok"      { (Get-WinForgeText 'Concluído') }
+        "Warning" { (Get-WinForgeText 'Concluído com ressalvas') }
+        "Failed"  { (Get-WinForgeText 'Não foi concluído') }
         # O PC reiniciando a pedido da pessoa (o Otimizar com um reinício pendente) não é "Nada a fazer".
-        "Skipped" { $(if ($detail -match "(?i)cancelad") { "Cancelado" } elseif ($detail -match "(?i)reiniciando") { "Reiniciando" } else { "Nada a fazer" }) }
-        default   { "Concluído" }
+        "Skipped" { $(if (Test-WinForgeCanceledText -Text $detail) { (Get-WinForgeText 'Cancelado') } elseif (Test-WinForgeRestartingText -Text $detail) { (Get-WinForgeText 'Reiniciando') } else { (Get-WinForgeText 'Nada a fazer') }) }
+        default   { (Get-WinForgeText 'Concluído') }
     }
 
     # O título que a própria ação deu ao resultado ("Nenhum vírus encontrado") vale mais que o genérico.
@@ -1060,6 +1115,7 @@ function Get-WinForgeOutcome {
         Next           = $view.Next
         NextLabel      = $view.NextLabel
         HideSummary    = $view.HideSummary
+        Quiet          = $view.Quiet
     }
 }
 
@@ -1067,7 +1123,7 @@ function Get-WinForgeOutcome {
 function Test-WinForgeElevation {
     # Verdadeiro quando o processo é Administrador; caso contrário mostra o motivo e devolve falso.
     param (
-        [string]$Reason = "Esta ação exige privilégios de Administrador."
+        [string]$Reason = (Get-WinForgeText 'Esta ação exige privilégios de Administrador.')
     )
 
     if (Test-WinForgeAdministrator) {
@@ -1075,7 +1131,7 @@ function Test-WinForgeElevation {
     }
 
     Write-WinForgeStatus -Type Error -Message $Reason
-    Write-Host "      Feche o WinForge e abra-o novamente como Administrador." -ForegroundColor DarkGray
+    Write-Host (Get-WinForgeText '      Feche o WinForge e abra-o novamente como Administrador.') -ForegroundColor DarkGray
     return $false
 }
 
@@ -1095,7 +1151,7 @@ function Test-WinForgeGuiPrompts {
 function Wait-WinForgeKey {
     # "Pressione qualquer tecla" do console. Na interface gráfica não há o que esperar: o botão Voltar faz esse papel.
     param (
-        [string]$Message = "Pressione qualquer tecla para continuar..."
+        [string]$Message = (Get-WinForgeText 'Pressione qualquer tecla para continuar...')
     )
 
     if (Test-WinForgeGuiMode) {
@@ -1147,7 +1203,7 @@ function Format-WinForgeKeyHint {
     $parts = @()
 
     if ($numbers.Count -ge 3 -and ($numbers[-1] - $numbers[0] + 1) -eq $numbers.Count) {
-        $parts += "um número de $($numbers[0]) a $($numbers[-1])"
+        $parts += (Get-WinForgeText 'um número de {0} a {1}' "$($numbers[0])" "$($numbers[-1])")
     }
     else {
         $parts += @($numbers | ForEach-Object { [string]$_ })
@@ -1164,7 +1220,7 @@ function Format-WinForgeKeyHint {
         return ($parts -join "")
     }
 
-    return (($parts[0..($parts.Count - 2)] -join ", ") + " ou " + $parts[-1])
+    return (Get-WinForgeText '{0} ou {1}' "$($parts[0..($parts.Count - 2)] -join ', ')" "$($parts[-1])")
 }
 
 
@@ -1172,17 +1228,17 @@ function Get-WinForgeUnelevatedHint {
     # Como abrir o WinForge sem Administrador, com a conta de quem usa o PC (quando ele está aberto com a conta de outro
     # Administrador). Na janela, recusar o aviso do Windows abre a janela assim mesmo; no menu de texto, recusar fecha.
     if (Test-WinForgeGuiMode) {
-        return "feche o WinForge, abra de novo e responda Não ao aviso do Windows: a janela abre sem Administrador"
+        return (Get-WinForgeText 'feche o WinForge, abra de novo e responda Não ao aviso do Windows: a janela abre sem Administrador')
     }
 
-    return "abra a janela do WinForge (pelo atalho ou pelo WinForge.cmd) e responda Não ao aviso do Windows: ela abre sem Administrador"
+    return (Get-WinForgeText 'abra a janela do WinForge (pelo atalho ou pelo WinForge.cmd) e responda Não ao aviso do Windows: ela abre sem Administrador')
 }
 
 
 function Confirm-WinForgeAction {
     # Pergunta Sim/Não. DefaultKey ("S" ou "N") destaca o botão na interface gráfica e vale para ENTER no console.
     param (
-        [string]$Message = "Deseja continuar?",
+        [string]$Message = (Get-WinForgeText 'Deseja continuar?'),
 
         [ValidateSet("", "S", "N")]
         [string]$DefaultKey = "",
@@ -1191,7 +1247,11 @@ function Confirm-WinForgeAction {
         # saída: nunca fica em destaque, e com Não como padrão a pergunta fica sem botão em destaque (o Enter fica nele).
         # O console continua com S/N.
         [string]$YesLabel = "",
-        [string]$NoLabel = ""
+        [string]$NoLabel = "",
+
+        # O Sim apaga algo sem volta (esvaziar a Lixeira, excluir em definitivo): na janela, o botão vem na cor de perigo.
+        # Use com DefaultKey N. O console não muda.
+        [switch]$Danger
     )
 
     if (Test-WinForgeGuiPrompts) {
@@ -1200,14 +1260,14 @@ function Confirm-WinForgeAction {
 
         if ($verbs) {
             $options = @(
-                @{ Key = "S"; Label = $YesLabel; Accent = ($DefaultKey -ne "N") },
+                @{ Key = "S"; Label = $YesLabel; Accent = ($DefaultKey -ne "N"); Danger = [bool]$Danger },
                 @{ Key = "N"; Label = $NoLabel; Exit = $true }
             )
         }
         else {
             $options = @(
-                @{ Key = "S"; Label = "Sim"; Accent = ($DefaultKey -ne "N") },
-                @{ Key = "N"; Label = "Não"; Accent = ($DefaultKey -eq "N") }
+                @{ Key = "S"; Label = (Get-WinForgeText 'Sim'); Accent = ($DefaultKey -ne "N"); Danger = [bool]$Danger },
+                @{ Key = "N"; Label = (Get-WinForgeText 'Não'); Accent = ($DefaultKey -eq "N") }
             )
         }
 
@@ -1216,10 +1276,11 @@ function Confirm-WinForgeAction {
         return ($answer -eq "S")
     }
 
+    # As teclas do idioma (Y/N em inglês); a resposta aceita as dos três, e DefaultKey continua S ou N.
     $hint = switch ($DefaultKey) {
-        "S"     { "S/n" }
-        "N"     { "s/N" }
-        default { "S/N" }
+        "S"     { (Get-WinForgeText 'S/n') }
+        "N"     { (Get-WinForgeText 's/N') }
+        default { (Get-WinForgeText 'S/N') }
     }
 
     $limit = Get-WinForgeAnswerLimit
@@ -1239,18 +1300,18 @@ function Confirm-WinForgeAction {
         }
 
         switch ($answer) {
-            { $_ -in @("S", "SIM", "Y", "YES") } { return $true }
+            { $_ -in @("S", "SIM", "SI", "SÍ", "Y", "YES") } { return $true }
             { $_ -in @("N", "NAO", "NÃO", "NO") } { return $false }
             "" {
-                Write-Host "  Digite S ou N e tecle Enter." -ForegroundColor DarkGray
+                Write-Host (Get-WinForgeText '  Digite S ou N e tecle Enter.') -ForegroundColor DarkGray
             }
             default {
-                Write-Host "  Opção inválida. Digite S ou N e tecle Enter." -ForegroundColor Red
+                Write-Host (Get-WinForgeText '  Opção inválida. Digite S ou N e tecle Enter.') -ForegroundColor Red
             }
         }
     }
 
-    throw "Nenhuma resposta válida foi informada."
+    throw (Get-WinForgeText 'Nenhuma resposta válida foi informada.')
 }
 
 
@@ -1294,6 +1355,7 @@ function ConvertTo-WinForgeOptionList {
             Accent      = [bool](Get-WinForgeOptionField $option "Accent" $false)
             Exit        = [bool](Get-WinForgeOptionField $option "Exit" $false)
             Selected    = [bool](Get-WinForgeOptionField $option "Selected" $false)
+            Danger      = [bool](Get-WinForgeOptionField $option "Danger" $false)
         }
     }
 }
@@ -1302,11 +1364,11 @@ function ConvertTo-WinForgeOptionList {
 function Read-WinForgeChoice {
     <#
     Pergunta de escolha única. Na interface gráfica vira botões; no console, o menu de sempre.
-    Options: hashtables/objetos com Key, Label e, opcionalmente, Description, Accent e Exit (opção de sair/cancelar).
-    Retorna a Key escolhida.
+    Options: hashtables/objetos com Key, Label e, opcionalmente, Description, Accent, Exit (opção de sair/cancelar) e
+    Danger (a opção apaga algo sem volta: na janela, ela vem na cor de perigo). Retorna a Key escolhida.
     #>
     param (
-        [string]$Message = "Selecione uma opção",
+        [string]$Message = (Get-WinForgeText 'Selecione uma opção'),
         [Parameter(Mandatory)]
         [object[]]$Options,
         [string]$DefaultKey = "",
@@ -1325,6 +1387,7 @@ function Read-WinForgeChoice {
                 $guiOption.Description = $option.Description
                 $guiOption.Accent = $option.Accent
                 $guiOption.Exit = $option.Exit
+                $guiOption.Danger = $option.Danger
                 $guiOption
             }
         )
@@ -1360,7 +1423,7 @@ function Read-WinForgeChoice {
     }
     else {
         Write-WinForgeWrappedLine -Text $Message -Color Gray
-        $prompt = "Opção"
+        $prompt = (Get-WinForgeText 'Opção')
     }
 
     $keyHint = Format-WinForgeKeyHint -Keys $shownKeys
@@ -1391,14 +1454,14 @@ function Read-WinForgeChoice {
         }
 
         if ([string]::IsNullOrEmpty($answer)) {
-            Write-Host "  Digite $keyHint e tecle Enter." -ForegroundColor DarkGray
+            Write-Host (Get-WinForgeText '  Digite {0} e tecle Enter.' "$keyHint") -ForegroundColor DarkGray
         }
         else {
-            Write-Host "  Opção inválida. Digite $keyHint e tecle Enter." -ForegroundColor Red
+            Write-Host (Get-WinForgeText '  Opção inválida. Digite {0} e tecle Enter.' "$keyHint") -ForegroundColor Red
         }
     }
 
-    throw "Nenhuma resposta válida foi informada."
+    throw (Get-WinForgeText 'Nenhuma resposta válida foi informada.')
 }
 
 
@@ -1416,7 +1479,7 @@ function Read-WinForgeMultiSelect {
     Otimizar), desistir da lista é pular a etapa, e o botão diz "Pular".
     #>
     param (
-        [string]$Message = "Selecione os itens",
+        [string]$Message = (Get-WinForgeText 'Selecione os itens'),
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
         [object[]]$Options,
@@ -1444,7 +1507,7 @@ function Read-WinForgeMultiSelect {
             }
         )
 
-        if ([string]::IsNullOrWhiteSpace($CancelLabel) -and $script:WinForgeNestedDepth -gt 0) { $CancelLabel = "Pular" }
+        if ([string]::IsNullOrWhiteSpace($CancelLabel) -and $script:WinForgeNestedDepth -gt 0) { $CancelLabel = (Get-WinForgeText 'Pular') }
 
         # Na janela, -NoSelectAll tira o "Marcar todos" da lista.
         $keys = $global:WinForgeGuiHost.GuiUI.AskMulti("", $Message, $converted, [bool]$NoSelectAll, $ConfirmLabel, $CancelLabel, [bool]$AllowNone)
@@ -1471,12 +1534,12 @@ function Read-WinForgeMultiSelect {
     $preselected = @($items | Where-Object { $_.Selected })
 
     Write-Host ""
-    $allHint = $(if ($NoSelectAll) { "" } else { " T = todos." })
-    $noneHint = $(if ($AllowNone) { " 0 = nenhum." } else { "" })
-    Write-Host "  Informe números separados por vírgula ou intervalos (ex.: 1,3,5-7).$allHint$noneHint ENTER = cancelar." -ForegroundColor DarkCyan
+    $allHint = $(if ($NoSelectAll) { "" } else { (Get-WinForgeText ' T = todos.') })
+    $noneHint = $(if ($AllowNone) { (Get-WinForgeText ' 0 = nenhum.') } else { "" })
+    Write-Host (Get-WinForgeText '  Informe números separados por vírgula ou intervalos (ex.: 1,3,5-7).{0}{1} ENTER = cancelar.' "$allHint" "$noneHint") -ForegroundColor DarkCyan
 
     if ($preselected.Count -gt 0) {
-        Write-Host "  P = usar os já marcados com * ($($preselected.Count))." -ForegroundColor DarkCyan
+        Write-Host (Get-WinForgeText '  P = usar os já marcados com * ({0}).' "$($preselected.Count)") -ForegroundColor DarkCyan
     }
 
     Write-Host ""
@@ -1513,7 +1576,7 @@ function Read-WinForgeMultiSelect {
         }
     }
 
-    throw "Nenhuma resposta válida foi informada."
+    throw (Get-WinForgeText 'Nenhuma resposta válida foi informada.')
 }
 
 

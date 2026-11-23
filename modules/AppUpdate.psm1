@@ -1,9 +1,10 @@
 ﻿# Nova versão do WinForge: consulta a última versão publicada no GitHub, baixa o WinForge.zip para a pasta Downloads e
 # confere o SHA-256 do arquivo antes de dizer que ele está pronto.
 #
-# O WinForge nunca troca os próprios arquivos: ele só baixa e confere. Instalar é copiar o conteúdo do zip para a
-# pasta atual, com a janela fechada. O hash vem do "digest" que o GitHub publica para cada arquivo de um release; sem
-# ele, nada é baixado (um arquivo que não pode ser conferido não deve virar instalação).
+# Instalar é com a janela fechada: o WinForge.Setup.ps1 da versão nova espera o WinForge fechar, troca os arquivos
+# (voltando ao que era se algo falhar; Install.psm1) e abre o WinForge de novo. O hash vem do "digest" que o GitHub
+# publica para cada arquivo de um release; sem ele, nada é baixado (um arquivo que não pode ser conferido não deve virar
+# instalação).
 
 
 # ---------------------------------------------------------------------------
@@ -12,6 +13,26 @@
 
 function Get-WinForgeRepository {
     return "guilhermehenn/winforge"
+}
+
+
+function Get-WinForgeWebsiteUrl {
+    # O site do WinForge, na página de um idioma (sem -Language, o da janela): o português na raiz, o inglês em /en/ e o
+    # espanhol em /es/. O download e a atualização continuam no GitHub (Get-WinForgeRepository).
+    param (
+        [string]$Language = ""
+    )
+
+    $site = "https://usewinforge.com.br"
+
+    if ([string]::IsNullOrEmpty($Language)) { $Language = [string](Get-WinForgeLanguage) }
+
+    switch ($Language) {
+        "en" { return "$site/en/" }
+        "es" { return "$site/es/" }
+    }
+
+    return $site
 }
 
 
@@ -115,7 +136,7 @@ function ConvertTo-WinForgeWebErrorText {
     #>
     param (
         $Exception,
-        [string]$NotFound = "o GitHub não encontrou uma versão publicada do WinForge"
+        [string]$NotFound = (Get-WinForgeText 'o GitHub não encontrou uma versão publicada do WinForge')
     )
 
     $code = 0
@@ -126,7 +147,7 @@ function ConvertTo-WinForgeWebErrorText {
 
     for ($current = $Exception; $null -ne $current; $current = $current.InnerException) {
         if ($current -is [System.IO.IOException] -and (($current.HResult -band 0xFFFF) -in 39, 112)) {
-            return "falta espaço em disco"
+            return (Get-WinForgeText 'falta espaço em disco')
         }
 
         if ($current -is [System.Net.WebException] -and -not $status) { $status = [string]$current.Status }
@@ -160,33 +181,33 @@ function ConvertTo-WinForgeWebErrorText {
 
     # O limite secundário (consultas demais em pouco tempo) vem como 403 com Retry-After, em segundos.
     if (($code -eq 403 -or $code -eq 429) -and $retryAfter) {
-        return "o GitHub limitou por um tempo as consultas vindas desta conexão; tente de novo em alguns minutos"
+        return (Get-WinForgeText 'o GitHub limitou por um tempo as consultas vindas desta conexão; tente de novo em alguns minutos')
     }
 
     if ($code -eq 429 -or ($code -eq 403 -and $remaining -eq "0")) {
-        $text = "o GitHub limitou por um tempo as consultas vindas desta conexão"
+        $text = (Get-WinForgeText 'o GitHub limitou por um tempo as consultas vindas desta conexão')
         $epoch = 0L
 
         if ([int64]::TryParse($reset, [ref]$epoch) -and $epoch -gt 0) {
             $when = [DateTimeOffset]::FromUnixTimeSeconds($epoch).LocalDateTime
-            $text = "$text; tente de novo depois das $(Format-WinForgeDateTime -When $when -Pattern 'HH:mm')"
+            $text = (Get-WinForgeText '{0}; tente de novo depois das {1}' "$text" "$(Format-WinForgeDateTime -When $when -Pattern 'HH:mm')")
         }
         else {
-            $text = "$text; tente de novo em uma hora"
+            $text = (Get-WinForgeText '{0}; tente de novo em uma hora' "$text")
         }
 
         return $text
     }
 
     if ($code -eq 404) { return $NotFound }
-    if ($code -ge 500) { return "o GitHub está com problemas agora (erro $code); tente de novo mais tarde" }
-    if ($code -ge 400) { return "o GitHub recusou a consulta (erro $code); tente de novo mais tarde" }
+    if ($code -ge 500) { return (Get-WinForgeText 'o GitHub está com problemas agora (erro {0}); tente de novo mais tarde' "$code") }
+    if ($code -ge 400) { return (Get-WinForgeText 'o GitHub recusou a consulta (erro {0}); tente de novo mais tarde' "$code") }
 
     switch -Regex ($status) {
-        '^(NameResolutionFailure|ProxyNameResolutionFailure|ConnectFailure)$' { return "sem conexão com o GitHub: confira a internet ou se esta rede bloqueia o github.com" }
-        '^Timeout$' { return "o GitHub não respondeu a tempo; tente de novo mais tarde" }
-        '^(TrustFailure|SecureChannelFailure)$' { return "a conexão segura com o GitHub falhou; confira se a data e a hora do PC estão certas" }
-        '^(ConnectionClosed|ReceiveFailure|SendFailure|KeepAliveFailure)$' { return "a conexão com o GitHub caiu no meio; tente de novo" }
+        '^(NameResolutionFailure|ProxyNameResolutionFailure|ConnectFailure)$' { return (Get-WinForgeText 'sem conexão com o GitHub: confira a internet ou se esta rede bloqueia o github.com') }
+        '^Timeout$' { return (Get-WinForgeText 'o GitHub não respondeu a tempo; tente de novo mais tarde') }
+        '^(TrustFailure|SecureChannelFailure)$' { return (Get-WinForgeText 'a conexão segura com o GitHub falhou; confira se a data e a hora do PC estão certas') }
+        '^(ConnectionClosed|ReceiveFailure|SendFailure|KeepAliveFailure)$' { return (Get-WinForgeText 'a conexão com o GitHub caiu no meio; tente de novo') }
     }
 
     return ""
@@ -214,7 +235,7 @@ function Get-WinForgeLatestRelease {
     $version = ConvertTo-WinForgeVersion -Text $tag
 
     if ($null -eq $version) {
-        throw "A resposta do GitHub não trouxe uma versão reconhecível."
+        throw (Get-WinForgeText 'A resposta do GitHub não trouxe uma versão reconhecível.')
     }
 
     $asset = $null
@@ -294,6 +315,53 @@ function Get-WinForgeUpdateStatus {
 }
 
 
+function Save-WinForgeUpdateCheck {
+    <#
+    Guarda a última versão publicada que uma consulta ao GitHub leu (Verificar nova versão ou o monitor), com a hora: o
+    resumo de Sobre o WinForge e o monitor dizem dela sem consultar de novo. Uma consulta que não chegou ao GitHub não
+    apaga o que já se sabia.
+    #>
+    param ([Parameter(Mandatory)]$Check)
+
+    $release = Get-WinForgeJsonValue -Object $Check -Name "Release" -Default $null
+    $version = $(if ($null -ne $release) { Get-WinForgeJsonValue -Object $release -Name "Version" -Default $null } else { $null })
+
+    if ($version -isnot [version]) { return }
+
+    [void](Set-WinForgeSetting -Name "UpdateLatest" -Value (Format-WinForgeVersion -Version $version))
+    [void](Set-WinForgeSetting -Name "UpdateCheckedAt" -Value ((Get-Date).ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)))
+}
+
+
+function Get-WinForgeKnownUpdate {
+    <#
+    O que o WinForge sabe da última versão publicada, sem consultar a internet (Save-WinForgeUpdateCheck): Latest (o
+    número), Newer (mais nova que esta), Current (esta é a última), CheckedAt e Fresh (a consulta tem até 30 dias: depois
+    disso, "a mais recente" já não se pode dizer). $null sem nenhuma consulta guardada, ou com uma que não se entende. A
+    comparação é com a versão aberta agora: depois de atualizar, a versão guardada deixa de ser nova sozinha.
+    #>
+    param ([datetime]$Now = (Get-Date))
+
+    $latest = ConvertTo-WinForgeVersion -Text ([string](Get-WinForgeSetting -Name "UpdateLatest" -Default ""))
+    $current = ConvertTo-WinForgeVersion -Text ([string](Get-WinForgeBuild))
+
+    if ($null -eq $latest -or $null -eq $current) { return $null }
+
+    $checkedAt = Get-WinForgeSettingDate -Name "UpdateCheckedAt"
+
+    # Uma data no futuro (o relógio estava adiantado) não vale como consulta recente.
+    $fresh = ($null -ne $checkedAt -and $checkedAt -le $Now.AddDays(1) -and ($Now - $checkedAt).TotalDays -le 30)
+
+    return [PSCustomObject]@{
+        Latest    = (Format-WinForgeVersion -Version $latest)
+        Newer     = ($latest -gt $current)
+        Current   = ($latest -eq $current)
+        CheckedAt = $checkedAt
+        Fresh     = $fresh
+    }
+}
+
+
 # ---------------------------------------------------------------------------
 # Integridade
 # ---------------------------------------------------------------------------
@@ -326,13 +394,13 @@ function Get-WinForgeExpectedHash {
     if (-not $digest) { return "" }
 
     if ($digest -notmatch "(?i)^sha256:") {
-        throw "O GitHub publicou um hash que não é SHA-256 para o WinForge.zip."
+        throw (Get-WinForgeText 'O GitHub publicou um hash que não é SHA-256 para o WinForge.zip.')
     }
 
     $hash = $digest.Substring(7).Trim()
 
     if ($hash -notmatch '^[0-9a-fA-F]{64}$') {
-        throw "O hash publicado pelo GitHub para o WinForge.zip não é um SHA-256 reconhecível."
+        throw (Get-WinForgeText 'O hash publicado pelo GitHub para o WinForge.zip não é um SHA-256 reconhecível.')
     }
 
     return $hash.ToLowerInvariant()
@@ -366,7 +434,7 @@ function Save-WinForgeRelease {
     }
 
     if ($null -eq $asset -or -not (Test-WinForgeReleaseDownloadUrl -Url ([string](Get-WinForgeJsonValue -Object $asset -Name "Url" -Default "")))) {
-        $result.Error = "o release não tem um WinForge.zip num endereço confiável do repositório"
+        $result.Error = (Get-WinForgeText 'o release não tem um WinForge.zip num endereço confiável do repositório')
         return $result
     }
 
@@ -420,17 +488,17 @@ function Save-WinForgeRelease {
         }
 
         if (-not (Test-Path -LiteralPath $partialPath -PathType Leaf)) {
-            throw "o download terminou sem gravar o arquivo"
+            throw (Get-WinForgeText 'o download terminou sem gravar o arquivo')
         }
 
         $size = (Get-Item -LiteralPath $partialPath).Length
 
         if ($size -le 0) {
-            throw "o arquivo baixado está vazio"
+            throw (Get-WinForgeText 'o arquivo baixado está vazio')
         }
 
         if ([int64]$asset.Size -gt 0 -and $size -ne [int64]$asset.Size) {
-            throw "o arquivo chegou incompleto ($size de $($asset.Size) bytes); tente de novo"
+            throw (Get-WinForgeText 'o arquivo chegou incompleto ({0} de {1} bytes); tente de novo' "$size" "$($asset.Size)")
         }
 
         $result.Hash = Get-WinForgeFileSha256 -Path $partialPath
@@ -456,7 +524,7 @@ function Save-WinForgeRelease {
         }
 
         if (-not $moved) {
-            throw "o arquivo $(Split-Path -Leaf $finalPath) já existe na pasta Downloads e está em uso; feche o programa que o abriu e tente de novo"
+            throw (Get-WinForgeText 'o arquivo {0} já existe na pasta Downloads e está em uso; feche o programa que o abriu e tente de novo' "$(Split-Path -Leaf $finalPath)")
         }
 
         $result.Path = $target
@@ -585,22 +653,76 @@ function Show-WinForgeDownloadedRelease {
         $Package
     )
 
-    Write-WinForgeKeyValue -Label "Arquivo" -Value $Saved.Path
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Arquivo') -Value $Saved.Path
     Write-Host ""
 
     $appRoot = Get-WinForgeAppRoot
-    $what = $(if ($null -ne $Package -and $Package.Root) { "entre na pasta $($Package.Root) dentro do zip e copie tudo o que está nela" } else { "copie tudo o que está no zip" })
-    Write-WinForgeStatus -Type Info -Notice -Message "Para instalar: feche o WinForge, abra o zip, $what para $appRoot, substituindo os arquivos, e abra o WinForge de novo. O WinForge não troca os próprios arquivos."
+    $what = $(if ($null -ne $Package -and $Package.Root) { (Get-WinForgeText 'entre na pasta {0} dentro do zip e copie tudo o que está nela' "$($Package.Root)") } else { (Get-WinForgeText 'copie tudo o que está no zip') })
+    Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Para instalar à mão: feche o WinForge, abra o zip, {0} para {1}, substituindo os arquivos, e abra o WinForge de novo.' "$what" "$appRoot")
     Write-Host ""
 
-    if (Confirm-WinForgeAction -Message "Mostrar o arquivo na pasta Downloads?" -DefaultKey S) {
+    if (Confirm-WinForgeAction -Message (Get-WinForgeText 'Mostrar o arquivo na pasta Downloads?') -DefaultKey S -YesLabel (Get-WinForgeText 'Mostrar') -NoLabel (Get-WinForgeText 'Agora não')) {
         try {
             Start-Process -FilePath "explorer.exe" -ArgumentList "/select,`"$($Saved.Path)`"" -ErrorAction Stop
         }
         catch {
-            Write-WinForgeStatus -Type Warning -Notice -Message "Não foi possível abrir a pasta: $($_.Exception.Message)"
+            Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Não foi possível abrir a pasta: {0}' "$($_.Exception.Message)")
         }
     }
+}
+
+
+function Invoke-WinForgeSelfUpdate {
+    <#
+    Oferece instalar agora a versão baixada e conferida. Started: a troca começou (o instalador da versão nova espera o
+    WinForge fechar) e Result é o resultado da ação; Reason: não deu para começar (a instalação à mão continua valendo);
+    os dois vazios: a pessoa preferiu instalar depois.
+    #>
+    param (
+        [Parameter(Mandatory)]$Saved,
+        [Parameter(Mandatory)]$Package,
+        [Parameter(Mandatory)][string]$Published,
+        [Parameter(Mandatory)][string]$Title
+    )
+
+    $answer = [PSCustomObject]@{ Started = $false; Result = $null; Reason = "" }
+
+    Write-Host ""
+
+    # Com outra janela ou outro menu desta pasta aberto, o instalador recusaria a troca só depois de fechar este: o que
+    # fechar fica dito agora, sem o fecha e abre à toa.
+    $others = @()
+    try { $others = @(Get-WinForgeRunningCopies -Root (Get-WinForgeAppRoot) | Where-Object { $_.Kind -ne "Agent" }) } catch { $others = @() }
+
+    if ($others.Count -gt 0) {
+        $answer.Reason = (Get-WinForgeText 'outra janela do WinForge continua aberta')
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Outra janela ou outro menu do WinForge está aberto. Feche-o e verifique de novo para instalar com um clique.')
+        return $answer
+    }
+
+    if (-not (Confirm-WinForgeAction -Message (Get-WinForgeText 'Instalar a versão {0} agora? O WinForge fecha, troca os arquivos e abre de novo em alguns segundos.' "$Published") -DefaultKey S -YesLabel (Get-WinForgeText 'Instalar agora') -NoLabel (Get-WinForgeText 'Depois'))) {
+        return $answer
+    }
+
+    Write-WinForgeStatus -Type Running -Notice -Message (Get-WinForgeText 'Preparando a instalação...')
+
+    try {
+        [void](Start-WinForgeUpdateInstall -ZipPath $Saved.Path -PackageRoot ([string]$Package.Root) -Reopen $(if (Test-WinForgeGuiMode) { "Gui" } else { "Console" }))
+    }
+    catch {
+        $answer.Reason = ([string]$_.Exception.Message).TrimEnd('.')
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível instalar sozinho: {0}. A instalação à mão continua valendo.' "$($answer.Reason)")
+        return $answer
+    }
+
+    Request-WinForgeAppExit -Reason "update"
+    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'O WinForge vai fechar e abrir de novo na versão {0}.' "$Published")
+
+    $answer.Started = $true
+    $answer.Result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'instalando a versão {0}; o WinForge fecha e abre de novo' "$Published") -Title $Title) `
+        -Headline (Get-WinForgeText 'Instalando a versão {0}' "$Published") -Note (Get-WinForgeText 'O WinForge fecha agora e abre de novo na versão nova, em alguns segundos.')
+
+    return $answer
 }
 
 
@@ -608,123 +730,154 @@ function Invoke-WinForgeUpdateFlow {
     # O roteiro de Verificar nova versão. Devolve o resultado; quem chama abre e fecha a ação uma vez só.
     param ([Parameter(Mandatory)][string]$Title)
 
-    Write-Host "  Consulta o GitHub para ver a última versão publicada." -ForegroundColor DarkGray
+    Write-Host (Get-WinForgeText '  Consulta o GitHub para ver a última versão publicada.') -ForegroundColor DarkGray
     Write-Host ""
 
     $check = Get-WinForgeUpdateStatus
-    $installed = $(if ($null -ne $check.Current) { "Build $(Format-WinForgeVersion -Version $check.Current)" } else { "Build $(Get-WinForgeBuild)" })
+    Save-WinForgeUpdateCheck -Check $check
+    $installed = $(if ($null -ne $check.Current) { "$(Format-WinForgeVersion -Version $check.Current)" } else { "$(Get-WinForgeBuild)" })
 
-    Write-WinForgeSection -Title "Versões"
-    Write-WinForgeKeyValue -Label "Instalada" -Value $installed
+    Write-WinForgeSection -Title (Get-WinForgeText 'Versões')
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Instalada') -Value $installed
 
     if ($check.Status -eq "Unreachable") {
+        # A faixa: o que não deu no título; o motivo conhecido (sem internet, limite do GitHub...) na frase.
+        $unreachable = (Get-WinForgeText 'Não foi possível consultar o GitHub')
+
         if ($check.Known) {
-            Write-WinForgeStatus -Type Warning -Message "Não foi possível consultar o GitHub agora: $($check.Error)."
-            return (New-WinForgeResult -Kind Warning -Detail $check.Error -Title $Title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível consultar o GitHub agora: {0}.' "$($check.Error)")
+            return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail $check.Error -Title $Title) -Headline $unreachable -Note (Format-WinForgeReasonNote -Text $check.Error))
         }
 
-        Write-WinForgeStatus -Type Warning -Message "Não foi possível consultar o GitHub agora; tente de novo mais tarde."
-        Write-WinForgeStatus -Type Info -Notice -Message "Detalhe: $($check.Error)"
-        return (New-WinForgeResult -Kind Warning -Detail "não foi possível consultar o GitHub agora; tente de novo mais tarde" -Title $Title)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível consultar o GitHub agora; tente de novo mais tarde.')
+        Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Detalhe: {0}' "$($check.Error)")
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não foi possível consultar o GitHub agora; tente de novo mais tarde') -Title $Title) `
+                -Headline $unreachable -Note (Get-WinForgeText 'Tente de novo mais tarde.'))
     }
 
     $release = $check.Release
-    $published = "Build $(Format-WinForgeVersion -Version $release.Version)"
+    # O número da versão; as frases dizem "a versão {0}" (no inglês, "version {0}").
+    $published = "$(Format-WinForgeVersion -Version $release.Version)"
 
-    Write-WinForgeKeyValue -Label "Última publicada" -Value $published
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Última publicada') -Value $published
 
     if ($release.Published -is [datetime]) {
-        Write-WinForgeKeyValue -Label "Publicada em" -Value (Format-WinForgeDateTime -When $release.Published -Pattern "dd/MM/yyyy")
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Publicada em') -Value (Format-WinForgeDateTime -When $release.Published -Pattern "dd/MM/yyyy")
     }
 
     Write-Host ""
 
     if ($check.Status -eq "UpToDate") {
-        Write-WinForgeStatus -Type Success -Message "Você já está na versão mais recente."
-        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "$published em dia" -Title $Title) `
-                -Headline "Você está na versão mais recente" -Note "A $published é a última publicada no GitHub.")
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Você já está na versão mais recente.')
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'versão {0} em dia' "$published") -Title $Title) `
+                -Headline (Get-WinForgeText 'Você está na versão mais recente') -Note (Get-WinForgeText 'A versão {0} é a última publicada no GitHub.' "$published"))
     }
 
     if ($check.Status -eq "Ahead") {
-        Write-WinForgeStatus -Type Info -Message "A versão instalada é mais nova que a última publicada; não há o que atualizar."
-        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "esta cópia é mais nova que a última publicada ($published)" -Title $Title) `
-                -Headline "Esta cópia é mais nova que a publicada" -Note "A última publicada é a $published; não há o que atualizar.")
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'A versão instalada é mais nova que a última publicada; não há o que atualizar.')
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'esta cópia é mais nova que a última publicada ({0})' "$published") -Title $Title) `
+                -Headline (Get-WinForgeText 'Esta cópia é mais nova que a publicada') -Note (Get-WinForgeText 'A última publicada é a versão {0}; não há o que atualizar.' "$published"))
     }
 
-    Write-WinForgeStatus -Type Warning -Notice -Message "Há uma versão mais nova: $published."
+    Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Há uma versão mais nova: {0}.' "$published")
 
     # Sem o endereço da página na resposta do GitHub, a lista de releases do projeto é o caminho seguro.
     $pageUrl = $(if ([string]::IsNullOrWhiteSpace($release.PageUrl)) { "https://github.com/$(Get-WinForgeRepository)/releases" } else { [string]$release.PageUrl })
     $notes = Format-WinForgeReleaseNotes -Notes $release.Notes
 
     if ($notes.Lines.Count -gt 0) {
-        Write-WinForgeSection -Title "O que mudou"
+        Write-WinForgeSection -Title (Get-WinForgeText 'O que mudou')
 
         foreach ($note in $notes.Lines) {
             Write-WinForgeStatus -Type Info -Notice -Message $note
         }
 
-        if ($notes.Truncated) { Write-WinForgeStatus -Type Info -Notice -Message "Notas completas: $pageUrl" }
+        if ($notes.Truncated) { Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Notas completas: {0}' "$pageUrl") }
     }
+
+    # Os títulos da faixa: a versão nova que existe, ou a que não foi baixada.
+    $available = (Get-WinForgeText 'Versão {0} disponível' "$published")
+    $notDownloaded = (Get-WinForgeText 'A versão {0} não foi baixada' "$published")
 
     if ($null -eq $release.Asset) {
-        Write-WinForgeStatus -Type Warning -Message "Esse release não tem o WinForge.zip anexado; baixe pela página do projeto: $pageUrl"
-        return (New-WinForgeResult -Kind Warning -Detail "a $published está publicada, mas sem o WinForge.zip" -Title $Title)
+        $why = (Get-WinForgeText 'Esse release não tem o WinForge.zip anexado; baixe pela página do projeto: {0}' "$pageUrl")
+        Write-WinForgeStatus -Type Warning -Message $why
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a versão {0} está publicada, mas sem o WinForge.zip' "$published") -Title $Title) -Headline $available -Note $why)
     }
 
-    Write-WinForgeSection -Title "Download"
+    Write-WinForgeSection -Title (Get-WinForgeText 'Download')
 
     # Elevado com a conta de outro Administrador, a pasta Downloads seria a dessa conta, fora do alcance de quem usa o
     # PC. Sem elevação (o aviso do Windows recusado), o download vai para a pasta certa.
     if (Test-WinForgeUserContextMismatch) {
-        Write-WinForgeStatus -Type Warning -Message "O WinForge está aberto com a conta de outro Administrador: o arquivo iria para a pasta Downloads dessa conta. Para baixar, $(Get-WinForgeUnelevatedHint), ou baixe pela página do projeto: $pageUrl"
-        return (New-WinForgeResult -Kind Warning -Detail "a $published está disponível; com a conta de outro Administrador, o download não foi feito" -Title $Title)
+        $why = (Get-WinForgeText 'O WinForge está aberto com a conta de outro Administrador: o arquivo iria para a pasta Downloads dessa conta. Para baixar, {0}, ou baixe pela página do projeto: {1}' "$(Get-WinForgeUnelevatedHint)" "$pageUrl")
+        Write-WinForgeStatus -Type Warning -Message $why
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a versão {0} está disponível; com a conta de outro Administrador, o download não foi feito' "$published") -Title $Title) -Headline $available -Note $why)
     }
 
-    if (-not (Confirm-WinForgeAction -Message "Baixar o WinForge.zip da $published para a pasta Downloads?" -DefaultKey S)) {
-        Write-WinForgeStatus -Type Info -Message "Nada foi baixado."
-        return (New-WinForgeResult -Kind Skipped -Detail "a $published está disponível, mas o download foi recusado" -Title $Title)
+    if (-not (Confirm-WinForgeAction -Message (Get-WinForgeText 'Baixar o WinForge.zip da versão {0} para a pasta Downloads?' "$published") -DefaultKey S -YesLabel (Get-WinForgeText 'Baixar') -NoLabel (Get-WinForgeText 'Agora não'))) {
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada foi baixado.')
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'a versão {0} está disponível, mas o download foi recusado' "$published") -Title $Title) `
+                -Headline $available -Note (Get-WinForgeText 'Nada foi baixado.'))
     }
 
-    Write-WinForgeStatus -Type Running -Notice -Message "Baixando e conferindo o arquivo..."
+    Write-WinForgeStatus -Type Running -Notice -Message (Get-WinForgeText 'Baixando e conferindo o arquivo...')
     $saved = Save-WinForgeRelease -Release $release -DestinationFolder (Get-WinForgeDownloadsPath)
 
     if ($saved.Integrity -eq "NoHash") {
-        Write-WinForgeStatus -Type Error -Message "Esta versão não publica um SHA-256 para conferir o arquivo, então o WinForge não a baixou. Baixe pela página do projeto: $pageUrl"
-        return (New-WinForgeResult -Kind Failed -Detail "a $published não publica um hash para conferir; nada foi baixado" -Title $Title)
+        $why = (Get-WinForgeText 'Esta versão não publica um SHA-256 para conferir o arquivo, então o WinForge não a baixou. Baixe pela página do projeto: {0}' "$pageUrl")
+        Write-WinForgeStatus -Type Error -Message $why
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a versão {0} não publica um hash para conferir; nada foi baixado' "$published") -Title $Title) -Headline $notDownloaded -Note $why)
     }
 
     if ($saved.Integrity -eq "Mismatch") {
-        Write-WinForgeStatus -Type Error -Message "O arquivo baixado chegou diferente do publicado (corrompido no caminho ou alterado) e foi apagado. Tente de novo; se repetir, baixe pela página do projeto: $pageUrl"
-        return (New-WinForgeResult -Kind Failed -Detail "o arquivo baixado não confere com o publicado e foi apagado" -Title $Title)
+        $why = (Get-WinForgeText 'O arquivo baixado chegou diferente do publicado (corrompido no caminho ou alterado) e foi apagado. Tente de novo; se repetir, baixe pela página do projeto: {0}' "$pageUrl")
+        Write-WinForgeStatus -Type Error -Message $why
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o arquivo baixado não confere com o publicado e foi apagado') -Title $Title) -Headline $notDownloaded -Note $why)
     }
 
     if ($saved.Integrity -ne "Verified") {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível baixar: $($saved.Error)."
-        return (New-WinForgeResult -Kind Failed -Detail $saved.Error -Title $Title)
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível baixar: {0}.' "$($saved.Error)")
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail $saved.Error -Title $Title) -Headline $notDownloaded -Note (Format-WinForgeReasonNote -Text $saved.Error))
     }
 
     $package = Get-WinForgeReleasePackageInfo -Path $saved.Path
 
     if ($null -eq $package) {
         # O arquivo é o publicado (o hash confere), mas não é um pacote do WinForge: erro do release.
-        Write-WinForgeStatus -Type Warning -Message "O arquivo baixado confere com o publicado, mas não é um pacote do WinForge; baixe pela página do projeto: $pageUrl"
-        Write-WinForgeKeyValue -Label "Arquivo" -Value $saved.Path
-        return (New-WinForgeResult -Kind Warning -Detail "a $published foi baixada, mas o arquivo não é um pacote do WinForge" -Title $Title)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O arquivo baixado confere com o publicado, mas não é um pacote do WinForge; baixe pela página do projeto: {0}' "$pageUrl")
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Arquivo') -Value $saved.Path
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a versão {0} foi baixada, mas o arquivo não é um pacote do WinForge' "$published") -Title $Title) `
+                -Headline (Get-WinForgeText 'O arquivo baixado não é um pacote do WinForge') -Note (Get-WinForgeText 'Ele é idêntico ao publicado, então o problema está no release. Baixe pela página do projeto: {0}' "$pageUrl"))
     }
 
-    $how = $(if ($saved.Reused) { "já estava na pasta Downloads e foi conferido" } else { "foi baixado e conferido" })
-    Write-WinForgeStatus -Type Success -Message "O WinForge.zip da $published $($how): é idêntico ao publicado no GitHub (SHA-256)."
-    # A faixa da janela: a versão no título e, na frase, o passo que falta (a cópia é da pessoa: o WinForge não troca os
-    # próprios arquivos).
-    $from = $(if ($package.Root) { "o que está na pasta $($package.Root) do zip" } else { "o que está no zip" })
-    $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "$published baixada e conferida; veja abaixo como instalar" -Title $Title) `
-        -Headline $(if ($saved.Reused) { "$published já baixada e conferida" } else { "$published baixada e conferida" }) `
-        -Note "Para instalar, feche o WinForge e copie $from para $(Get-WinForgeAppRoot), substituindo os arquivos."
+    $how = $(if ($saved.Reused) { (Get-WinForgeText 'já estava na pasta Downloads e foi conferido') } else { (Get-WinForgeText 'foi baixado e conferido') })
+    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'O WinForge.zip da versão {0} {1}: é idêntico ao publicado no GitHub (SHA-256).' "$published" "$($how)")
+
+    # Atualizar com um clique: só um pacote que diz a mesma versão da página vira instalação.
+    if (-not $package.Build -or $package.Build -eq (Format-WinForgeVersion -Version $release.Version)) {
+        $installed = Invoke-WinForgeSelfUpdate -Saved $saved -Package $package -Published $published -Title $Title
+
+        if ($installed.Started) { return $installed.Result }
+
+        if ($installed.Reason) {
+            Show-WinForgeDownloadedRelease -Saved $saved -Package $package
+            return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a versão {0} foi baixada e conferida, mas não foi instalada sozinha: {1}' "$published" "$($installed.Reason)") -Title $Title) `
+                    -Headline (Get-WinForgeText 'Versão {0} baixada, mas não instalada' "$published") -Note (Get-WinForgeText 'Não foi possível instalar sozinho: {0}. A instalação à mão continua valendo.' "$($installed.Reason)"))
+        }
+    }
+
+    # A faixa da janela: a versão no título e, na frase, o passo que falta (a pessoa preferiu instalar depois).
+    $from = $(if ($package.Root) { (Get-WinForgeText 'o que está na pasta {0} do zip' "$($package.Root)") } else { (Get-WinForgeText 'o que está no zip') })
+    $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'versão {0} baixada e conferida; falta instalar' "$published") -Title $Title) `
+        -Headline $(if ($saved.Reused) { (Get-WinForgeText 'Versão {0} já baixada e conferida' "$published") } else { (Get-WinForgeText 'Versão {0} baixada e conferida' "$published") }) `
+        -Note (Get-WinForgeText 'Para instalar, feche o WinForge e copie {0} para {1}, substituindo os arquivos.' "$from" "$(Get-WinForgeAppRoot)")
 
     if ($package.Build -and $package.Build -ne (Format-WinForgeVersion -Version $release.Version)) {
-        Write-WinForgeStatus -Type Warning -Message "O pacote diz Build $($package.Build), diferente da $published anunciada na página."
-        $result = New-WinForgeResult -Kind Warning -Detail "a $published foi baixada, mas o pacote diz Build $($package.Build)" -Title $Title
+        $why = (Get-WinForgeText 'O pacote é da versão {0}, diferente da {1} anunciada na página.' "$($package.Build)" "$published")
+        Write-WinForgeStatus -Type Warning -Message $why
+        $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a versão {0} foi baixada, mas o pacote é da {1}' "$published" "$($package.Build)") -Title $Title) `
+            -Headline (Get-WinForgeText 'O pacote baixado não é da versão anunciada') -Note $why
     }
 
     Show-WinForgeDownloadedRelease -Saved $saved -Package $package
@@ -734,7 +887,7 @@ function Invoke-WinForgeUpdateFlow {
 
 
 function Invoke-WinForgeUpdateCheck {
-    $title = "Verificar nova versão"
+    $title = (Get-WinForgeText 'Verificar nova versão')
 
     Enter-WinForgeAction -Title $title
 
@@ -742,8 +895,9 @@ function Invoke-WinForgeUpdateCheck {
         $final = Invoke-WinForgeUpdateFlow -Title $title
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível verificar a versão: $($_.Exception.Message)"
-        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível verificar a versão: {0}' "$($_.Exception.Message)")
+        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title) `
+            -Headline (Get-WinForgeText 'Não foi possível verificar a versão') -Note (Format-WinForgeReasonNote -Text $_.Exception.Message)
     }
 
     Exit-WinForgeAction -Result $final

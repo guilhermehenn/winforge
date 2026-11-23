@@ -1,7 +1,7 @@
 ﻿# Núcleo: ambiente, sessão, registro, log, formatação e execução de programas nativos.
 # Nada aqui desenha cabeçalhos ou faz perguntas; isso fica em Console.psm1.
 
-$script:WinForgeBuild = "3.69"
+$script:WinForgeBuild = "4.0"
 
 # A trava dos arquivos de estado (Invoke-WinForgeStateLock): uma por sessão do Windows.
 $script:WinForgeStateLockName = "Local\WinForge.State"
@@ -14,6 +14,9 @@ $script:WinForgeLogPath = $null
 $script:WinForgeLoggingActive = $false
 # Transcript (console) ou Gui (o host da janela grava o log); Start-WinForgeLogging escolhe.
 $script:WinForgeLogMode = ""
+
+# Se o PC usa o Modern Standby, lido uma vez (Test-WinForgeModernStandby); $null até a primeira leitura.
+$script:WinForgeModernStandby = $null
 
 # Limites de Get-WinForgeDiskSpaceLevel. Na unidade do Windows, o que conta é o espaço que ele precisa para se
 # atualizar (de 6 a 11 GB numa atualização de versão, mais no Windows 11): abaixo de 10 GB livres é "Critical"; abaixo de
@@ -41,9 +44,48 @@ function Test-WinForgeGuiMode {
 }
 
 
+function Request-WinForgeAppExit {
+    <#
+    Pede ao WinForge que feche quando a ação terminar (a atualização com um clique: o instalador espera este processo
+    fechar para trocar os arquivos). Vale para o processo inteiro: a ação roda num runspace e a janela, em outro.
+    #>
+    param ([string]$Reason = "update")
+
+    [AppDomain]::CurrentDomain.SetData("WinForge.ExitRequest", $Reason)
+}
+
+
+function Get-WinForgeAppExitRequest {
+    # O motivo do pedido de fechar (Request-WinForgeAppExit), ou "" sem pedido.
+    $value = [AppDomain]::CurrentDomain.GetData("WinForge.ExitRequest")
+
+    return $(if ($null -eq $value) { "" } else { [string]$value })
+}
+
+
+function Get-WinForgeLocalAppDataPath {
+    <#
+    A pasta LocalAppData do usuário, sempre um caminho completo. Sem a variável LOCALAPPDATA (um acesso remoto que abre o
+    PowerShell sem o ambiente do perfil, por exemplo), vale a pasta que o Windows informa para a conta; sem nenhuma das
+    duas, lança erro: um "WinForge" relativo cairia na pasta atual, e apagar os dados apagaria outra coisa.
+    #>
+    $path = [string]$env:LOCALAPPDATA
+
+    if ([string]::IsNullOrWhiteSpace($path) -or -not [System.IO.Path]::IsPathRooted($path)) {
+        $path = [string][Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($path) -or -not [System.IO.Path]::IsPathRooted($path)) {
+        throw (Get-WinForgeText 'A pasta de dados do usuário (LocalAppData) não foi encontrada.')
+    }
+
+    return $path
+}
+
+
 function Get-WinForgeDataPath {
     # Local persistente para logs, backups de ajustes e relatórios (por usuário elevado).
-    $root = Join-Path $env:LOCALAPPDATA "WinForge"
+    $root = Join-Path (Get-WinForgeLocalAppDataPath) "WinForge"
 
     if (-not (Test-Path -LiteralPath $root)) {
         [void](New-Item -Path $root -ItemType Directory -Force)
@@ -355,7 +397,7 @@ function Get-WinForgeLastCheckup {
 
     $read = Get-WinForgeSettings -Status
 
-    if ($Strict -and [string]$read.Status -eq "Unreadable") { throw "As preferências do WinForge existem, mas não puderam ser lidas." }
+    if ($Strict -and [string]$read.Status -eq "Unreadable") { throw (Get-WinForgeText 'As preferências do WinForge existem, mas não puderam ser lidas.') }
 
     $value = $(if ($read.Settings.ContainsKey("LastCheckup") -and $null -ne $read.Settings["LastCheckup"]) { $read.Settings["LastCheckup"] } else { "" })
 
@@ -403,6 +445,377 @@ function Set-WinForgeSetting {
 
 
 # ---------------------------------------------------------------------------
+# Idioma da interface: português, inglês ou espanhol
+# ---------------------------------------------------------------------------
+
+# Os idiomas da interface. O português é o do código: como no gettext, o texto em português é a chave das traduções,
+# que ficam em lang\en.po e lang\es.po. Em português, nada é lido.
+$script:WinForgeLanguages = @("pt", "en", "es")
+$script:WinForgeLanguage = $null
+$script:WinForgeLanguageResolving = $false
+$script:WinForgeTextTable = $null
+$script:WinForgeTextLoading = $false
+
+
+function Get-WinForgeSystemLanguage {
+    # O idioma da interface pelo idioma de exibição do Windows: português, inglês ou espanhol; qualquer outro, inglês.
+    $code = ""
+
+    try { $code = [string][System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName } catch { $code = "" }
+
+    if ($code -in $script:WinForgeLanguages) { return $code }
+
+    return "en"
+}
+
+
+function Get-WinForgeLanguagePreference {
+    # A escolha em Sobre o WinForge > Idioma: "Auto" (o do Windows), "pt", "en" ou "es".
+    $value = ""
+
+    try { $value = [string](Get-WinForgeSetting -Name "Language" -Default "Auto") } catch { $value = "" }
+
+    if ($value -in $script:WinForgeLanguages) { return $value }
+
+    return "Auto"
+}
+
+
+function Set-WinForgeLanguagePreference {
+    # Grava a escolha do idioma. Vale na próxima vez que o WinForge abrir: as telas já montadas ficam como estão.
+    param (
+        [Parameter(Mandatory)][ValidateSet("Auto", "pt", "en", "es")][string]$Language
+    )
+
+    return (Set-WinForgeSetting -Name "Language" -Value $Language)
+}
+
+
+function Get-WinForgeLanguageFor {
+    # O idioma que uma escolha do cartão Idioma dá: o próprio, ou o do Windows com "Auto".
+    param ([AllowEmptyString()][string]$Preference = "Auto")
+
+    if ($Preference -in $script:WinForgeLanguages) { return $Preference }
+
+    return (Get-WinForgeSystemLanguage)
+}
+
+
+function Resolve-WinForgeLanguage {
+    # Nesta ordem: WINFORGE_LANG (o -Language do menu de texto), a escolha em Sobre o WinForge e o idioma do Windows.
+    $override = ([string]$env:WINFORGE_LANG).Trim().ToLowerInvariant()
+
+    if ($override.Length -gt 2) { $override = $override.Substring(0, 2) }
+    if ($override -in $script:WinForgeLanguages) { return $override }
+
+    return (Get-WinForgeLanguageFor -Preference (Get-WinForgeLanguagePreference))
+}
+
+
+function Get-WinForgeLanguage {
+    # O idioma em uso ("pt", "en" ou "es"). É resolvido uma vez por processo: a janela, as leituras do Início e as ações
+    # rodam em runspaces diferentes do mesmo processo e precisam falar a mesma língua, mesmo que a escolha mude no meio.
+    if ($null -ne $script:WinForgeLanguage) { return $script:WinForgeLanguage }
+
+    $shared = [string][AppDomain]::CurrentDomain.GetData("WinForge.Language")
+
+    if ($shared -in $script:WinForgeLanguages) {
+        $script:WinForgeLanguage = $shared
+        return $shared
+    }
+
+    # Ler as preferências pode escrever uma mensagem (e pedir o idioma de novo): enquanto isso, vale o do Windows.
+    if ($script:WinForgeLanguageResolving) { return (Get-WinForgeSystemLanguage) }
+
+    $script:WinForgeLanguageResolving = $true
+
+    try {
+        $language = Resolve-WinForgeLanguage
+    }
+    finally {
+        $script:WinForgeLanguageResolving = $false
+    }
+
+    $script:WinForgeLanguage = $language
+    [AppDomain]::CurrentDomain.SetData("WinForge.Language", $language)
+
+    return $language
+}
+
+
+function Get-WinForgeLanguageFolder {
+    # A pasta lang, ao lado de modules.
+    return (Join-Path (Split-Path -Parent $PSScriptRoot) "lang")
+}
+
+
+function ConvertFrom-WinForgePoString {
+    # O texto de uma linha de .po, sem as aspas e com \n, \t, \r, \" e \\ decodificados.
+    param ([string]$Line)
+
+    $first = $Line.IndexOf('"')
+    $last = $Line.LastIndexOf('"')
+
+    if ($first -lt 0 -or $last -le $first) { return "" }
+
+    $text = $Line.Substring($first + 1, $last - $first - 1)
+
+    if ($text.IndexOf('\') -lt 0) { return $text }
+
+    $builder = New-Object System.Text.StringBuilder
+    $i = 0
+
+    while ($i -lt $text.Length) {
+        $ch = $text[$i]
+
+        if ($ch -eq '\' -and ($i + 1) -lt $text.Length) {
+            $next = $text[$i + 1]
+
+            if ($next -ceq 'n') { [void]$builder.Append([char]10) }
+            elseif ($next -ceq 't') { [void]$builder.Append([char]9) }
+            elseif ($next -ceq 'r') { [void]$builder.Append([char]13) }
+            else { [void]$builder.Append($next) }
+
+            $i += 2
+            continue
+        }
+
+        [void]$builder.Append($ch)
+        $i++
+    }
+
+    return $builder.ToString()
+}
+
+
+function Read-WinForgeTextCatalog {
+    <#
+    Lê um arquivo .po (gettext) como um dicionário: o texto em português (msgid) e a tradução (msgstr). Ficam de fora o
+    cabeçalho (msgid vazio), as traduções vazias e as marcadas como "fuzzy" (a conferir): nesses casos vale o português.
+    Um texto com contexto (msgctxt) entra como contexto + caractere 4 + texto, a chave que Get-WinForgeContextText procura.
+    O arquivo tem milhares de linhas e é lido ao abrir: o texto entre as aspas sai aqui mesmo, e ConvertFrom-WinForgePoString
+    (uma chamada de função, cara no PowerShell) só entra quando a linha tem barra invertida, o que é raro.
+    #>
+    param ([Parameter(Mandatory)][string]$Path)
+
+    $table = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([System.StringComparer]::Ordinal)
+    $lines = [System.IO.File]::ReadAllLines($Path, [System.Text.Encoding]::UTF8)
+    $count = $lines.Length
+    $context = $null
+    $id = $null
+    $text = $null
+    $field = ""
+    $fuzzy = $false
+
+    # Uma linha vazia a mais, depois da última, fecha a última entrada.
+    for ($n = 0; $n -le $count; $n++) {
+        if ($n -lt $count) { $line = $lines[$n].Trim() } else { $line = "" }
+
+        if ($line.Length -eq 0 -or ($field -eq "str" -and ($line.StartsWith("#") -or $line.StartsWith("msgctxt ") -or $line.StartsWith("msgid ")))) {
+            if ($null -ne $id -and $null -ne $text -and $id.Length -gt 0 -and $text.Length -gt 0 -and -not $fuzzy) {
+                if ($null -ne $context) { $id = $context + [char]4 + $id }
+
+                $table[$id] = $text
+            }
+
+            $context = $null
+            $id = $null
+            $text = $null
+            $field = ""
+            $fuzzy = $false
+        }
+
+        if ($line.Length -eq 0) { continue }
+
+        if ($line.StartsWith("#")) {
+            if ($line.StartsWith("#,") -and $line.Contains("fuzzy")) { $fuzzy = $true }
+            continue
+        }
+
+        # O mesmo que ConvertFrom-WinForgePoString devolve: o que está entre a primeira e a última aspa, decodificado.
+        $first = $line.IndexOf('"')
+        $last = $line.LastIndexOf('"')
+        $value = ""
+        if ($first -ge 0 -and $last -gt $first) { $value = $line.Substring($first + 1, $last - $first - 1) }
+        if ($value.IndexOf('\') -ge 0) { $value = ConvertFrom-WinForgePoString -Line $line }
+
+        if ($line.StartsWith("msgctxt ")) { $context = $value; $field = "ctxt"; continue }
+        if ($line.StartsWith("msgid ")) { $id = $value; $field = "id"; continue }
+        if ($line.StartsWith("msgstr ")) { $text = $value; $field = "str"; continue }
+
+        if ($first -eq 0) {
+            if ($field -eq "ctxt") { $context += $value }
+            elseif ($field -eq "id") { $id += $value }
+            elseif ($field -eq "str") { $text += $value }
+        }
+    }
+
+    return $table
+}
+
+
+function Get-WinForgeTextTable {
+    # As traduções do idioma em uso: lidas uma vez por processo e divididas entre os runspaces. Em português, vazia.
+    # $null enquanto a própria carga roda (uma mensagem escrita no meio dela sai em português).
+    if ($null -ne $script:WinForgeTextTable) { return $script:WinForgeTextTable }
+    if ($script:WinForgeTextLoading) { return $null }
+
+    $script:WinForgeTextLoading = $true
+
+    try {
+        $language = Get-WinForgeLanguage
+        $key = "WinForge.Text.$language"
+        $table = [AppDomain]::CurrentDomain.GetData($key)
+
+        if ($null -eq $table) {
+            $table = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([System.StringComparer]::Ordinal)
+
+            if ($language -ne "pt") {
+                $path = Join-Path (Get-WinForgeLanguageFolder) "$language.po"
+
+                try {
+                    $table = Read-WinForgeTextCatalog -Path $path
+                }
+                catch {
+                    Write-Verbose "Tradução não lida ($path): $($_.Exception.Message)"
+                }
+            }
+
+            [AppDomain]::CurrentDomain.SetData($key, $table)
+        }
+
+        $script:WinForgeTextTable = $table
+        return $table
+    }
+    finally {
+        $script:WinForgeTextLoading = $false
+    }
+}
+
+
+function Get-WinForgeText {
+    <#
+    O texto da interface no idioma do WinForge. Como no gettext, o texto em português é a chave: em português ele volta
+    como está; em inglês e espanhol, a tradução (sem tradução, o próprio português). Os argumentos preenchem {0}, {1}...
+    e já chegam como texto ("$x", a mesma expansão que a string tinha antes). Uma tradução com marcadores errados não
+    derruba a ação: vale o modelo em português.
+    #>
+    param ([AllowEmptyString()][AllowNull()][string]$Text)
+
+    $value = $Text
+
+    if ($Text.Length -gt 0) {
+        $table = $script:WinForgeTextTable
+
+        if ($null -eq $table) { $table = Get-WinForgeTextTable }
+
+        if ($null -ne $table -and $table.Count -gt 0) {
+            $translated = $null
+
+            if ($table.TryGetValue($Text, [ref]$translated)) { $value = $translated }
+        }
+    }
+
+    if ($args.Count -eq 0) { return $value }
+
+    try {
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, $value, [object[]]$args)
+    }
+    catch [System.FormatException] {
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, $Text, [object[]]$args)
+    }
+}
+
+
+function Get-WinForgeContextText {
+    <#
+    Como Get-WinForgeText, para o texto em português que muda conforme o uso em outro idioma (o "até" de uma data e o de
+    um tamanho, por exemplo): o contexto separa as traduções, como o msgctxt do gettext. Sem tradução, o português.
+    #>
+    param (
+        [string]$Context,
+        [AllowEmptyString()][AllowNull()][string]$Text
+    )
+
+    $value = $Text
+
+    if ($Text.Length -gt 0) {
+        $table = $script:WinForgeTextTable
+
+        if ($null -eq $table) { $table = Get-WinForgeTextTable }
+
+        if ($null -ne $table -and $table.Count -gt 0) {
+            $translated = $null
+
+            if ($table.TryGetValue($Context + [char]4 + $Text, [ref]$translated)) { $value = $translated }
+        }
+    }
+
+    if ($args.Count -eq 0) { return $value }
+
+    try {
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, $value, [object[]]$args)
+    }
+    catch [System.FormatException] {
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, $Text, [object[]]$args)
+    }
+}
+
+
+function Test-WinForgeCanceledText {
+    # Se o detalhe de um resultado diz que a pessoa cancelou ("cancelado pelo usuário", "operação cancelada"), em
+    # qualquer um dos três idiomas: "cancelad" em português e espanhol, "canceled" em inglês.
+    param ([AllowEmptyString()][AllowNull()][string]$Text)
+
+    return ([string]$Text -match '(?i)cancelad|cancell?ed')
+}
+
+
+function Test-WinForgeRestartingText {
+    # Se o detalhe de um resultado diz que o PC está reiniciando (o Otimizar com um reinício pendente), em qualquer um
+    # dos três idiomas.
+    param ([AllowEmptyString()][AllowNull()][string]$Text)
+
+    return ([string]$Text -match '(?i)reiniciando|restarting')
+}
+
+
+function Get-WinForgeLanguageChoices {
+    # As opções do cartão Idioma, cada idioma escrito nele mesmo (quem não lê o atual acha o seu).
+    return @(
+        [PSCustomObject]@{ Id = "Auto"; Label = (Get-WinForgeText 'Automático') }
+        [PSCustomObject]@{ Id = "pt"; Label = "Português" }
+        [PSCustomObject]@{ Id = "en"; Label = "English" }
+        [PSCustomObject]@{ Id = "es"; Label = "Español" }
+    )
+}
+
+
+function Convert-WinForgeXamlText {
+    <#
+    Traduz os textos fixos de um XAML (Text, Content, ToolTip, Header, Title e AutomationProperties.Name) antes de a
+    janela ser montada. Os valores estão escapados para XML: são lidos sem o escape e voltam escapados.
+    #>
+    param ([Parameter(Mandatory)][string]$Xaml)
+
+    if ((Get-WinForgeLanguage) -eq "pt") { return $Xaml }
+
+    return [regex]::Replace($Xaml, '(?<attr>\b(?:Text|Content|ToolTip|Header|Title|AutomationProperties\.Name))="(?<value>[^"]*)"', {
+            param ($match)
+
+            $value = [System.Net.WebUtility]::HtmlDecode($match.Groups["value"].Value)
+
+            if ($value.Length -eq 0 -or $value.StartsWith("{")) { return $match.Value }
+
+            $translated = Get-WinForgeText $value
+            $escaped = [System.Security.SecurityElement]::Escape($translated)
+
+            return "$($match.Groups['attr'].Value)=`"$escaped`""
+        })
+}
+
+
+# ---------------------------------------------------------------------------
 # Privilégios e sessão
 # ---------------------------------------------------------------------------
 
@@ -418,6 +831,99 @@ function Test-WinForgeAdministrator {
     catch {
         return $false
     }
+}
+
+
+function Get-WinForgeCurrentUserSid {
+    # O SID da conta deste processo (S-1-5-21-...), ou "" quando não foi possível ler.
+    $identity = $null
+
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        return [string]$identity.User.Value
+    }
+    catch {
+        return ""
+    }
+    finally {
+        if ($null -ne $identity) { $identity.Dispose() }
+    }
+}
+
+
+function Get-WinForgeTokenElevationType {
+    <#
+    O tipo de elevação deste processo (TokenElevationType, do GetTokenInformation): "Full" quando ele está elevado e a
+    conta tem também uma versão sem Administrador (o UAC ligado, com uma conta de Administrador comum); "Limited" quando
+    é essa versão sem Administrador; "Default" quando não há as duas (o UAC desligado, o Administrador embutido do
+    Windows, ou uma conta sem Administrador). "" quando não foi possível ler.
+    #>
+    $identity = $null
+
+    try {
+        if (-not ("WinForge.TokenNative" -as [type])) {
+            Add-Type -Namespace WinForge -Name TokenNative -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("advapi32.dll", SetLastError = true)]
+public static extern bool GetTokenInformation(System.IntPtr token, int informationClass, out int information, int length, out int returnLength);
+'@ -ErrorAction Stop
+        }
+
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $type = 0
+        $length = 0
+
+        # 18 = TokenElevationType; a resposta é um TOKEN_ELEVATION_TYPE (1, 2 ou 3), de 4 bytes.
+        if (-not [WinForge.TokenNative]::GetTokenInformation($identity.Token, 18, [ref]$type, 4, [ref]$length)) { return "" }
+
+        switch ($type) {
+            1 { return "Default" }
+            2 { return "Full" }
+            3 { return "Limited" }
+        }
+
+        return ""
+    }
+    catch {
+        return ""
+    }
+    finally {
+        if ($null -ne $identity) { $identity.Dispose() }
+    }
+}
+
+
+function Test-WinForgeModernStandby {
+    <#
+    Se o PC usa o Modern Standby (o modelo de espera "S0 low power idle", da maioria dos notebooks recentes): o campo AoAc
+    de SYSTEM_POWER_CAPABILITIES, do GetPwrCapabilities. Nesses PCs, a Microsoft só permite o plano Equilibrado (ou os
+    derivados dele). A leitura é guardada para a sessão; sem conseguir ler (outro sistema, a chamada falhou), $false: nada
+    fica escondido por causa de uma leitura que não aconteceu.
+    #>
+    if ($null -ne $script:WinForgeModernStandby) { return [bool]$script:WinForgeModernStandby }
+
+    $result = $false
+
+    try {
+        if (-not ("WinForge.PowerCapabilitiesNative" -as [type])) {
+            Add-Type -Namespace WinForge -Name PowerCapabilitiesNative -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("powrprof.dll", SetLastError = true)]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.U1)]
+public static extern bool GetPwrCapabilities([System.Runtime.InteropServices.Out] byte[] capabilities);
+'@ -ErrorAction Stop
+        }
+
+        # A estrutura tem 76 bytes; o buffer sobra. Os 20 campos antes do AoAc têm um byte cada (BOOLEAN e BYTE), então ele é
+        # o byte 20.
+        $buffer = New-Object byte[] 128
+
+        if ([WinForge.PowerCapabilitiesNative]::GetPwrCapabilities($buffer)) { $result = ($buffer[20] -ne 0) }
+    }
+    catch {
+        Write-Verbose "Modern Standby: $($_.Exception.Message)"
+    }
+
+    $script:WinForgeModernStandby = $result
+    return $result
 }
 
 
@@ -461,15 +967,15 @@ function Restart-WinForgeAsAdministrator {
     Remove-Item -Path Env:WINFORGE_FROM_CMD -ErrorAction SilentlyContinue
 
     Write-Host ""
-    Write-Host "  O WinForge precisa da permissão de Administrador para cuidar do PC." -ForegroundColor Yellow
-    Write-Host "  Clique em Sim no aviso do Windows: o WinForge continua numa janela nova." -ForegroundColor Cyan
+    Write-Host (Get-WinForgeText '  O WinForge precisa da permissão de Administrador para cuidar do PC.') -ForegroundColor Yellow
+    Write-Host (Get-WinForgeText '  Clique em Sim no aviso do Windows: o WinForge continua numa janela nova.') -ForegroundColor Cyan
     Write-Host ""
 
     Start-Sleep -Seconds 2
 
     if (-not (Test-Path -LiteralPath $ScriptPath)) {
-        Write-Host "  Não foi possível identificar o caminho do script principal." -ForegroundColor Red
-        Write-Host "  Execute o WinForge a partir de um arquivo .ps1 salvo." -ForegroundColor Yellow
+        Write-Host (Get-WinForgeText '  Não foi possível identificar o caminho do script principal.') -ForegroundColor Red
+        Write-Host (Get-WinForgeText '  Execute o WinForge a partir de um arquivo .ps1 salvo.') -ForegroundColor Yellow
         Write-Host ""
         if (-not $fromCmd) { Wait-WinForgeKey }
         exit 1
@@ -494,8 +1000,8 @@ function Restart-WinForgeAsAdministrator {
     catch {
         # UAC recusado ou bloqueado por política: não há o que fazer além de avisar. O código de saída diz que nada foi
         # feito (um script que chamou o WinForge-Console.cmd não deve achar que o relatório saiu).
-        Write-Host "  Sem a permissão de Administrador, o WinForge não pode continuar no terminal." -ForegroundColor Red
-        Write-Host "  Abra o WinForge-Console.cmd de novo e clique em Sim no aviso do Windows." -ForegroundColor Yellow
+        Write-Host (Get-WinForgeText '  Sem a permissão de Administrador, o WinForge não pode continuar no terminal.') -ForegroundColor Red
+        Write-Host (Get-WinForgeText '  Abra o WinForge-Console.cmd de novo e clique em Sim no aviso do Windows.') -ForegroundColor Yellow
         Write-Host ""
         if (-not $fromCmd) { Wait-WinForgeKey }
         exit 1
@@ -513,11 +1019,11 @@ function Get-WinForgeSessionShellUser {
     #>
     try {
         $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-        $shell = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'explorer.exe' AND SessionId = $sessionId" -ErrorAction Stop) | Select-Object -First 1
+        $shell = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'explorer.exe' AND SessionId = $sessionId" -OperationTimeoutSec 15 -ErrorAction Stop) | Select-Object -First 1
 
         if ($null -eq $shell) { return "" }
 
-        $owner = Invoke-CimMethod -InputObject $shell -MethodName GetOwner -ErrorAction Stop
+        $owner = Invoke-CimMethod -InputObject $shell -MethodName GetOwner -OperationTimeoutSec 15 -ErrorAction Stop
         $user = [string](Get-WinForgeJsonValue -Object $owner -Name "User" -Default "")
         $domain = [string](Get-WinForgeJsonValue -Object $owner -Name "Domain" -Default "")
 
@@ -539,7 +1045,7 @@ function Get-WinForgeInteractiveUser {
     if (-not [string]::IsNullOrWhiteSpace($shellUser)) { return $shellUser }
 
     try {
-        $interactiveUser = (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).UserName
+        $interactiveUser = (Get-CimInstance Win32_ComputerSystem -OperationTimeoutSec 15 -ErrorAction Stop).UserName
 
         if (-not [string]::IsNullOrWhiteSpace($interactiveUser)) {
             return $interactiveUser.Trim()
@@ -579,7 +1085,7 @@ function Test-WinForgeLaptop {
     $desktopTypes = @(3, 4, 5, 6, 7, 13, 15, 16, 17, 23, 24, 25, 28, 29, 34, 35, 36)
 
     try {
-        $chassis = @((Get-CimInstance Win32_SystemEnclosure -ErrorAction Stop).ChassisTypes | Where-Object { $null -ne $_ } | ForEach-Object { [int]$_ })
+        $chassis = @((Get-CimInstance Win32_SystemEnclosure -OperationTimeoutSec 15 -ErrorAction Stop).ChassisTypes | Where-Object { $null -ne $_ } | ForEach-Object { [int]$_ })
 
         if (@($chassis | Where-Object { $portableTypes -contains $_ }).Count -gt 0) { return $true }
         if (@($chassis | Where-Object { $desktopTypes -contains $_ }).Count -gt 0) { return $false }
@@ -589,7 +1095,7 @@ function Test-WinForgeLaptop {
     }
 
     try {
-        return (@(Get-CimInstance Win32_Battery -ErrorAction Stop).Count -gt 0)
+        return (@(Get-CimInstance Win32_Battery -OperationTimeoutSec 15 -ErrorAction Stop).Count -gt 0)
     }
     catch {
         # Sem informação: assume desktop.
@@ -602,7 +1108,7 @@ function Test-WinForgeOnBattery {
     # $true quando o notebook está funcionando na bateria (BatteryStatus 1 = descarregando, 4 = baixa, 5 = crítica).
     # Desktop, tomada conectada e falha na consulta dão $false: na dúvida, o WinForge não atrapalha o usuário.
     try {
-        $batteries = @(Get-CimInstance Win32_Battery -ErrorAction Stop)
+        $batteries = @(Get-CimInstance Win32_Battery -OperationTimeoutSec 15 -ErrorAction Stop)
         return (@($batteries | Where-Object { [int]$_.BatteryStatus -in 1, 4, 5 }).Count -gt 0)
     }
     catch {
@@ -727,7 +1233,7 @@ function Get-WinForgeWindowsBuild {
     if ($script:WinForgeWindowsBuild -gt 0) { return $script:WinForgeWindowsBuild }
 
     try {
-        $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -OperationTimeoutSec 15 -ErrorAction Stop
         $build = [int]$operatingSystem.BuildNumber
     }
     catch {
@@ -789,7 +1295,7 @@ function Get-WinForgeSessionInfo {
     $caption = ""
 
     try {
-        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $os = Get-CimInstance Win32_OperatingSystem -OperationTimeoutSec 15 -ErrorAction Stop
         $build = [int]$os.BuildNumber
         $windowsLabel = if ($build -ge 22000) { "Windows 11" } else { "Windows 10" }
         $caption = Get-WinForgeWindowsName -Caption ([string](Get-WinForgeJsonValue -Object $os -Name "Caption" -Default "")) -Build $build
@@ -961,8 +1467,8 @@ function Start-WinForgeLogging {
         $gui = Get-WinForgeGuiHostUI
 
         if ($null -ne $gui -and $null -ne $gui.PSObject.Methods["OpenLog"]) {
-            $header = "WinForge Build $($script:WinForgeBuild) - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $env:COMPUTERNAME - PowerShell $($PSVersionTable.PSVersion)"
-            if (-not $gui.OpenLog($script:WinForgeLogPath, $header)) { throw "o log não pôde ser aberto" }
+            $header = (Get-WinForgeText 'WinForge Build {0} - {1} - {2} - PowerShell {3}' "$($script:WinForgeBuild)" "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" "$env:COMPUTERNAME" "$($PSVersionTable.PSVersion)")
+            if (-not $gui.OpenLog($script:WinForgeLogPath, $header)) { throw (Get-WinForgeText 'o log não pôde ser aberto') }
             $script:WinForgeLogMode = "Gui"
         }
         else {
@@ -1002,6 +1508,113 @@ function Stop-WinForgeLogging {
 
 function Get-WinForgeLogPath {
     return $script:WinForgeLogPath
+}
+
+
+function Write-WinForgeSecret {
+    <#
+    Mostra um segredo na tela (a senha de uma rede Wi-Fi, a chave de recuperação do BitLocker) sem que ele vá para o log,
+    como uma linha "rótulo : valor" (Write-WinForgeKeyValue), que o resumo da janela mostra. Na janela, o log grava o
+    rótulo com "[fora do log]" no lugar do valor; no menu de texto, o log é pausado durante a linha.
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [int]$LabelWidth = 24
+    )
+
+    $padded = $Label.PadRight($LabelWidth)
+    $gui = Get-WinForgeGuiHostUI
+
+    if ($null -ne $gui -and $null -ne $gui.PSObject.Methods["WriteSecretValue"]) {
+        $gui.WriteSecretValue($padded, $Value, [ConsoleColor]::Cyan, (Get-WinForgeText '[fora do log]'))
+        return
+    }
+
+    $paused = $false
+
+    if ($script:WinForgeLoggingActive -and $script:WinForgeLogMode -eq "Transcript") {
+        try { [void](Stop-Transcript); $paused = $true } catch { $paused = $false }
+    }
+
+    Write-Host "  " -NoNewline
+    Write-Host $padded -ForegroundColor DarkGray -NoNewline
+    Write-Host " : " -ForegroundColor DarkGray -NoNewline
+    Write-Host $Value -ForegroundColor Cyan
+
+    if ($paused) {
+        try { [void](Start-Transcript -Path $script:WinForgeLogPath -Append) } catch { $script:WinForgeLoggingActive = $false }
+    }
+}
+
+
+function Add-WinForgeOpenTime {
+    <#
+    Anota em logs\abertura.log quanto a janela (ou o menu) levou para abrir: a data, a versão, os segundos e se abriu como
+    Administrador. Ficam as 100 aberturas mais recentes. Serve para medir a abertura num PC de verdade; uma falha aqui não
+    muda nada.
+    #>
+    param (
+        [Parameter(Mandatory)][double]$Seconds,
+        [string]$Kind = "Gui"
+    )
+
+    try {
+        $folder = Join-Path (Get-WinForgeDataPath) "logs"
+        if (-not (Test-Path -LiteralPath $folder)) { [void](New-Item -ItemType Directory -Path $folder -Force) }
+
+        $path = Join-Path $folder "abertura.log"
+        $culture = [System.Globalization.CultureInfo]::InvariantCulture
+        $line = "{0}  Build {1}  {2}  {3} s  {4}" -f (Get-Date).ToString("yyyy-MM-dd HH:mm:ss", $culture), $script:WinForgeBuild, $Kind, $Seconds.ToString("0.00", $culture), $(if (Test-WinForgeAdministrator) { "admin" } else { "user" })
+        $lines = @()
+
+        if (Test-Path -LiteralPath $path -PathType Leaf) { $lines = @([System.IO.File]::ReadAllLines($path) | Select-Object -Last 99) }
+
+        [System.IO.File]::WriteAllLines($path, [string[]](@($lines) + @($line)))
+    }
+    catch {
+        Write-Verbose "Tempo de abertura: $($_.Exception.Message)"
+    }
+}
+
+
+function Add-WinForgeWindowProblem {
+    <#
+    Anota em logs\janela.log uma parte da janela que não pôde ser mostrada: a data, a versão, a parte (Part) e o motivo
+    (Reason, os erros do momento, um por linha). A janela roda sem console, e sem isto a falha some sem deixar rastro; o
+    Pacote de suporte leva o arquivo. Ficam as 200 linhas mais recentes. Uma falha aqui não muda nada.
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Part,
+        [string[]]$Reason = @()
+    )
+
+    try {
+        $folder = Join-Path (Get-WinForgeDataPath) "logs"
+        if (-not (Test-Path -LiteralPath $folder)) { [void](New-Item -ItemType Directory -Path $folder -Force) }
+
+        $path = Join-Path $folder "janela.log"
+        $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+        $new = @("$stamp  Build $($script:WinForgeBuild)  $Part")
+
+        # Cada motivo numa linha só (um erro do .NET pode trazer quebras de linha), com um limite por linha.
+        foreach ($text in @($Reason | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 10)) {
+            $line = ([regex]::Replace([string]$text, '[\p{Cc}\p{Zl}\p{Zp}]+', ' ')).Trim()
+            if ($line.Length -gt 500) { $line = $line.Substring(0, 500) }
+            $new += "    $line"
+        }
+
+        $lines = @()
+        if (Test-Path -LiteralPath $path -PathType Leaf) { $lines = @([System.IO.File]::ReadAllLines($path)) }
+
+        $all = @($lines) + $new
+        if ($all.Count -gt 200) { $all = @($all | Select-Object -Last 200) }
+
+        [System.IO.File]::WriteAllLines($path, [string[]]$all)
+    }
+    catch {
+        Write-Verbose "Log da janela: $($_.Exception.Message)"
+    }
 }
 
 
@@ -1049,7 +1662,42 @@ function Get-WinForgeRegistryValueOrNull {
 }
 
 
+function ConvertTo-WinForgeRegistryDWord {
+    <#
+    O número de um REG_DWORD como o PowerShell 5.1 grava: um Int32. O REG_DWORD são 32 bits sem sinal, e o provedor do
+    registro devolve acima de 2.147.483.647 um UInt32 (as cores do Windows, com o alfa em FF, passam disso): o mesmo
+    padrão de bits vira um Int32 negativo, e o Windows guarda os mesmos 4 bytes. Aceita de -2.147.483.648 a
+    4.294.967.295; fora disso, erro.
+    #>
+    param ([Parameter(Mandatory)]$Value)
+
+    $number = [long]$Value
+
+    if ($number -lt [int]::MinValue -or $number -gt [long][uint32]::MaxValue) {
+        throw (Get-WinForgeText 'o valor {0} não cabe num DWORD do registro' "$Value")
+    }
+
+    if ($number -gt [int]::MaxValue) { return [int]($number - 4294967296) }
+
+    return [int]$number
+}
+
+
+function ConvertTo-WinForgeRegistryQWord {
+    # O número de um REG_QWORD como o PowerShell grava (Int64): acima de 9.223.372.036.854.775.807, o UInt64 que o provedor
+    # do registro devolve vira o Int64 com os mesmos 8 bytes.
+    param ([Parameter(Mandatory)]$Value)
+
+    if ($Value -is [uint64] -and $Value -gt [uint64][long]::MaxValue) {
+        return [BitConverter]::ToInt64([BitConverter]::GetBytes([uint64]$Value), 0)
+    }
+
+    return [long]$Value
+}
+
+
 function Set-WinForgeRegistryDWord {
+    # Value: de -2.147.483.648 a 4.294.967.295, o jeito que o provedor do registro lê (ConvertTo-WinForgeRegistryDWord).
     param (
         [Parameter(Mandatory)]
         [string]$Path,
@@ -1058,8 +1706,10 @@ function Set-WinForgeRegistryDWord {
         [string]$Name,
 
         [Parameter(Mandatory)]
-        [int]$Value
+        $Value
     )
+
+    $data = ConvertTo-WinForgeRegistryDWord -Value $Value
 
     # -ErrorAction Stop: com a preferência padrão (Continue), um "acesso negado" só escreveria um erro e quem chamou
     # seguiria como se o valor tivesse sido gravado (anotando no Histórico e guardando backup de algo que não mudou).
@@ -1067,7 +1717,7 @@ function Set-WinForgeRegistryDWord {
         [void](New-Item -Path $Path -Force -ErrorAction Stop)
     }
 
-    [void](New-ItemProperty -LiteralPath $Path -Name $Name -Value $Value -PropertyType DWord -Force -ErrorAction Stop)
+    [void](New-ItemProperty -LiteralPath $Path -Name $Name -Value $data -PropertyType DWord -Force -ErrorAction Stop)
 }
 
 
@@ -1132,10 +1782,10 @@ function Set-WinForgeRegistryValue {
     )
 
     if ($Kind -eq "DWord") {
-        $data = [int]$Value
+        $data = ConvertTo-WinForgeRegistryDWord -Value $Value
     }
     elseif ($Kind -eq "QWord") {
-        $data = [int64]$Value
+        $data = ConvertTo-WinForgeRegistryQWord -Value $Value
     }
     elseif ($Kind -eq "MultiString") {
         $data = [string[]]@($Value | Where-Object { $null -ne $_ })
@@ -1271,10 +1921,20 @@ $script:WinForgeNumberFormat = $null
 
 
 function Get-WinForgeNumberFormat {
+    # Os separadores do idioma do WinForge: vírgula decimal e ponto de milhar em português e espanhol ("4,5", "12.345");
+    # ponto decimal e vírgula de milhar em inglês ("4.5", "12,345").
     if ($null -eq $script:WinForgeNumberFormat) {
         $format = [System.Globalization.NumberFormatInfo]::InvariantInfo.Clone()
-        $format.NumberDecimalSeparator = ","
-        $format.NumberGroupSeparator = "."
+
+        if ((Get-WinForgeLanguage) -eq "en") {
+            $format.NumberDecimalSeparator = "."
+            $format.NumberGroupSeparator = ","
+        }
+        else {
+            $format.NumberDecimalSeparator = ","
+            $format.NumberGroupSeparator = "."
+        }
+
         $script:WinForgeNumberFormat = $format
     }
 
@@ -1353,13 +2013,15 @@ function Format-WinForgeNumber {
 
 function Format-WinForgeDateTime {
     # "21/10/2026 21:40" (ou outro padrão, como "dd/MM"), sempre com barras e dois pontos: num padrão de data, "/" e ":"
-    # viram os separadores do idioma do Windows (pontos no alemão, por exemplo), e o texto em volta é em português.
+    # viram os separadores do idioma do Windows (pontos no alemão, por exemplo), e o texto em volta é o do WinForge. O
+    # padrão é traduzido como um texto da interface ("dd/MM/yyyy" vira "MM/dd/yyyy" em inglês), e os nomes (AM/PM) são
+    # os da cultura invariante.
     param (
         [Parameter(Mandatory)][datetime]$When,
         [string]$Pattern = "dd/MM/yyyy HH:mm"
     )
 
-    return $When.ToString($Pattern, [System.Globalization.CultureInfo]::InvariantCulture)
+    return $When.ToString((Get-WinForgeText $Pattern), [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
 
@@ -1377,7 +2039,8 @@ function Format-WinForgeCount {
 
 
 function Join-WinForgeList {
-    # "C:", "C: e D:", "C:, D: e E:": uma enumeração como se escreve em português.
+    # "C:", "C: e D:", "C:, D: e E:": uma enumeração como se escreve no idioma do WinForge ("C: and D:", "C: y D:"). Em
+    # espanhol, o "y" vira "e" antes de palavra com som de i ("Chrome e Internet Explorer").
     param (
         [AllowEmptyCollection()][string[]]$Items = @()
     )
@@ -1386,7 +2049,12 @@ function Join-WinForgeList {
 
     if ($list.Count -le 1) { return ($list -join "") }
 
-    return (($list[0..($list.Count - 2)] -join ", ") + " e " + $list[$list.Count - 1])
+    $head = $list[0..($list.Count - 2)] -join ", "
+    $last = $list[$list.Count - 1]
+
+    if ((Get-WinForgeLanguage) -eq "es" -and $last -match '^(?i)h?[ií](?![aeoáéó])') { return "$head e $last" }
+
+    return (Get-WinForgeText '{0} e {1}' "$head" "$last")
 }
 
 
@@ -1402,7 +2070,7 @@ function Join-WinForgeShortList {
 
     if ($list.Count -le $Limit) { return (Join-WinForgeList -Items $list) }
 
-    return "$($list[0..2] -join ', ') e mais $(Format-WinForgeNumber -Value ($list.Count - 3))"
+    return (Get-WinForgeText '{0} e mais {1}' "$($list[0..2] -join ', ')" "$(Format-WinForgeNumber -Value ($list.Count - 3))")
 }
 
 
@@ -1417,10 +2085,10 @@ function Get-WinForgeSelectionQuestion {
     )
 
     if ($Names.Count -le $Limit) {
-        return "$Verb $(Join-WinForgeList -Items $Names)?"
+        return (Get-WinForgeText '{0} {1}?' "$Verb" "$(Join-WinForgeList -Items $Names)")
     }
 
-    return "$Verb os $($Names.Count) $Many marcados?"
+    return (Get-WinForgeText '{0} os {1} {2} marcados?' "$Verb" "$($Names.Count)" "$Many")
 }
 
 
@@ -1462,34 +2130,34 @@ function Format-WinForgeRelativeTime {
 
     $span = $Now - $When
 
-    if ($span.TotalDays -le -1) { return "com data no futuro" }
+    if ($span.TotalDays -le -1) { return (Get-WinForgeText 'com data no futuro') }
 
-    if ($span.TotalMinutes -lt 1) { return "agora há pouco" }
+    if ($span.TotalMinutes -lt 1) { return (Get-WinForgeText 'agora há pouco') }
 
     if ($span.TotalHours -lt 1) {
         $amount = [int][Math]::Floor($span.TotalMinutes)
-        $unit = @("minuto", "minutos")
+        $unit = @((Get-WinForgeText 'minuto'), (Get-WinForgeText 'minutos'))
     }
     elseif ($span.TotalDays -lt 1) {
         $amount = [int][Math]::Floor($span.TotalHours)
-        $unit = @("hora", "horas")
+        $unit = @((Get-WinForgeText 'hora'), (Get-WinForgeText 'horas'))
     }
     elseif ($span.TotalDays -lt 30) {
         $amount = [int][Math]::Floor($span.TotalDays)
-        $unit = @("dia", "dias")
+        $unit = @((Get-WinForgeText 'dia'), (Get-WinForgeText 'dias'))
     }
     elseif ($span.TotalDays -lt 365) {
         $amount = [int][Math]::Floor($span.TotalDays / 30)
-        $unit = @("mês", "meses")
+        $unit = @((Get-WinForgeText 'mês'), (Get-WinForgeText 'meses'))
     }
     else {
         $amount = [int][Math]::Floor($span.TotalDays / 365)
-        $unit = @("ano", "anos")
+        $unit = @((Get-WinForgeText 'ano'), (Get-WinForgeText 'anos'))
     }
 
     $word = if ($amount -eq 1) { $unit[0] } else { $unit[1] }
 
-    return "há $amount $word"
+    return (Get-WinForgeText 'há {0} {1}' "$amount" "$word")
 }
 
 
@@ -1528,7 +2196,7 @@ function ConvertTo-WinForgeSelectionIndexes {
     }
 
     if ($Maximum -lt 1) {
-        throw "Não há itens para escolher."
+        throw (Get-WinForgeText 'Não há itens para escolher.')
     }
 
     # "3 - 5" vira "3-5" antes de separar por espaços.
@@ -1547,7 +2215,7 @@ function ConvertTo-WinForgeSelectionIndexes {
             $last = [int]$Matches[2]
 
             if ($first -gt $last) {
-                throw "O intervalo '$part' está invertido."
+                throw (Get-WinForgeText 'O intervalo ''{0}'' está invertido.' "$part")
             }
 
             $values = @($first, $last)
@@ -1558,12 +2226,12 @@ function ConvertTo-WinForgeSelectionIndexes {
             $expand = $false
         }
         else {
-            throw "'$part' não é um número nem um intervalo válido."
+            throw (Get-WinForgeText '''{0}'' não é um número nem um intervalo válido.' "$part")
         }
 
         foreach ($value in $values) {
             if ($value -lt 1 -or $value -gt $Maximum) {
-                throw "O número $value está fora da lista (1 a $Maximum)."
+                throw (Get-WinForgeText 'O número {0} está fora da lista (1 a {1}).' "$value" "$Maximum")
             }
         }
 
@@ -1607,7 +2275,7 @@ function Invoke-WinForgeNative {
     # Um programa que não existe não pode parecer um sucesso: com $ErrorActionPreference = Continue (o padrão da janela
     # e do console), o "não reconhecido" do PowerShell não interrompe a função e o código de saída ficaria 0.
     if ($null -eq (Get-Command -Name $FilePath -ErrorAction SilentlyContinue)) {
-        throw "O programa '$FilePath' não foi encontrado neste PC."
+        throw (Get-WinForgeText 'O programa ''{0}'' não foi encontrado neste PC.' "$FilePath")
     }
 
     # Sem isto, o código de uma chamada anterior pareceria ser o deste programa se ele nem chegasse a definir um.
@@ -1630,7 +2298,7 @@ function Invoke-WinForgeNative {
     $exitCode = $LASTEXITCODE
 
     if (-not $IgnoreExitCode -and $null -ne $exitCode -and $exitCode -ne 0) {
-        throw "Comando '$FilePath $($Arguments -join ' ')' finalizou com código $exitCode."
+        throw (Get-WinForgeText 'Comando ''{0} {1}'' finalizou com código {2}.' "$FilePath" "$($Arguments -join ' ')" "$exitCode")
     }
 
     if ($PassThru) {
@@ -1642,7 +2310,7 @@ function Invoke-WinForgeNative {
 function Get-WinForgeProgressPercent {
     <#
     O percentual de uma linha de progresso do DISM ("[====    25.0%    ====]"), do SFC ("Verification 25% complete."
-    / "Verificação 25% concluída.") ou do winget ("  ████▒▒▒▒  40%" e "  ████▒▒▒▒  512 KB / 1.50 MB"), ou $null quando a
+    / "Verificação 25% concluída." / "Se completó la comprobación de 25%.") ou do winget ("  ████▒▒▒▒  40%" e "  ████▒▒▒▒  512 KB / 1.50 MB"), ou $null quando a
     linha é outra coisa. Reconhece só esses formatos: o que não for reconhecido continua aparecendo inteiro.
     #>
     param ([string]$Line)
@@ -1655,6 +2323,10 @@ function Get-WinForgeProgressPercent {
         $number = $Matches[1]
     }
     elseif ($Line -match '^\s*[^0-9%]{1,60}?([0-9]{1,3})%\s+(?:complete|completo|conclu\S*|done)\.?\s*$') {
+        $number = $Matches[1]
+    }
+    elseif ($Line -match '^\s*Se complet\S*\s+la\s+comprobaci\S*\s+de\s+([0-9]{1,3})\s?%\.?\s*$') {
+        # O SFC em espanhol: "Se completó la comprobación de 25%."
         $number = $Matches[1]
     }
     elseif ($Line -match '^[\s\x08]*[\u2588\u2593\u2592\u2591]+[\s\x08]+([0-9]{1,3})%\s*$') {
@@ -1749,7 +2421,7 @@ function Invoke-WinForgeCapture {
         [string]$ProgressActivity = "",
 
         # O que vem depois do percentual no texto da barra.
-        [string]$ProgressStatus = "não feche o WinForge até terminar"
+        [string]$ProgressStatus = (Get-WinForgeText 'não feche o WinForge até terminar')
     )
 
     $lines = New-Object System.Collections.Generic.List[string]
@@ -1758,7 +2430,7 @@ function Invoke-WinForgeCapture {
     # Um programa que não existe não pode parecer um sucesso: com $ErrorActionPreference = Continue (o padrão da janela
     # e do console), o "não reconhecido" do PowerShell não interrompe a função e o código de saída ficaria 0.
     if ($null -eq (Get-Command -Name $FilePath -ErrorAction SilentlyContinue)) {
-        throw "O programa '$FilePath' não foi encontrado neste PC."
+        throw (Get-WinForgeText 'O programa ''{0}'' não foi encontrado neste PC.' "$FilePath")
     }
 
     $global:LASTEXITCODE = 0
@@ -1789,86 +2461,209 @@ function Invoke-WinForgeCapture {
 }
 
 
+# ---------------------------------------------------------------------------
+# Exclusão segura
+# ---------------------------------------------------------------------------
+
+function Remove-WinForgeItem {
+    <#
+    Remove um arquivo ou pasta. Atalhos de pasta (junção/link simbólico) são removidos como atalho, sem tocar no
+    conteúdo de destino: o Windows PowerShell 5.1 pode seguir o link em Remove-Item -Recurse e apagar o que está fora
+    da pasta limpa. Em pastas, apaga o que for possível e lança erro se algum item continuar em uso.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+
+    if (-not $item.PSIsContainer) {
+        if ($item.IsReadOnly) {
+            $item.IsReadOnly = $false
+        }
+
+        $item.Delete()
+        return
+    }
+
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $item.Delete()
+        return
+    }
+
+    $failed = $false
+
+    foreach ($child in @($item.EnumerateFileSystemInfos())) {
+        try {
+            Remove-WinForgeItem -Path $child.FullName
+        }
+        catch {
+            $failed = $true
+        }
+    }
+
+    if ($failed) {
+        throw (Get-WinForgeText 'Há itens em uso em ''{0}''.' "$($item.Name)")
+    }
+
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReadOnly) -ne 0) {
+        $item.Attributes = $item.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly)
+    }
+
+    $item.Delete()
+}
+
+
+function Remove-WinForgeFolder {
+    <#
+    Apaga uma pasta do próprio WinForge (temporária, de dados, da atualização) com Remove-WinForgeItem: um atalho de pasta
+    lá dentro sai como atalho, sem levar o que está do outro lado. O Remove-Item -Recurse do Windows PowerShell 5.1 segue
+    junções e apagaria o conteúdo de destino, o que, com o WinForge elevado, alcançaria pastas do sistema. Pasta ausente
+    não é erro. Com -Quiet, o que não pôde ser apagado fica para trás sem erro (para limpezas de fim de ação).
+    #>
+    param (
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Path,
+        [switch]$Quiet
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) { return }
+
+    try {
+        Remove-WinForgeItem -Path $Path
+    }
+    catch {
+        if (-not $Quiet) { throw }
+        Write-Verbose "Pasta não apagada ($Path): $($_.Exception.Message)"
+    }
+}
+
+
 function Get-WinForgePathStats {
     <#
     Percorre um arquivo ou pasta sem seguir atalhos de pasta (junções e links simbólicos), que poderiam levar a
     outras pastas, a ciclos ou a contar duas vezes o mesmo conteúdo. Devolve Size (bytes), Files e Newest (data
     de alteração mais recente). Itens ilegíveis são ignorados: o resultado é uma estimativa.
     -ExcludeShellMetadata ignora desktop.ini e Thumbs.db, que não são conteúdo do usuário.
+    A soma fica em variáveis locais, sem chamar um bloco por arquivo: Analisar uso de espaço passa por cada arquivo do
+    perfil, e um bloco chamado a cada um, somando nas propriedades de um objeto, deixava a soma cinco vezes mais lenta.
     #>
     param (
         [string]$Path,
         [switch]$ExcludeShellMetadata
     )
 
-    $stats = [PSCustomObject]@{
-        Size   = [int64]0
-        Files  = [int64]0
-        Newest = [datetime]::MinValue
-    }
+    $size = [int64]0
+    $files = [int64]0
+    $newest = [datetime]::MinValue
 
-    $addFile = {
-        param ($file)
+    if (-not [string]::IsNullOrWhiteSpace($Path) -and (Test-Path -LiteralPath $Path)) {
+        try {
+            $root = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
 
-        if ($ExcludeShellMetadata -and $file.Name -in @("desktop.ini", "Thumbs.db")) {
-            return
-        }
+            if (-not $root.PSIsContainer) {
+                if (-not ($ExcludeShellMetadata -and ($root.Name -eq "desktop.ini" -or $root.Name -eq "Thumbs.db"))) {
+                    $size = [int64]$root.Length
+                    $files = [int64]1
+                    $newest = $root.LastWriteTime
+                }
+            }
+            else {
+                $pending = New-Object System.Collections.Generic.Stack[string]
+                $pending.Push($root.FullName)
 
-        $stats.Size += [int64]$file.Length
-        $stats.Files++
+                while ($pending.Count -gt 0) {
+                    $current = $pending.Pop()
 
-        if ($file.LastWriteTime -gt $stats.Newest) {
-            $stats.Newest = $file.LastWriteTime
-        }
-    }
-
-    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
-        return $stats
-    }
-
-    try {
-        $root = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-
-        if (-not $root.PSIsContainer) {
-            & $addFile $root
-            return $stats
-        }
-
-        $pending = New-Object System.Collections.Generic.Stack[string]
-        $pending.Push($root.FullName)
-
-        while ($pending.Count -gt 0) {
-            $current = $pending.Pop()
-
-            try {
-                $directory = New-Object System.IO.DirectoryInfo -ArgumentList $current
-
-                foreach ($entry in $directory.EnumerateFileSystemInfos()) {
                     try {
-                        if ($entry -is [System.IO.DirectoryInfo]) {
-                            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
-                                $pending.Push($entry.FullName)
+                        foreach ($entry in (New-Object System.IO.DirectoryInfo -ArgumentList $current).EnumerateFileSystemInfos()) {
+                            try {
+                                if ($entry -is [System.IO.DirectoryInfo]) {
+                                    if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
+                                        $pending.Push($entry.FullName)
+                                    }
+
+                                    continue
+                                }
+
+                                if ($ExcludeShellMetadata -and ($entry.Name -eq "desktop.ini" -or $entry.Name -eq "Thumbs.db")) { continue }
+
+                                $size += $entry.Length
+                                $files++
+
+                                $written = $entry.LastWriteTime
+                                if ($written -gt $newest) { $newest = $written }
                             }
-                        }
-                        else {
-                            & $addFile $entry
+                            catch {
+                                # Item removido ou inacessível durante a leitura.
+                            }
                         }
                     }
                     catch {
-                        # Item removido ou inacessível durante a leitura.
+                        # Pasta inacessível: segue com as demais.
                     }
                 }
             }
-            catch {
-                # Pasta inacessível: segue com as demais.
-            }
+        }
+        catch {
+            # Caminho inacessível: devolve o que foi somado.
         }
     }
-    catch {
-        # Caminho inacessível: devolve o que foi somado.
+
+    return [PSCustomObject]@{
+        Size   = $size
+        Files  = $files
+        Newest = $newest
+    }
+}
+
+
+# Quanto um comando do Windows feito sobre o WMI pode esperar a resposta (Invoke-WinForgeCimCommand). Mais que os 15
+# segundos das consultas diretas ao WMI: a primeira leitura dos discos pode precisar ligar o serviço de armazenamento, o
+# que num HD lento demora, e um prazo curto demais diria "não foi possível ler" num PC só lento. A leitura dos discos
+# físicos pelo WMI (Diagnostics.psm1) usa o mesmo número, escrito na chamada.
+$script:WinForgeCimTimeoutSec = 60
+
+
+function Invoke-WinForgeCimCommand {
+    <#
+    Um comando do Windows feito sobre o WMI (os dos módulos Defender, NetSecurity, Storage e PnpDevice: Get-MpComputerStatus,
+    Get-NetFirewallProfile, Get-Partition, Get-PnpDevice...) com prazo. Esses comandos não têm o -OperationTimeoutSec das
+    consultas diretas ao WMI, e um WMI com defeito, um disco morrendo ou o serviço do Defender travado os deixam parados
+    sem fim. A consulta roda como um trabalho do próprio processo (-AsJob, que esses comandos têm); passado o prazo, ela é
+    largada com um erro, como uma consulta ao WMI sem resposta, e o Parar também a interrompe. Um comando sem -AsJob roda
+    direto.
+    O Invoke-WinForgeInBackground não serve aqui: num runspace novo, o módulo do comando seria carregado de novo a cada
+    consulta, e o resultado voltaria com os tipos daquele runspace, e não com os deste.
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Name,
+
+        [hashtable]$Parameters = @{}
+    )
+
+    $command = Get-Command -Name $Name -ErrorAction Stop
+
+    if (-not $command.Parameters.ContainsKey("AsJob")) {
+        return @(& $command @Parameters -ErrorAction Stop)
     }
 
-    return $stats
+    $job = & $command @Parameters -AsJob -ErrorAction Stop
+
+    if (-not (Wait-Job -Job $job -Timeout $script:WinForgeCimTimeoutSec)) {
+        # Parar o trabalho esperando por ele travaria do mesmo jeito: o pedido de parada vai sem espera, e o trabalho
+        # termina sozinho (ou junto com o WinForge).
+        # O erro é de tempo esgotado (TimeoutException): quem chama pode não tentar de novo outra consulta que travaria igual.
+        try { [void]$job.StopJobAsync() } catch { Write-Verbose "A consulta $Name não aceitou o pedido de parada." }
+        throw (New-Object System.TimeoutException (Get-WinForgeText 'o Windows não respondeu em {0} segundos' "$script:WinForgeCimTimeoutSec"))
+    }
+
+    try {
+        return @(Receive-Job -Job $job -ErrorAction Stop)
+    }
+    finally {
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    }
 }
 
 
@@ -1879,6 +2674,8 @@ function Invoke-WinForgeInBackground {
     espera aqui continua interrompível, e um bloco que não termina a tempo é abandonado.
     O bloco roda num runspace novo e não enxerga as funções do WinForge; os valores entram por -ArgumentList (param).
     Devolve Completed, TimedOut, Output (o que o bloco escreveu) e Error (texto do primeiro erro, ou vazio).
+    Quem tem outro trabalho a fazer enquanto o bloco roda usa as duas metades: Start-WinForgeInBackground e
+    Receive-WinForgeInBackground.
     #>
     param (
         [Parameter(Mandatory)]
@@ -1890,8 +2687,27 @@ function Invoke-WinForgeInBackground {
         [int]$TimeoutSeconds = 60
     )
 
+    $task = Start-WinForgeInBackground -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
+
+    return (Receive-WinForgeInBackground -Task $task -TimeoutSeconds $TimeoutSeconds)
+}
+
+
+function Start-WinForgeInBackground {
+    <#
+    Começa um bloco em outro runspace e devolve a tarefa sem esperar por ela: quem chama faz outra coisa enquanto isso
+    (o Estado da proteção e a auditoria leem o antivírus e o firewall enquanto o Windows Update responde) e depois a recebe
+    com Receive-WinForgeInBackground. Uma tarefa que não vai ser recebida (quem a começou parou antes) é largada com
+    Stop-WinForgeInBackground, num finally.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [scriptblock]$ScriptBlock,
+
+        [object[]]$ArgumentList = @()
+    )
+
     $shell = [powershell]::Create()
-    $finished = $false
 
     try {
         [void]$shell.AddScript($ScriptBlock.ToString())
@@ -1901,10 +2717,37 @@ function Invoke-WinForgeInBackground {
         }
 
         $handle = $shell.BeginInvoke()
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    }
+    catch {
+        $shell.Dispose()
+        throw
+    }
 
-        while (-not $handle.AsyncWaitHandle.WaitOne(200)) {
-            if ($stopwatch.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+    # O prazo conta daqui: o tempo que o bloco rodou enquanto quem chama fazia outra coisa já vale.
+    return [PSCustomObject]@{ Shell = $shell; Handle = $handle; Clock = [System.Diagnostics.Stopwatch]::StartNew(); Done = $false }
+}
+
+
+function Receive-WinForgeInBackground {
+    <#
+    Espera, em fatias curtas, por uma tarefa de Start-WinForgeInBackground, até $TimeoutSeconds desde o começo dela, e
+    devolve Completed, TimedOut, Output e Error, como Invoke-WinForgeInBackground. A espera continua interrompível pelo
+    Parar; uma tarefa que não termina a tempo é abandonada.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        $Task,
+
+        [ValidateRange(1, 3600)]
+        [int]$TimeoutSeconds = 60
+    )
+
+    $shell = $Task.Shell
+    $finished = $false
+
+    try {
+        while (-not $Task.Handle.AsyncWaitHandle.WaitOne(200)) {
+            if ($Task.Clock.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
                 return [PSCustomObject]@{ Completed = $false; TimedOut = $true; Output = @(); Error = "" }
             }
         }
@@ -1914,7 +2757,7 @@ function Invoke-WinForgeInBackground {
         $errorText = ""
 
         try {
-            $output = @($shell.EndInvoke($handle))
+            $output = @($shell.EndInvoke($Task.Handle))
         }
         catch {
             $errorText = [string]$_.Exception.Message
@@ -1927,13 +2770,35 @@ function Invoke-WinForgeInBackground {
         return [PSCustomObject]@{ Completed = (-not $errorText); TimedOut = $false; Output = @($output); Error = $errorText }
     }
     finally {
+        $Task.Done = $true
+
         if ($finished) {
             $shell.Dispose()
         }
         else {
             # Tempo esgotado ou interrompido: pede para parar sem esperar (Dispose bloquearia numa chamada COM presa).
-            try { [void]$shell.BeginStop($null, $null) } catch { }
+            try { [void]$shell.BeginStop($null, $null) } catch { Write-Verbose "A tarefa em segundo plano não aceitou o pedido de parada: $($_.Exception.Message)" }
         }
+    }
+}
+
+
+function Stop-WinForgeInBackground {
+    # Larga uma tarefa de Start-WinForgeInBackground que não vai ser recebida: pede para parar sem esperar. Uma tarefa já
+    # recebida (ou nenhuma) fica como está.
+    param ($Task)
+
+    if ($null -eq $Task -or [bool]$Task.Done) { return }
+
+    $Task.Done = $true
+
+    try {
+        # Já terminado, o runspace é só liberado; ainda rodando, pedir para parar não espera (Dispose bloquearia numa chamada
+        # COM presa).
+        if ($Task.Handle.IsCompleted) { $Task.Shell.Dispose() } else { [void]$Task.Shell.BeginStop($null, $null) }
+    }
+    catch {
+        Write-Verbose "A tarefa em segundo plano não aceitou o pedido de parada: $($_.Exception.Message)"
     }
 }
 
@@ -2063,7 +2928,7 @@ function Restart-WinForgeExplorerShell {
     } while ([DateTime]::UtcNow -lt $exitDeadline)
 
     if ($stillRunning) {
-        throw "O Explorer do Windows não pôde ser encerrado."
+        throw (Get-WinForgeText 'O Explorer do Windows não pôde ser encerrado.')
     }
 
     # 2) Dá tempo ao Windows para relançar o shell automaticamente.
@@ -2090,7 +2955,7 @@ function Restart-WinForgeExplorerShell {
         Start-Sleep -Milliseconds 200
     } while ([DateTime]::UtcNow -lt $startupDeadline)
 
-    throw "O Explorer do Windows não reiniciou no tempo esperado."
+    throw (Get-WinForgeText 'O Explorer do Windows não reiniciou no tempo esperado.')
 }
 
 
@@ -2111,7 +2976,7 @@ function Set-WinForgeHighPerformancePowerPlan {
 
     if (-not (Get-Command "powercfg.exe" -ErrorAction SilentlyContinue)) {
         if ($ThrowOnFailure) {
-            throw "powercfg.exe não foi encontrado."
+            throw (Get-WinForgeText 'powercfg.exe não foi encontrado.')
         }
 
         if ($PassThru) { return $null }
@@ -2158,7 +3023,7 @@ function Set-WinForgeHighPerformancePowerPlan {
     }
 
     if ($null -eq $outcome -and $ThrowOnFailure) {
-        throw "Não foi possível definir o plano de energia como Alto desempenho."
+        throw (Get-WinForgeText 'Não foi possível definir o plano de energia como Alto desempenho.')
     }
 
     if ($PassThru) { return $outcome }
@@ -2287,7 +3152,7 @@ function Get-WinForgeLastMaintenance {
     $state = Read-WinForgeStateFile -Path (Get-WinForgeLastMaintenancePath)
 
     if ($Strict -and [string]$state.Status -eq "Unreadable") {
-        throw "Não foi possível ler o registro da última manutenção."
+        throw (Get-WinForgeText 'Não foi possível ler o registro da última manutenção.')
     }
 
     try {
@@ -2379,11 +3244,32 @@ function New-WinForgeMaintenanceHistoryEntry {
 
     $seconds = [int][math]::Max(0, [math]::Round(($EndedAt - $StartedAt).TotalSeconds))
 
+    # O que as etapas disseram ter liberado (Data.FreedBytes: a limpeza, os componentes, os restos de programas), e não a
+    # variação do espaço livre, que mistura o que as atualizações ocuparam. Cada etapa devolve um resultado só, então a
+    # soma não conta nada duas vezes. $null quando nenhuma etapa mediu.
+    $freed = $null
+
+    foreach ($row in $rows) {
+        $data = Get-WinForgeJsonValue -Object $row -Name "Data"
+        if (-not ($data -is [System.Collections.IDictionary]) -or -not $data.Contains("FreedBytes") -or $null -eq $data["FreedBytes"]) { continue }
+
+        try {
+            $bytes = [int64]$data["FreedBytes"]
+            if ($bytes -lt 0) { continue }
+            if ($null -eq $freed) { $freed = [int64]0 }
+            $freed += $bytes
+        }
+        catch {
+            continue
+        }
+    }
+
     return [PSCustomObject]@{
         StartedAt       = $StartedAt
         DurationSeconds = $seconds
         ProfileId       = $ProfileId
         RunId           = $RunId
+        Freed           = $freed
         Ok              = [int](& $count "Ok")
         Warning         = [int](& $count "Warning")
         Failed          = [int](& $count "Failed")
@@ -2428,6 +3314,7 @@ function ConvertFrom-WinForgeMaintenanceHistoryDocument {
             DurationSeconds = [int](Get-WinForgeJsonValue -Object $Document -Name "DurationSeconds" -Default 0)
             ProfileId       = [string](Get-WinForgeJsonValue -Object $Document -Name "ProfileId" -Default "")
             RunId           = [string](Get-WinForgeJsonValue -Object $Document -Name "RunId" -Default "")
+            Freed           = (& $number "Freed")
             Ok              = [int](Get-WinForgeJsonValue -Object $Document -Name "Ok" -Default 0)
             Warning         = [int](Get-WinForgeJsonValue -Object $Document -Name "Warning" -Default 0)
             Failed          = [int](Get-WinForgeJsonValue -Object $Document -Name "Failed" -Default 0)
@@ -2535,6 +3422,7 @@ function Save-WinForgeMaintenanceHistoryEntry {
                     DurationSeconds = $item.DurationSeconds
                     ProfileId       = $item.ProfileId
                     RunId           = [string](Get-WinForgeJsonValue -Object $item -Name "RunId" -Default "")
+                    Freed           = (Get-WinForgeJsonValue -Object $item -Name "Freed")
                     Ok              = $item.Ok
                     Warning         = $item.Warning
                     Failed          = $item.Failed
@@ -2654,7 +3542,7 @@ function Add-WinForgeChange {
     <#
     Anota uma mudança. Action é o nome curto ("Limpeza do registro"); Text, o que mudou ("12 entradas removidas"). Undo
     é $null (não dá para desfazer) ou uma hashtable com Kind e os dados de Undo-WinForgeChange: registry (File),
-    startup (Items), tweak (Id) ou feature (Name, Action). Devolve o Id da mudança ("" se não foi possível anotar).
+    startup (Items), tweak (Id), dns, feature (Name, Action), winget-pin (Items) ou keyboard-hotkeys (Before e After). Devolve o Id da mudança ("" se não foi possível anotar).
     #>
     param (
         [Parameter(Mandatory)][string]$Action,
@@ -2742,15 +3630,20 @@ function Set-WinForgeChangesUndone {
 }
 
 
+# Os tipos de desfazer que o Undo-WinForgeChange (Journal) sabe fazer, um para cada caso do switch dele. Uma anotação de
+# outro tipo (a cor de destaque das versões de teste da 4.0, ou uma de versão mais nova) fica no histórico sem o desfazer:
+# o botão só apareceria para falhar.
+$script:WinForgeUndoKinds = @("registry", "startup", "tweak", "dns", "feature", "keyboard-hotkeys", "winget-pin")
+
 function Test-WinForgeChangeUndoable {
-    # Se a mudança tem como ser desfeita agora (tem o modo de desfazer e ainda não foi desfeita).
+    # Se a mudança tem como ser desfeita agora (tem um modo de desfazer que esta versão conhece e ainda não foi desfeita).
     param (
         [Parameter(Mandatory)]$Change
     )
 
     if ($Change.Undone -or $null -eq $Change.Undo) { return $false }
 
-    return -not [string]::IsNullOrWhiteSpace([string](Get-WinForgeJsonValue -Object $Change.Undo -Name "Kind" -Default ""))
+    return ([string](Get-WinForgeJsonValue -Object $Change.Undo -Name "Kind" -Default "") -in $script:WinForgeUndoKinds)
 }
 
 

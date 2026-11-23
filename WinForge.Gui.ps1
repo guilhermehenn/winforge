@@ -40,6 +40,43 @@ param (
 
 $ErrorActionPreference = "Continue"
 
+function Get-WinForgeStartupText {
+    # As mensagens de antes dos módulos (ou de quando eles não carregaram). Com o Core carregado, valem Get-WinForgeText e
+    # o idioma do WinForge; sem ele, estas poucas mensagens trazem a tradução aqui mesmo, pelo idioma do Windows.
+    param ([string]$Text)
+
+    $command = Get-Command -Name Get-WinForgeText -CommandType Function -ErrorAction SilentlyContinue
+
+    if ($null -ne $command) { return (& $command $Text @args) }
+
+    $table = @{
+        "Não foi possível abrir a janela do WinForge. Abra o WinForge de novo." = @("The WinForge window could not be opened. Open WinForge again.", "No se pudo abrir la ventana de WinForge. Abre WinForge de nuevo.")
+        "Módulo obrigatório não encontrado: {0}" = @("Required module not found: {0}", "No se encontró un módulo necesario: {0}")
+        "Arquivo da janela não encontrado: {0}" = @("Window file not found: {0}", "No se encontró el archivo de la ventana: {0}")
+        "Extraia de novo o WinForge.zip inteiro (Extrair tudo), numa pasta sem colchetes no nome, e abra o WinForge da pasta extraída." = @("Extract the whole WinForge.zip again (Extract all) to a folder without brackets in its name, and open WinForge from the extracted folder.", "Vuelve a extraer todo WinForge.zip (Extraer todo) en una carpeta sin corchetes en el nombre y abre WinForge desde la carpeta extraída.")
+        "O WinForge não abriu porque falta um arquivo dele: {0}.`n`n{1} Se o arquivo sumir outra vez, veja se o antivírus o pôs em quarentena." = @("WinForge did not open because one of its files is missing: {0}.`n`n{1} If the file disappears again, check whether the antivirus quarantined it.", "WinForge no se abrió porque falta uno de sus archivos: {0}.`n`n{1} Si el archivo vuelve a desaparecer, revisa si el antivirus lo puso en cuarentena.")
+        "O WinForge não abriu.`n`n{0} Se continuar, mande este detalhe ao suporte:`n`n{1}" = @("WinForge did not open.`n`n{0} If it keeps happening, send this detail to support:`n`n{1}", "WinForge no se abrió.`n`n{0} Si sigue pasando, envía este detalle al soporte:`n`n{1}")
+        "Ação desconhecida: '{0}'. Use -Action Menu, Report, Shortcut, ScheduledMaintenance ou Check." = @("Unknown action: '{0}'. Use -Action Menu, Report, Shortcut, ScheduledMaintenance or Check.", "Acción desconocida: '{0}'. Usa -Action Menu, Report, Shortcut, ScheduledMaintenance o Check.")
+        "O -Json só vale com -Action Check (a verificação rápida)." = @("-Json only works with -Action Check (the quick check).", "-Json solo funciona con -Action Check (la verificación rápida).")
+        "Idioma desconhecido: '{0}'. Use -Language pt, en ou es." = @("Unknown language: '{0}'. Use -Language pt, en or es.", "Idioma desconocido: '{0}'. Usa -Language pt, en o es.")
+        "Arquivo de módulos não encontrado: {0}" = @("Module list not found: {0}", "No se encontró la lista de módulos: {0}")
+        "Extraia o WinForge por completo antes de executar." = @("Extract all of WinForge before running it.", "Extrae WinForge por completo antes de ejecutarlo.")
+        "Não foi possível carregar o WinForge: {0}" = @("WinForge could not be loaded: {0}", "No se pudo cargar WinForge: {0}")
+    }
+
+    $language = ""
+
+    try { $language = [string][System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName } catch { $language = "" }
+
+    if ($env:WINFORGE_LANG) { $language = ([string]$env:WINFORGE_LANG).Trim().ToLowerInvariant() }
+
+    if ($language -ne "pt" -and $table.ContainsKey($Text)) { $Text = $table[$Text][$(if ($language -eq "es") { 1 } else { 0 })] }
+
+    if ($args.Count -gt 0) { return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, $Text, [object[]]$args) }
+
+    return $Text
+}
+
 function Show-GuiStartupMessage {
     # Usado antes de a janela existir (falhas de elevação e de carga). Sem console visível, é a única forma de avisar.
     param (
@@ -134,7 +171,7 @@ catch {
 
 if (-not $windowOpen -and ((-not $isAdmin -and -not $Relaunched) -or -not $isSta)) {
     if ($Relaunched) {
-        Show-GuiStartupMessage -Text "Não foi possível abrir a janela do WinForge. Abra o WinForge de novo."
+        Show-GuiStartupMessage -Text (Get-WinForgeStartupText 'Não foi possível abrir a janela do WinForge. Abra o WinForge de novo.')
         exit 1
     }
 
@@ -144,7 +181,7 @@ if (-not $windowOpen -and ((-not $isAdmin -and -not $Relaunched) -or -not $isSta
     if (-not $isSta) {
         if (Start-GuiRelaunch -Page $Page -Action $Action) { exit }
 
-        Show-GuiStartupMessage -Text "Não foi possível abrir a janela do WinForge. Abra o WinForge de novo."
+        Show-GuiStartupMessage -Text (Get-WinForgeStartupText 'Não foi possível abrir a janela do WinForge. Abra o WinForge de novo.')
         exit 1
     }
 }
@@ -174,7 +211,7 @@ try {
 
         if (-not (Test-Path -LiteralPath $modulePath)) {
             $script:MissingFile = "modules\$name.psm1"
-            throw "Módulo obrigatório não encontrado: $modulePath"
+            throw (Get-WinForgeStartupText 'Módulo obrigatório não encontrado: {0}' "$modulePath")
         }
 
         try {
@@ -200,28 +237,33 @@ try {
 
     if (-not (Test-Path -LiteralPath $xamlPath)) {
         $script:MissingFile = "gui\MainWindow.xaml"
-        throw "Arquivo da janela não encontrado: $xamlPath"
+        throw (Get-WinForgeStartupText 'Arquivo da janela não encontrado: {0}' "$xamlPath")
     }
 
-    [xml]$xaml = Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8
+    # Os textos fixos da janela vêm traduzidos antes de ela ser montada. Com os efeitos de animação do Windows desligados,
+    # as transições dos botões e da chave passam a durar zero (Convert-WinForgeXamlMotion).
+    $animate = $true
+    try { $animate = [bool][System.Windows.SystemParameters]::ClientAreaAnimation } catch { $animate = $true }
+    $xamlText = Convert-WinForgeXamlMotion -Xaml (Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8) -Animate $animate
+    [xml]$xaml = Convert-WinForgeXamlText -Xaml $xamlText
     $window = [System.Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
 }
 catch {
     # Quase sempre é um arquivo que faltou (zip extraído pela metade, antivírus) ou uma pasta com colchetes no nome.
-    $extract = "Extraia de novo o WinForge.zip inteiro (Extrair tudo), numa pasta sem colchetes no nome, e abra o WinForge da pasta extraída."
+    $extract = (Get-WinForgeStartupText 'Extraia de novo o WinForge.zip inteiro (Extrair tudo), numa pasta sem colchetes no nome, e abra o WinForge da pasta extraída.')
 
     if (-not [string]::IsNullOrEmpty([string]$script:MissingFile)) {
-        Show-GuiStartupMessage -Text "O WinForge não abriu porque falta um arquivo dele: $($script:MissingFile).`n`n$extract Se o arquivo sumir outra vez, veja se o antivírus o pôs em quarentena."
+        Show-GuiStartupMessage -Text (Get-WinForgeStartupText "O WinForge não abriu porque falta um arquivo dele: {0}.`n`n{1} Se o arquivo sumir outra vez, veja se o antivírus o pôs em quarentena." "$($script:MissingFile)" "$extract")
     }
     else {
-        Show-GuiStartupMessage -Text "O WinForge não abriu.`n`n$extract Se continuar, mande este detalhe ao suporte:`n`n$($_.Exception.Message)"
+        Show-GuiStartupMessage -Text (Get-WinForgeStartupText "O WinForge não abriu.`n`n{0} Se continuar, mande este detalhe ao suporte:`n`n{1}" "$extract" "$($_.Exception.Message)")
     }
 
     exit 1
 }
 
-# O processo ganha o nome "WinForge" para a barra de tarefas (sem isso a janela é agrupada com o PowerShell e
-# mostra o ícone dele). É cosmético: qualquer falha é ignorada.
+# O processo ganha o nome "WinForge" para a barra de tarefas, com o identificador desta pasta (Get-WinForgeAppId): sem
+# isso a janela é agrupada com o PowerShell e mostra o ícone dele. É cosmético: qualquer falha é ignorada.
 try { [void](Initialize-WinForgeAppIdentity) } catch { }
 
 # --- Elementos da janela -------------------------------------------------------------------------------
@@ -318,22 +360,22 @@ $script:OutputMinItems = 40
 $script:ProgressVersionShown = -1
 $script:DeferredAction = $null
 $script:HomeFacts = @{}
-$script:HomeCards = @{}
 $script:HomeBanner = $null
 $script:HomeHealth = $null
 $script:HomeFactInfo = @{}
 # A hora da leitura e o botão de ler de novo ficam logo abaixo da frase da nota de saúde, que é refeita a cada leitura: o
-# texto e se o botão vale ficam aqui, e os controles da nota atual (HomeStampText, HomeRefreshButton, HomeStampBar) os
-# mostram.
-$script:HomeStamp = @{ Text = "Lendo o PC..."; CanRefresh = $false; ReadAt = $null }
+# texto e se o botão vale ficam aqui, e os controles da nota atual (HomeStampText e HomeRefreshButton) os mostram.
+$script:HomeStamp = @{ Text = (Get-WinForgeText 'Lendo o PC...'); CanRefresh = $false; ReadAt = $null }
 $script:HomeStampText = $null
 $script:HomeRefreshButton = $null
+# O botão de ler de novo tinha o foco do teclado quando foi desligado no começo da leitura (Set-GuiHomeStamp).
+$script:HomeRefreshFocus = $false
 # A frase grande da nota de saúde (o leitor de tela a lê quando a leitura termina).
 $script:HomeHeadline = $null
 $script:HomeRead = $null
 $script:HomeSnapshot = $null
 # A última leitura completa mostrada, mesmo vencida (HomeSnapshotSeconds) ou descartada por uma ação: voltar ao Início
-# mostra os valores dela na hora, e a leitura nova os troca no lugar, em vez de os cartões voltarem a "Lendo...".
+# mostra os valores dela na hora, e a leitura nova os troca no lugar, em vez de os cartões voltarem à barra de espera.
 $script:HomeLastSnapshot = $null
 $script:HomeSnapshotSeconds = 30
 # Sobe a cada vez que a leitura guardada é descartada (uma ação terminou, Atualizar): uma leitura que começou antes disso
@@ -355,6 +397,10 @@ $script:IsAdmin = $isAdmin
 # Aparência: depois de trocar o tema, o foco do teclado volta para a opção escolhida (Set-GuiThemePreference).
 $script:AppearanceRefocus = $false
 $script:AppearanceFocusTarget = $null
+# Idioma: a escolha guardada (Auto, pt, en ou es) e, como na Aparência, o foco que volta para a opção escolhida.
+$script:LanguagePreference = "Auto"
+$script:LanguageRefocus = $false
+$script:LanguageFocusTarget = $null
 $script:LastAction = $null
 $script:RunUnseen = $false
 $script:RunPage = "home"
@@ -375,6 +421,16 @@ $script:SearchEnterPending = $false
 $script:FocusTweakId = ""
 $script:FocusRow = $null
 $script:TweaksScrollBack = $null
+# A chave de um ajuste muda na própria linha (Start-GuiAction -InPlace): InPlaceRun diz qual linha e de que página, até a
+# ação terminar ou a tela de execução abrir. TweakRows guarda as partes de cada linha da página de ajustes desenhada (a
+# linha, o estado, a chave e o ajuste lido), e TweaksOverview, a lista lida, de onde sai o resumo do alto.
+$script:InPlaceRun = $null
+$script:TweakRows = @{}
+
+# A linha que mudou na própria página quando a página foi refeita logo em seguida (o Modo escuro troca o tema da janela):
+# o foco do teclado e o aviso ao leitor de tela vão para a linha nova, quando a lista fica pronta (Update-GuiTweaksList).
+$script:TweakRefocus = $null
+$script:TweaksOverview = @()
 $script:ForceClose = $false
 $script:StartPage = $Page
 # A ação pedida na abertura: as do monitor na bandeja, ou qualquer uma na reabertura pedida pela própria janela
@@ -388,6 +444,16 @@ $script:ThemeName = ""
 $script:ThemePreference = "System"
 $script:Theme = Get-WinForgePalette -Name "Light"
 $script:LevelColors = Get-WinForgeLevelColors -Theme $script:Theme
+# As cores do sistema com o contraste alto ligado (ThemeName = "Contrast"): mudam com o tema de contraste escolhido.
+$script:ThemeSignature = ""
+# O tamanho do texto escolhido no Windows (1 a 2,25) e a escala de tamanhos já multiplicada por ele (Set-GuiTypography).
+$script:TextScale = 1.0
+$script:Type = Get-WinForgeTypeRamp
+# A entrelinha de cada tamanho da escala (Set-GuiTypography): New-GuiText a usa nos textos que montam.
+$script:LineBySize = @{}
+$script:FontApplied = $false
+# A fonte dos títulos escolhida na abertura (Set-GuiTypography), que os títulos montados pelo script recebem direto.
+$script:DisplayFontFamily = $null
 $script:ColorMap = Get-WinForgeConsolePalette -Name "Light"
 $script:IconCache = @{}
 $script:NavParts = @{}
@@ -398,34 +464,55 @@ $script:ActivityEntries = New-Object System.Collections.ArrayList
 $script:PendingSection = $null
 $script:UncoveredLines = 0
 $script:SummaryExpanded = $false
-# Quem protege o PC, pela última leitura do Início (Active, Other, Off...): com outro antivírus, Verificar vírus sai do
-# Início e as ações do Defender saem da página Segurança. Vem guardado da última vez que o WinForge abriu (lido antes da
-# primeira página): sem isso, o botão apareceria por alguns segundos e sumiria quando a leitura terminasse. "" enquanto
-# não se sabe.
+# Quem protege o PC, pela última leitura do Início (Active, Other, Off...): com outro antivírus, as ações do Defender
+# (Verificar vírus e as outras) saem da página Segurança e da busca. Vem guardado da última vez que o WinForge abriu (lido
+# antes da primeira página): sem isso, o botão apareceria por alguns segundos e sumiria quando a leitura terminasse. ""
+# enquanto não se sabe.
 $script:AntivirusMode = ""
-# Se o PC tem bateria, pelo cartão Bateria do Início: $false (num PC de mesa) tira Saúde da bateria da página Diagnóstico.
-# $null enquanto não se sabe: o cartão fica (a busca e o console chegam nele de qualquer jeito).
+# Se o PC tem bateria, pelo cartão Bateria do Início: $false (num PC de mesa) tira Saúde da bateria da página Diagnóstico
+# e da busca. $null enquanto não se sabe: o cartão fica (o menu de texto chega nele de qualquer jeito).
 $script:HasBattery = $null
 # A grade dos cartões (Update-GuiContentWidth): de 252 a 300 de largura, com 12 entre um e outro.
 $script:CardMinWidth = 252.0
 $script:CardMaxWidth = 300.0
 $script:CardGap = 12.0
 $script:CardWidth = 252.0
-$script:WideCardWidth = 384.0
 # A etapa do Otimizar em andamento ("Etapa 3 de 22: ..."): depois da primeira, só uma etapa muda a frase em destaque (um
 # título de seção no meio dela, como "Lixeira", não), e a barra mostra o andamento da execução inteira.
 $script:RunStepSeen = $false
 $script:RunStepIndex = 0
 $script:RunStepTotal = 0
+# Numa parte do fluxo que não é etapa (Write-WinForgePhase: as perguntas antes da parte automática, o fim do Otimizar),
+# a última etapa já terminou: a barra fica com ela inteira, mesmo com a barra de progresso de uma ferramenta nessa parte.
+$script:RunStepDone = $false
+# O padrão de "Etapa N de M:" no idioma da tela (montado na primeira linha que chega).
+$script:RunStepPattern = $null
 # As linhas do resumo que, com uma pergunta na tela, foram para dentro do cartão dela (Set-GuiPromptContext).
 $script:PromptContextHidden = New-Object System.Collections.ArrayList
 # O que estava marcado quando a lista apareceu: numa revisão (o que abre com o Windows, os ajustes), o botão conta as mudanças.
 $script:PromptInitialKeys = @()
 $script:PromptReview = $false
-$script:HomeStampBar = $null
 
 $script:BrushConverter = New-Object System.Windows.Media.BrushConverter
 $script:BrushByHex = @{}
+
+function Set-GuiResource {
+    <#
+    Guarda um valor num dicionário de recursos do WPF (os da janela, os da mensagem) com o objeto de verdade. Pelo indexador
+    ($dicionario[chave] = valor), o PowerShell entrega ao .NET o embrulho (PSObject) de um objeto criado pelo New-Object ou
+    recebido como parâmetro, e não o objeto. O WPF recusa o embrulho ao aplicar o recurso ("... is not a valid value for
+    property"): um texto que usa esse recurso não entra na tela. Todo recurso posto pelo script passa por aqui.
+    #>
+    param (
+        [Parameter(Mandatory)]$Dictionary,
+        [Parameter(Mandatory)]$Key,
+        [AllowNull()]$Value
+    )
+
+    if ($null -ne $Value) { $Value = $Value.psobject.BaseObject }
+
+    $Dictionary[$Key] = $Value
+}
 
 function New-GuiBrush {
     # Um pincel congelado para cada cor, feito uma vez: uma página pede a mesma cor dezenas de vezes, e o pincel congelado
@@ -444,36 +531,301 @@ function New-GuiBrush {
 }
 
 function Show-GuiMessage {
-    # Default: a resposta do Enter. Nas perguntas Sim/Não é Não, salvo quando a pessoa acabou de pedir aquilo (reabrir
-    # como Administrador): um Enter a mais nunca interrompe nem apaga nada.
+    <#
+    Uma mensagem com o desenho do WinForge (New-GuiMessageDialog): Title é a frase em destaque, Text o que vem embaixo, e
+    os botões dizem o que fazem (YesText e NoText; sem eles, Sim e Não), no idioma da tela. Default: a resposta que começa
+    com o foco, a do Enter. Nas perguntas Sim/Não é Não, salvo quando a pessoa acabou de pedir aquilo (reabrir como
+    Administrador): um Enter a mais nunca interrompe nem apaga nada. Danger: o Sim interrompe ou perde algo (o botão de
+    perigo). YesIcon: o ícone do botão do Sim (o escudo do Administrador). O Esc e o X da barra de título respondem Não
+    (ou OK, numa mensagem).
+    Se a janela da mensagem não abrir, vale a caixa de mensagem do Windows (Show-GuiSystemMessage), como antes. -System
+    vai direto a ela: é a da falha da própria janela, que não pode depender da janela para aparecer.
+    Devolve "OK", "Yes" ou "No".
+    #>
     param (
-        [Parameter(Mandatory)][string]$Text,
-        [string]$Title = "WinForge",
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [string]$Title = "",
         [ValidateSet("OK", "YesNo")]
         [string]$Buttons = "OK",
         [ValidateSet("Information", "Warning", "Error", "Question")]
         [string]$Icon = "Information",
         [ValidateSet("Yes", "No")]
+        [string]$Default = "No",
+        [string]$YesText = "",
+        [string]$NoText = "",
+        [string]$YesIcon = "",
+        [switch]$Danger,
+        [switch]$System
+    )
+
+    if (-not $System) {
+        $dialog = $null
+
+        try {
+            $plan = Get-WinForgeMessagePlan -Buttons $Buttons -Icon $Icon -Default $Default -YesText $YesText -NoText $NoText -YesIcon $YesIcon -Danger:$Danger
+            $dialog = New-GuiMessageDialog -Plan $plan -Title $Title -Text $Text
+            [void]$dialog.ShowDialog()
+
+            return [string]$dialog.Tag.Answer
+        }
+        catch {
+            Write-Verbose "Mensagem da janela: $($_.Exception.Message)"
+
+            # Já respondida (o erro veio depois): vale a resposta. Senão, a mesma pergunta vai pela caixa do Windows.
+            if ($null -ne $dialog -and $dialog.Tag -is [hashtable]) {
+                if ($dialog.Tag.Answered) { return [string]$dialog.Tag.Answer }
+
+                try { $dialog.Close() } catch { Write-Verbose "Mensagem da janela: $($_.Exception.Message)" }
+            }
+        }
+    }
+
+    return (Show-GuiSystemMessage -Text $Text -Title $Title -Buttons $Buttons -Icon $Icon -Default $Default)
+}
+
+function Show-GuiSystemMessage {
+    # A caixa de mensagem do Windows, com a frase em destaque no alto do texto: a reserva de Show-GuiMessage. Os botões
+    # vêm no idioma do Windows.
+    param (
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [string]$Title = "",
+        [string]$Buttons = "OK",
+        [string]$Icon = "Information",
         [string]$Default = "No"
     )
 
+    $body = $(if ([string]::IsNullOrWhiteSpace($Title)) { $Text } elseif ([string]::IsNullOrEmpty($Text)) { $Title } else { "$Title`n`n$Text" })
     $defaultResult = $(if ($Buttons -eq "OK") { "OK" } else { $Default })
 
     try {
-        return [string][System.Windows.MessageBox]::Show($window, $Text, $Title, $Buttons, $Icon, $defaultResult)
+        return [string][System.Windows.MessageBox]::Show($window, $body, "WinForge", $Buttons, $Icon, $defaultResult)
     }
     catch {
         # Janela já fechada ou ainda não exibida: mostra a mensagem sem dono.
-        return [string][System.Windows.MessageBox]::Show($Text, $Title, $Buttons, $Icon, $defaultResult)
+        return [string][System.Windows.MessageBox]::Show($body, "WinForge", $Buttons, $Icon, $defaultResult)
     }
 }
 
+function New-GuiMessageDialog {
+    <#
+    A janela de uma mensagem (Show-GuiMessage), no desenho das caixas de diálogo do Windows 11: o ícone, a frase em
+    destaque e o texto no fundo do cartão; os botões numa faixa embaixo, no fundo da janela, em duas colunas de mesma
+    largura. Plan: Get-WinForgeMessagePlan. Usa os estilos, as cores, a fonte e os tamanhos da janela do WinForge (o tema,
+    o contraste alto e o tamanho do texto do Windows). Tag guarda a resposta (Answer), se a pessoa respondeu (Answered), a
+    do Esc (Cancel), o texto que o Ctrl+C copia, como na caixa do Windows (Copy), e o texto para o leitor de tela (Message).
+    #>
+    param (
+        [Parameter(Mandatory)]$Plan,
+        [string]$Title = "",
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text
+    )
+
+    # Qualquer erro na montagem para tudo: Show-GuiMessage cai na caixa do Windows, e nunca aparece uma janela pela metade.
+    $ErrorActionPreference = "Stop"
+    $scale = [double]$script:TextScale
+    $area = [System.Windows.SystemParameters]::WorkArea
+
+    $dialog = New-Object System.Windows.Window
+    $dialog.Title = "WinForge"
+    $dialog.SizeToContent = "WidthAndHeight"
+    $dialog.ResizeMode = "NoResize"
+    $dialog.ShowInTaskbar = $false
+    $dialog.UseLayoutRounding = $true
+    $dialog.SnapsToDevicePixels = $true
+    $dialog.MinWidth = [Math]::Min(400.0 * $scale, [Math]::Max(240.0, $area.Width - 40.0))
+    [System.Windows.Media.TextOptions]::SetTextFormattingMode($dialog, [System.Windows.Media.TextFormattingMode]::Display)
+
+    # Os estilos dos botões pegam as cores e os tamanhos dos recursos de quem os usa: a mensagem recebe os da janela, que
+    # já estão no tema e no tamanho do texto de agora (pincéis, tamanhos, a fonte e os estilos, todos compartilháveis).
+    foreach ($key in @($window.Resources.Keys)) { Set-GuiResource -Dictionary $dialog.Resources -Key $key -Value $window.Resources[$key] }
+
+    $dialog.FontFamily = $window.Resources["UiFont"]
+    $dialog.FontSize = [double]$script:Type.Body
+    $dialog.Background = New-GuiBrush $script:Theme.Card
+    $dialog.Foreground = New-GuiBrush $script:Theme.Text
+
+    try {
+        if ($null -ne $window.Icon) { $dialog.Icon = $window.Icon }
+    }
+    catch {
+        Write-Verbose "Ícone da mensagem: $($_.Exception.Message)"
+    }
+
+    # Com a janela aberta, a mensagem é dela e aparece no meio dela; minimizada, ela volta antes (a mensagem é sobre ela).
+    # Sem a janela na tela (ainda abrindo), a mensagem aparece sozinha, no meio da tela e na barra de tarefas.
+    $shown = $false
+    try { $shown = ($window.IsVisible -and $null -ne [System.Windows.PresentationSource]::FromVisual($window)) } catch { $shown = $false }
+
+    if ($shown) {
+        if ($window.WindowState -eq [System.Windows.WindowState]::Minimized) { [System.Windows.SystemCommands]::RestoreWindow($window) }
+        $dialog.Owner = $window
+        $dialog.WindowStartupLocation = "CenterOwner"
+    }
+    else {
+        $dialog.WindowStartupLocation = "CenterScreen"
+        $dialog.ShowInTaskbar = $true
+    }
+
+    $root = New-Object System.Windows.Controls.DockPanel
+
+    # A faixa dos botões.
+    $footer = New-Object System.Windows.Controls.Border
+    $footer.Background = New-GuiBrush $script:Theme.Window
+    $footer.BorderBrush = New-GuiBrush $script:Theme.Line
+    $footer.BorderThickness = New-Object System.Windows.Thickness (0, 1, 0, 0)
+    $footer.Padding = New-Object System.Windows.Thickness 24
+    Set-GuiDock -Element $footer -Side "Bottom"
+
+    $grid = New-Object System.Windows.Controls.Primitives.UniformGrid
+    $grid.Rows = 1
+    $grid.Columns = 2
+    $grid.Margin = New-Object System.Windows.Thickness (-4, 0, -4, 0)
+    # O OK sozinho fica na coluna da direita, como o Fechar das caixas de diálogo do Windows 11.
+    if (@($Plan.Buttons).Count -eq 1) { $grid.FirstColumn = 1 }
+
+    $focus = $null
+
+    foreach ($item in @($Plan.Buttons)) {
+        $button = New-GuiButton -Text ([string]$item.Text) -Kind ([string]$item.Kind) -Icon ([string]$item.Icon) -Tag ([string]$item.Answer)
+        $button.Margin = New-Object System.Windows.Thickness (4, 0, 4, 0)
+        $button.MinHeight = [Math]::Round(32.0 * $scale)
+        $button.HorizontalAlignment = "Stretch"
+
+        $button.Add_Click({
+            param ($sender, $eventArgs)
+
+            $owner = [System.Windows.Window]::GetWindow($sender)
+            $owner.Tag.Answer = [string]$sender.Tag
+            $owner.Tag.Answered = $true
+            $owner.Close()
+        })
+
+        [void]$grid.Children.Add($button)
+        if ([string]$item.Answer -eq [string]$Plan.DefaultAnswer) { $focus = $button }
+    }
+
+    $footer.Child = $grid
+    [void]$root.Children.Add($footer)
+
+    # O ícone, a frase em destaque e o texto. O texto longo (um detalhe técnico) rola, sem passar da metade da tela.
+    $body = New-Object System.Windows.Controls.DockPanel
+    $body.Margin = New-Object System.Windows.Thickness 24
+
+    $iconSize = [Math]::Round(24.0 * $scale)
+    $firstLine = $(if ($Title) { $script:LineBySize["$($script:Type.Subtitle)"] } else { $script:LineBySize["$($script:Type.Body)"] })
+    $iconTop = $(if ($null -ne $firstLine) { [Math]::Max(0.0, ([double]$firstLine - $iconSize) / 2.0) } else { 0.0 })
+
+    $glyph = New-GuiIcon -Name ([string]$Plan.Icon) -Size $iconSize -Color $script:Theme[[string]$Plan.IconColor]
+    $glyph.VerticalAlignment = "Top"
+    $glyph.Margin = New-Object System.Windows.Thickness (0, $iconTop, 12, 0)
+    Set-GuiDock -Element $glyph -Side "Left"
+    [void]$body.Children.Add($glyph)
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $stack.MaxWidth = [Math]::Max(200.0, [Math]::Min(440.0 * $scale, $area.Width - 160.0))
+
+    if ($Title) { [void]$stack.Children.Add((New-GuiText -Text $Title -Size $script:Type.Subtitle -Bold $true)) }
+
+    $message = New-GuiText -Text $Text -Size $script:Type.Body
+    $scroll = New-Object System.Windows.Controls.ScrollViewer
+    $scroll.VerticalScrollBarVisibility = "Auto"
+    $scroll.HorizontalScrollBarVisibility = "Disabled"
+    $scroll.Focusable = $false
+    $scroll.MaxHeight = [Math]::Max(120.0, $area.Height * 0.5)
+    $scroll.Content = $message
+    if ($Title) { $scroll.Margin = New-Object System.Windows.Thickness (0, 12, 0, 0) }
+    # Sem texto (um erro sem descrição), fica só a frase em destaque.
+    if (-not [string]::IsNullOrEmpty($Text) -or -not $Title) { [void]$stack.Children.Add($scroll) }
+
+    [void]$body.Children.Add($stack)
+    [void]$root.Children.Add($body)
+    $dialog.Content = $root
+
+    $dialog.Tag = @{
+        Answer   = [string]$Plan.CancelAnswer
+        Answered = $false
+        Cancel   = [string]$Plan.CancelAnswer
+        Copy     = $(if ($Title -and $Text) { "$Title`r`n`r`n$Text" } elseif ($Title) { $Title } else { $Text })
+        Message  = $message
+    }
+
+    # O leitor de tela: o nome da janela é a frase em destaque, e o texto é lido assim que ela aparece.
+    Set-GuiAutomationName -Element $dialog -Name $(if ($Title) { $Title } else { "WinForge" })
+    [System.Windows.Automation.AutomationProperties]::SetHelpText($dialog, $Text)
+
+    try {
+        [System.Windows.Automation.AutomationProperties]::SetLiveSetting($message, [System.Windows.Automation.AutomationLiveSetting]::Assertive)
+    }
+    catch {
+        Write-Verbose "Leitor de tela: $($_.Exception.Message)"
+    }
+
+    if ($null -ne $focus) { [System.Windows.Input.FocusManager]::SetFocusedElement($dialog, $focus) }
+
+    # A barra de título na cor do tema, como a da janela.
+    $dialog.Add_SourceInitialized({
+        param ($sender, $eventArgs)
+        Set-GuiTitleBarTheme -Target $sender
+    })
+
+    $dialog.Add_ContentRendered({
+        param ($sender, $eventArgs)
+        Send-GuiAnnouncement -Element $sender.Tag.Message
+    })
+
+    # Esc: a resposta segura (o Não, ou o OK). Ctrl+C: copia a mensagem, como na caixa do Windows. O Enter fica com o botão
+    # que tem o foco, que começa no padrão.
+    $dialog.Add_PreviewKeyDown({
+        param ($sender, $eventArgs)
+
+        if ($eventArgs.Key -eq [System.Windows.Input.Key]::Escape) {
+            $eventArgs.Handled = $true
+            $sender.Tag.Answer = $sender.Tag.Cancel
+            $sender.Tag.Answered = $true
+            $sender.Close()
+            return
+        }
+
+        if ($eventArgs.Key -eq [System.Windows.Input.Key]::C -and ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control) -ne 0) {
+            $eventArgs.Handled = $true
+
+            try {
+                [System.Windows.Clipboard]::SetText([string]$sender.Tag.Copy)
+            }
+            catch {
+                Write-Verbose "Copiar a mensagem: $($_.Exception.Message)"
+            }
+        }
+    })
+
+    return $dialog
+}
+
+function Set-GuiDisplayFont {
+    <#
+    Põe a fonte dos títulos (a que Set-GuiTypography escolheu) num texto montado pelo script, direto na propriedade, e o
+    desenho ideal da letra, feito para os tamanhos grandes. Direto, e não pelo recurso: o recurso só é procurado quando o
+    texto entra na tela, e um valor que o WPF recusasse ali tiraria da tela a parte inteira, sem aviso (a R39). Sem a
+    fonte escolhida (a janela ainda abrindo, ou a escolha que falhou), o texto fica com a fonte da janela.
+    #>
+    param ([Parameter(Mandatory)]$Element)
+
+    if ($null -ne $script:DisplayFontFamily) {
+        try { $Element.FontFamily = $script:DisplayFontFamily } catch { Write-Verbose "Fonte dos títulos: $($_.Exception.Message)" }
+    }
+
+    try { [System.Windows.Media.TextOptions]::SetTextFormattingMode($Element, "Ideal") } catch { Write-Verbose "Texto: $($_.Exception.Message)" }
+}
+
 function New-GuiText {
+    # Display: um título em negrito na fonte dos títulos (Set-GuiDisplayFont), como o nome da página: a frase e os
+    # números do Início, os títulos das partes da página.
     param (
         [string]$Text,
-        [double]$Size = 13,
+        [double]$Size = $script:Type.Caption,
         [string]$Color = $script:Theme.Text,
-        [bool]$Bold = $false
+        [bool]$Bold = $false,
+        [switch]$Display
     )
 
     $block = New-Object System.Windows.Controls.TextBlock
@@ -482,9 +834,36 @@ function New-GuiText {
     $block.Foreground = New-GuiBrush $Color
     $block.TextWrapping = "Wrap"
 
-    if ($Bold) { $block.FontWeight = [System.Windows.FontWeights]::SemiBold }
+    # A entrelinha da escala (14/20, 20/28...): pesa nos textos que quebram linha. Fora da escala, a natural da fonte.
+    $line = $script:LineBySize["$Size"]
+    if ($null -ne $line) { $block.LineHeight = [double]$line }
+
+    if ($Display) {
+        $block.FontWeight = [System.Windows.FontWeights]::Bold
+        Set-GuiDisplayFont -Element $block
+    }
+    elseif ($Bold) {
+        $block.FontWeight = [System.Windows.FontWeights]::SemiBold
+    }
 
     return $block
+}
+
+function New-GuiValueBox {
+    # Um texto numa linha que diminui até caber na largura que tiver, sem cortar nem quebrar (Viewbox só para baixo): a
+    # frase da nota de saúde, a nota, o valor dos cartões do Início e os números do histórico. Com espaço, fica no tamanho
+    # dele.
+    param ([Parameter(Mandatory)]$Text)
+
+    $Text.TextWrapping = "NoWrap"
+
+    $box = New-Object System.Windows.Controls.Viewbox
+    $box.Stretch = "Uniform"
+    $box.StretchDirection = "DownOnly"
+    $box.HorizontalAlignment = "Left"
+    $box.Child = $Text
+
+    return $box
 }
 
 function New-GuiOutlinedBorder {
@@ -496,7 +875,7 @@ function New-GuiOutlinedBorder {
     param (
         [string]$Background = "",
         [string]$BorderColor = "",
-        [double]$Radius = 14,
+        [double]$Radius = 8,
         [double]$Thickness = 1,
         $Padding = $null
     )
@@ -541,7 +920,7 @@ function New-GuiPanelBorder {
     param (
         [string]$Background = $script:Theme.Card,
         [string]$BorderColor = $script:Theme.Line,
-        [double]$Radius = 14,
+        [double]$Radius = 8,
         $Padding = $null,
         $Content = $null
     )
@@ -717,10 +1096,10 @@ function New-GuiChip {
 
     $chip = New-Object System.Windows.Controls.Border
     $chip.Background = New-GuiBrush $script:Theme.AccentCard
-    $chip.CornerRadius = New-Object System.Windows.CornerRadius 6
+    $chip.CornerRadius = New-Object System.Windows.CornerRadius 4
     $chip.Padding = New-Object System.Windows.Thickness (8, 3, 8, 3)
     $chip.VerticalAlignment = "Top"
-    $chip.Child = New-GuiText -Text $Text -Size 12 -Color $script:Theme.AccentText -Bold $true
+    $chip.Child = New-GuiText -Text $Text -Size $script:Type.Caption -Color $script:Theme.AccentText -Bold $true
 
     return $chip
 }
@@ -729,52 +1108,32 @@ function New-GuiKeyChip {
     # Uma tecla desenhada como a "Ctrl K" da caixa de busca: o "Enter" no resultado que o Enter abre.
     param ([Parameter(Mandatory)][string]$Text)
 
-    $chip = New-GuiOutlinedBorder -Background $script:Theme.Card -BorderColor $script:Theme.Line -Radius 5 -Padding (New-Object System.Windows.Thickness (6, 1, 6, 1))
+    $chip = New-GuiOutlinedBorder -Background $script:Theme.Card -BorderColor $script:Theme.Line -Radius 4 -Padding (New-Object System.Windows.Thickness (6, 1, 6, 1))
     $chip.VerticalAlignment = "Top"
-    Set-GuiPanelContent -Panel $chip -Content (New-GuiText -Text $Text -Size 11 -Color $script:Theme.Dim)
+    Set-GuiPanelContent -Panel $chip -Content (New-GuiText -Text $Text -Size $script:Type.Caption -Color $script:Theme.Dim)
 
     return $chip
 }
 
-function New-GuiNote {
-    # Observação discreta com ícone ("Pede Administrador ao executar", "Abre no Windows").
-    param (
-        [Parameter(Mandatory)][string]$Text,
-        [Parameter(Mandatory)][string]$Icon
-    )
-
-    $row = New-Object System.Windows.Controls.StackPanel
-    $row.Orientation = "Horizontal"
-
-    $glyph = New-GuiIcon -Name $Icon -Size 13 -Color $script:Theme.Dim
-    $glyph.Margin = New-Object System.Windows.Thickness (0, 0, 6, 0)
-    [void]$row.Children.Add($glyph)
-
-    $label = New-GuiText -Text $Text -Size 12 -Color $script:Theme.Dim
-    $label.VerticalAlignment = "Center"
-    [void]$row.Children.Add($label)
-
-    return $row
-}
-
 function New-GuiSectionHeading {
-    # Título de uma parte da página ("Seu PC", "Por onde começar").
+    # Título de uma parte do Início ("Seu PC", "Histórico neste PC"), em negrito, no tamanho de subtítulo.
     param ([Parameter(Mandatory)][string]$Text)
 
-    $heading = New-GuiText -Text $Text -Size 16 -Bold $true
-    $heading.Margin = New-Object System.Windows.Thickness (0, 22, 0, 12)
+    $heading = New-GuiText -Text $Text -Size $script:Type.Subtitle -Display
+    $heading.Margin = New-Object System.Windows.Thickness (0, 30, 12, 14)
+    Set-GuiAutomationName -Element $heading -Name (Get-WinForgeText 'Seção: {0}' "$Text")
 
     return $heading
 }
 
 function New-GuiGroupHeading {
-    # Título de uma seção de cartões dentro de uma página ("Liberar espaço"). Mais discreto que o das partes do Início:
-    # organiza a página sem competir com o título dela. O primeiro não precisa do espaço que separa uma seção da anterior.
+    # Título de uma lista dentro de uma página ("Liberar espaço"), como os das Configurações do Windows: o texto em
+    # seminegrito, na cor do texto. O primeiro não precisa do espaço que separa uma seção da anterior.
     param ([Parameter(Mandatory)][string]$Text, [bool]$First = $false)
 
-    $heading = New-GuiText -Text $Text -Size 14 -Color $script:Theme.Muted -Bold $true
+    $heading = New-GuiText -Text $Text -Size $script:Type.Body -Bold $true
     $heading.Margin = New-Object System.Windows.Thickness (0, $(if ($First) { 2 } else { 14 }), 0, 10)
-    Set-GuiAutomationName -Element $heading -Name "Seção: $Text"
+    Set-GuiAutomationName -Element $heading -Name (Get-WinForgeText 'Seção: {0}' "$Text")
 
     return $heading
 }
@@ -783,7 +1142,7 @@ function New-GuiNotice {
     # Aviso em destaque no alto de uma página (amarelo), com o ícone de atenção.
     param ([Parameter(Mandatory)][string]$Text)
 
-    $banner = New-GuiPanelBorder -Background $script:LevelColors.Warn.Back -BorderColor $script:LevelColors.Warn.Line -Radius 12 -Padding (New-Object System.Windows.Thickness (14, 10, 14, 10))
+    $banner = New-GuiPanelBorder -Background $script:LevelColors.Warn.Back -BorderColor $script:LevelColors.Warn.Line -Radius 8 -Padding (New-Object System.Windows.Thickness (14, 10, 14, 10))
     $banner.Margin = New-Object System.Windows.Thickness (0, 0, 12, 14)
 
     $row = New-Object System.Windows.Controls.DockPanel
@@ -792,7 +1151,7 @@ function New-GuiNotice {
     $glyph.VerticalAlignment = "Top"
     Set-GuiDock -Element $glyph -Side "Left"
     [void]$row.Children.Add($glyph)
-    [void]$row.Children.Add((New-GuiText -Size 13 -Color $script:Theme.Text -Text $Text))
+    [void]$row.Children.Add((New-GuiText -Size $script:Type.Body -Color $script:Theme.Text -Text $Text))
 
     Set-GuiPanelContent -Panel $banner -Content $row
 
@@ -830,17 +1189,26 @@ function Set-GuiTitleBarTheme {
 
         if ($handle -eq [IntPtr]::Zero) { return }
 
-        $dark = $(if ($script:ThemeName -eq "Dark") { 1 } else { 0 })
+        $dark = $(if ($script:ThemeName -eq "Dark" -or ($script:ThemeName -eq "Contrast" -and (Test-GuiDarkColor -Hex $script:Theme.Window))) { 1 } else { 0 })
 
         # 20 = modo escuro (Windows 10 20H1+ e 11); 19 = valor usado por builds anteriores do Windows 10.
         if ([WinForge.NativeWindow]::DwmSetWindowAttribute($handle, 20, [ref]$dark, 4) -ne 0) {
             [void][WinForge.NativeWindow]::DwmSetWindowAttribute($handle, 19, [ref]$dark, 4)
         }
 
-        # Windows 11 (build 22000+): cor exata da barra, do texto e da borda. COLORREF = 0x00BBGGRR.
-        $caption = ConvertTo-WinForgeColorRef -Hex $script:Theme.Window
-        $text = ConvertTo-WinForgeColorRef -Hex $script:Theme.Text
-        $border = ConvertTo-WinForgeColorRef -Hex $script:Theme.Line
+        # Windows 11 (build 22000+): cor exata da barra, do texto e da borda. COLORREF = 0x00BBGGRR. Com o contraste alto,
+        # a barra volta às cores do Windows (DWMWA_COLOR_DEFAULT, 0xFFFFFFFF).
+        if ($script:ThemeName -eq "Contrast") {
+            $caption = -1
+            $text = -1
+            $border = -1
+        }
+        else {
+            $caption = ConvertTo-WinForgeColorRef -Hex $script:Theme.Window
+            $text = ConvertTo-WinForgeColorRef -Hex $script:Theme.Text
+            # O contorno é translúcido: a borda da janela usa o cinza que ele dá sobre o cartão.
+            $border = ConvertTo-WinForgeColorRef -Hex (ConvertTo-WinForgeOpaqueColor -Hex $script:Theme.Line -Background $script:Theme.Card)
+        }
         [void][WinForge.NativeWindow]::DwmSetWindowAttribute($handle, 35, [ref]$caption, 4)
         [void][WinForge.NativeWindow]::DwmSetWindowAttribute($handle, 36, [ref]$text, 4)
         [void][WinForge.NativeWindow]::DwmSetWindowAttribute($handle, 34, [ref]$border, 4)
@@ -848,6 +1216,19 @@ function Set-GuiTitleBarTheme {
     catch {
         # Cosmético: em versões sem suporte a barra continua com o tema padrão do Windows.
     }
+}
+
+function Test-GuiDarkColor {
+    # Uma cor "#RRGGBB" escura (a barra de título do contraste alto preto fica escura).
+    param ([Parameter(Mandatory)][string]$Hex)
+
+    if ($Hex -notmatch '^#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})$') { return $false }
+
+    $r = [Convert]::ToInt32($Matches[1], 16)
+    $g = [Convert]::ToInt32($Matches[2], 16)
+    $b = [Convert]::ToInt32($Matches[3], 16)
+
+    return ((0.299 * $r + 0.587 * $g + 0.114 * $b) -lt 128)
 }
 
 function Get-GuiSystemTheme {
@@ -864,35 +1245,179 @@ function Get-GuiSystemTheme {
     return "Light"
 }
 
+function Test-GuiHighContrast {
+    # O contraste alto do Windows (Configurações > Acessibilidade > Temas de contraste) está ligado.
+    try { return [bool][System.Windows.SystemParameters]::HighContrast } catch { return $false }
+}
+
+function Get-GuiSystemColors {
+    # As cores do sistema que a janela usa com o contraste alto ligado (Get-WinForgeHighContrastPalette), em "#RRGGBB".
+    $toHex = { param ($color) "#{0:X2}{1:X2}{2:X2}" -f $color.R, $color.G, $color.B }
+
+    return @{
+        Window        = (& $toHex ([System.Windows.SystemColors]::WindowColor))
+        WindowText    = (& $toHex ([System.Windows.SystemColors]::WindowTextColor))
+        Highlight     = (& $toHex ([System.Windows.SystemColors]::HighlightColor))
+        HighlightText = (& $toHex ([System.Windows.SystemColors]::HighlightTextColor))
+        HotTrack      = (& $toHex ([System.Windows.SystemColors]::HotTrackColor))
+    }
+}
+
+function Get-GuiThemeState {
+    # O tema que vale agora: "Contrast" com o contraste alto do Windows ligado (Signature: as cores do sistema, que mudam
+    # com o tema de contraste escolhido); fora dele, o escolhido pela pessoa ou o do Windows.
+    if (Test-GuiHighContrast) {
+        $colors = Get-GuiSystemColors
+        return [PSCustomObject]@{ Name = "Contrast"; Signature = (@($colors.Keys | Sort-Object | ForEach-Object { "$_=$($colors[$_])" }) -join ";"); Colors = $colors }
+    }
+
+    return [PSCustomObject]@{ Name = (Resolve-WinForgeTheme -Preference $script:ThemePreference -SystemTheme (Get-GuiSystemTheme)); Signature = ""; Colors = $null }
+}
+
 function Set-GuiTheme {
     # Aplica um tema: as cores que o script usa ao montar controles, as do console nos detalhes técnicos e os pincéis do
-    # XAML (que mudam na hora, por serem DynamicResource).
-    param ([ValidateSet("Light", "Dark")][string]$Name)
+    # XAML (que mudam na hora, por serem DynamicResource). "Contrast" usa as cores do sistema (Colors, de Get-GuiSystemColors).
+    param (
+        [ValidateSet("Light", "Dark", "Contrast")][string]$Name,
+        [hashtable]$Colors = $null,
+        [string]$Signature = ""
+    )
 
     $script:ThemeName = $Name
-    $script:Theme = Get-WinForgePalette -Name $Name
+    $script:ThemeSignature = $Signature
+
+    if ($Name -eq "Contrast") {
+        if ($null -eq $Colors) { $Colors = Get-GuiSystemColors }
+        $script:Theme = Get-WinForgeHighContrastPalette -Colors $Colors
+        $script:ColorMap = Get-WinForgeHighContrastConsolePalette -Text $script:Theme.Text
+    }
+    else {
+        $script:Theme = Get-WinForgePalette -Name $Name
+        $script:ColorMap = Get-WinForgeConsolePalette -Name $Name
+    }
+
     $script:LevelColors = Get-WinForgeLevelColors -Theme $script:Theme
-    $script:ColorMap = Get-WinForgeConsolePalette -Name $Name
     $script:BrushCache = @{}
 
     foreach ($key in @($script:Theme.Keys)) {
-        $window.Resources["${key}Brush"] = New-GuiBrush $script:Theme[$key]
+        Set-GuiResource -Dictionary $window.Resources -Key "${key}Brush" -Value (New-GuiBrush $script:Theme[$key])
     }
 
     Set-GuiTitleBarTheme -Target $window
 }
 
 function Update-GuiTheme {
-    # Confere o tema (a escolha da pessoa ou o do Windows) e, se mudou, aplica e redesenha o que está na tela. Devolve
-    # verdadeiro quando mudou.
-    $name = Resolve-WinForgeTheme -Preference $script:ThemePreference -SystemTheme (Get-GuiSystemTheme)
+    # Confere o tema (o contraste alto do Windows, a escolha da pessoa ou o tema do Windows) e o tamanho do texto do Windows
+    # e, se algum mudou, aplica e redesenha o que está na tela. Devolve verdadeiro quando mudou.
+    $state = Get-GuiThemeState
+    $typeChanged = Set-GuiTypography
 
-    if ($name -eq $script:ThemeName) { return $false }
+    if ($state.Name -eq $script:ThemeName -and $state.Signature -eq $script:ThemeSignature -and -not $typeChanged) { return $false }
 
-    Set-GuiTheme -Name $name
+    Set-GuiTheme -Name $state.Name -Colors $state.Colors -Signature $state.Signature
     Update-GuiThemedContent
 
     return $true
+}
+
+function Get-GuiTextScaleSetting {
+    # O tamanho do texto escolhido no Windows (Configurações > Acessibilidade > Tamanho do texto), de 1 a 2,25.
+    $value = $null
+    try { $value = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Accessibility" -Name "TextScaleFactor" -ErrorAction Stop } catch { $value = $null }
+
+    return (Get-WinForgeTextScale -Value $value)
+}
+
+function Get-GuiUiFont {
+    <#
+    A fonte da janela: no Windows 11, a Segoe UI Variable (a variação para texto), mas só se o WPF a oferece com o seminegrito
+    de verdade (um peso que o WPF tivesse de engrossar sozinho ficaria borrado); senão, e no Windows 10, a Segoe UI.
+    #>
+    try {
+        foreach ($family in [System.Windows.Media.Fonts]::SystemFontFamilies) {
+            if ([string]$family.Source -ne "Segoe UI Variable Text") { continue }
+
+            # As faces que existem de fato no arquivo (uma face simulada é o WPF engrossando a normal).
+            foreach ($face in $family.GetTypefaces()) {
+                if ($face.Weight -eq [System.Windows.FontWeights]::SemiBold -and $face.Style -eq [System.Windows.FontStyles]::Normal -and -not $face.IsBoldSimulated) {
+                    return "Segoe UI Variable Text"
+                }
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Fonte: $($_.Exception.Message)"
+    }
+
+    return "Segoe UI"
+}
+
+function Get-GuiDisplayFont {
+    <#
+    A fonte dos títulos em negrito (o nome da página, a frase e os números do Início, o logotipo): no Windows 11, a Segoe UI
+    Variable Display (a variação feita para tamanhos grandes), mas só se o WPF a oferece com o negrito de verdade; senão, e
+    no Windows 10, a Segoe UI, que tem o negrito num arquivo próprio.
+    #>
+    try {
+        foreach ($family in [System.Windows.Media.Fonts]::SystemFontFamilies) {
+            if ([string]$family.Source -ne "Segoe UI Variable Display") { continue }
+
+            foreach ($face in $family.GetTypefaces()) {
+                if ($face.Weight -eq [System.Windows.FontWeights]::Bold -and $face.Style -eq [System.Windows.FontStyles]::Normal -and -not $face.IsBoldSimulated) {
+                    return "Segoe UI Variable Display"
+                }
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Fonte dos títulos: $($_.Exception.Message)"
+    }
+
+    return "Segoe UI"
+}
+
+function Set-GuiTypography {
+    <#
+    Aplica a fonte (na primeira vez) e a escala de tamanhos do Windows 11 multiplicada pelo tamanho do texto do Windows: os
+    recursos do XAML (CaptionSize, BodySize... e as entrelinhas BodyLineHeight e SubtitleLineHeight) e os tamanhos que o
+    script usa ($script:Type, com a entrelinha de cada um em $script:LineBySize). Devolve verdadeiro quando o
+    tamanho mudou desde a última vez (os controles montados pelo script precisam ser refeitos).
+    #>
+    if (-not $script:FontApplied) {
+        $script:FontApplied = $true
+        try { Set-GuiResource -Dictionary $window.Resources -Key "UiFont" -Value ([System.Windows.Media.FontFamily]::new((Get-GuiUiFont))) } catch { Write-Verbose "Fonte: $($_.Exception.Message)" }
+
+        # A fonte dos títulos vai para o recurso (o XAML: o nome da página, o logotipo) e fica guardada aqui, para os títulos
+        # que o script monta (New-GuiText -Display) a receberem direto, sem depender de achar o recurso ao entrar na tela.
+        try {
+            $script:DisplayFontFamily = [System.Windows.Media.FontFamily]::new((Get-GuiDisplayFont))
+            Set-GuiResource -Dictionary $window.Resources -Key "DisplayFont" -Value $script:DisplayFontFamily
+        }
+        catch {
+            Write-Verbose "Fonte dos títulos: $($_.Exception.Message)"
+        }
+    }
+
+    $scale = Get-GuiTextScaleSetting
+    $changed = ($scale -ne $script:TextScale)
+
+    $script:TextScale = $scale
+    $script:Type = Get-WinForgeTypeRamp -Scale $scale
+    $lines = Get-WinForgeLineRamp -Scale $scale
+    $script:LineBySize = @{}
+    foreach ($key in @($script:Type.Keys)) { $script:LineBySize["$($script:Type[$key])"] = $lines[$key] }
+    Set-GuiResource -Dictionary $window.Resources -Key "BodyLineHeight" -Value ([double]$lines.Body)
+    Set-GuiResource -Dictionary $window.Resources -Key "SubtitleLineHeight" -Value ([double]$lines.Subtitle)
+
+    Set-GuiResource -Dictionary $window.Resources -Key "CaptionSize" -Value ([double]$script:Type.Caption)
+    Set-GuiResource -Dictionary $window.Resources -Key "BodySize" -Value ([double]$script:Type.Body)
+    Set-GuiResource -Dictionary $window.Resources -Key "BodyLargeSize" -Value ([double]$script:Type.BodyLarge)
+    Set-GuiResource -Dictionary $window.Resources -Key "SubtitleSize" -Value ([double]$script:Type.Subtitle)
+    Set-GuiResource -Dictionary $window.Resources -Key "TitleSize" -Value ([double]$script:Type.Title)
+    Set-GuiResource -Dictionary $window.Resources -Key "TitleLargeSize" -Value ([double]$script:Type.TitleLarge)
+    Set-GuiResource -Dictionary $window.Resources -Key "CodeSize" -Value ([double]([Math]::Round(12.5 * $scale * 2.0) / 2.0))
+
+    return $changed
 }
 
 function Update-GuiThemedContent {
@@ -927,6 +1452,9 @@ function Set-GuiThemePreference {
     # A escolha de Sobre o WinForge > Aparência. Vale na hora e fica guardada nas preferências.
     param ([ValidateSet("System", "Light", "Dark")][string]$Value)
 
+    # A opção que já está marcada não muda nada (nem refaz a página), como no Idioma.
+    if ($Value -eq $script:ThemePreference) { return }
+
     $script:ThemePreference = $Value
     $script:AppearanceRefocus = $true
     [void](Set-WinForgeSetting -Name "Theme" -Value $Value)
@@ -942,6 +1470,54 @@ function Set-GuiThemePreference {
     if ($null -ne $script:AppearanceFocusTarget) {
         [void]$script:AppearanceFocusTarget.Focus()
         $script:AppearanceFocusTarget = $null
+    }
+}
+
+function Set-GuiLanguagePreference {
+    <#
+    A escolha de Sobre o WinForge > Idioma. Fica guardada e vale quando a janela abre de novo (os textos são montados ao
+    abrir). Quando muda o idioma de verdade e nenhuma ação está rodando, oferece reabrir agora, na mesma página; com uma
+    ação rodando, só avisa (reabrir no meio dela a interromperia).
+    #>
+    param ([ValidateSet("Auto", "pt", "en", "es")][string]$Value)
+
+    if ($Value -eq $script:LanguagePreference) { return }
+
+    if (-not (Set-WinForgeLanguagePreference -Language $Value)) {
+        [void](Show-GuiMessage -Icon Warning -Title (Get-WinForgeText 'O idioma não foi guardado') -Text (Get-WinForgeText 'Tente de novo.'))
+        return
+    }
+
+    $script:LanguagePreference = $Value
+    $script:LanguageRefocus = $true
+    if ($pagesView.Visibility -eq "Visible" -and $script:CurrentPage -eq "app") { Show-GuiPage -Id "app" -Rerender }
+    $script:LanguageRefocus = $false
+
+    if ($null -ne $script:LanguageFocusTarget) {
+        [void]$script:LanguageFocusTarget.Focus()
+        $script:LanguageFocusTarget = $null
+    }
+
+    # A escolha dá o idioma que já está na tela (Automático num Windows em português, por exemplo): nada a reabrir.
+    if ((Get-WinForgeLanguageFor -Preference $Value) -eq (Get-WinForgeLanguage)) { return }
+
+    if ($script:Running) {
+        [void](Show-GuiMessage -Title (Get-WinForgeText 'O novo idioma vale quando o WinForge abrir de novo') -Text (Get-WinForgeText 'Feche e abra o WinForge depois que a ação terminar.'))
+        return
+    }
+
+    $answer = Show-GuiMessage -Buttons YesNo -Icon Question -Default Yes -Title (Get-WinForgeText 'Reabrir o WinForge agora?') -Text (Get-WinForgeText 'O novo idioma vale quando o WinForge abrir de novo.') -YesText (Get-WinForgeText 'Reabrir') -NoText (Get-WinForgeText 'Agora não')
+    if ($answer -ne "Yes") { return }
+
+    # O idioma de um WINFORGE_LANG herdado passaria na frente da escolha que a pessoa acabou de fazer.
+    Remove-Item -Path Env:WINFORGE_LANG -ErrorAction SilentlyContinue
+
+    if (Start-GuiRelaunch -Page "app" -Handover) {
+        $script:ForceClose = $true
+        $window.Close()
+    }
+    else {
+        [void](Show-GuiMessage -Icon Warning -Title (Get-WinForgeText 'O WinForge não foi reaberto') -Text (Get-WinForgeText 'Feche e abra de novo para ver o novo idioma.'))
     }
 }
 
@@ -998,13 +1574,9 @@ function Set-GuiWindowIcon {
 
     if ($null -ne $decoder -and $decoder.Frames.Count -gt 0) {
         try {
-            # O WPF escolhe sozinho o tamanho certo do .ico para a barra de título, a barra de tarefas e o Alt+Tab.
+            # O WPF escolhe sozinho o tamanho certo do .ico para a barra de título, a barra de tarefas e o Alt+Tab. O
+            # logotipo da barra lateral é desenhado pelo XAML, nas cores do tema.
             $window.Icon = $decoder.Frames[0]
-
-            # Logotipo da barra lateral: o maior tamanho do arquivo, reduzido com qualidade pelo WPF.
-            $logo = $window.FindName("LogoImage")
-            $logo.Source = @($decoder.Frames | Sort-Object PixelWidth -Descending)[0]
-            $logo.Visibility = "Visible"
             return
         }
         catch {
@@ -1077,11 +1649,12 @@ catch {
     $script:TaskbarInfo = $null
 }
 
-$window.FindName("BuildText").Text = "Build $(Get-WinForgeBuild)"
-
 # O tema entra antes de qualquer controle ser montado pelo script (cada um guarda a cor com que foi criado).
 try { $script:ThemePreference = Get-WinForgeThemePreference } catch { $script:ThemePreference = "System" }
-Set-GuiTheme -Name (Resolve-WinForgeTheme -Preference $script:ThemePreference -SystemTheme (Get-GuiSystemTheme))
+try { $script:LanguagePreference = Get-WinForgeLanguagePreference } catch { $script:LanguagePreference = "Auto" }
+[void](Set-GuiTypography)
+$startTheme = Get-GuiThemeState
+Set-GuiTheme -Name $startTheme.Name -Colors $startTheme.Colors -Signature $startTheme.Signature
 
 # --- Painel de saída -----------------------------------------------------------------------------------
 
@@ -1244,6 +1817,7 @@ function Reset-GuiActivity {
     $script:RunStepSeen = $false
     $script:RunStepIndex = 0
     $script:RunStepTotal = 0
+    $script:RunStepDone = $false
     $script:PromptContextHidden = New-Object System.Collections.ArrayList
     $activityList.Children.Clear()
     $activityPanel.Visibility = "Collapsed"
@@ -1313,8 +1887,8 @@ function New-GuiActivityRow {
     # das páginas.
     param ([Parameter(Mandatory)]$Entry)
 
-    if ($Entry.Kind -eq "Section" -or $Entry.Kind -eq "Step") {
-        $heading = New-GuiText -Text ([string]$Entry.Text) -Size 12.5 -Color $script:Theme.Muted -Bold $true
+    if ($Entry.Kind -eq "Section" -or $Entry.Kind -eq "Step" -or $Entry.Kind -eq "Phase") {
+        $heading = New-GuiText -Text ([string]$Entry.Text) -Size $script:Type.Caption -Color $script:Theme.Muted -Bold $true
         $heading.Margin = New-Object System.Windows.Thickness (0, 10, 0, 3)
         return $heading
     }
@@ -1323,7 +1897,7 @@ function New-GuiActivityRow {
         $line = New-Object System.Windows.Controls.DockPanel
         $line.Margin = New-Object System.Windows.Thickness (27, 2, 0, 2)
 
-        $label = New-GuiText -Text ([string]$Entry.Label) -Size 13 -Color $script:Theme.Muted
+        $label = New-GuiText -Text ([string]$Entry.Label) -Size $script:Type.Body -Color $script:Theme.Muted
         $label.Width = 210
         $label.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
         Set-GuiDock -Element $label -Side "Left"
@@ -1331,10 +1905,10 @@ function New-GuiActivityRow {
 
         # O valor que pede atenção (ou que confirma que está tudo certo) vem na cor do nível, como no console.
         $value = switch ([string]$Entry.Level) {
-            "Ok"    { New-GuiText -Text ([string]$Entry.Value) -Size 13.5 -Color $script:Theme.Ok }
-            "Warn"  { New-GuiText -Text ([string]$Entry.Value) -Size 13.5 -Color $script:Theme.Warn -Bold $true }
-            "Bad"   { New-GuiText -Text ([string]$Entry.Value) -Size 13.5 -Color $script:Theme.Bad -Bold $true }
-            default { New-GuiText -Text ([string]$Entry.Value) -Size 13.5 }
+            "Ok"    { New-GuiText -Text ([string]$Entry.Value) -Size $script:Type.Body -Color $script:Theme.Ok }
+            "Warn"  { New-GuiText -Text ([string]$Entry.Value) -Size $script:Type.Body -Color $script:Theme.Warn -Bold $true }
+            "Bad"   { New-GuiText -Text ([string]$Entry.Value) -Size $script:Type.Body -Color $script:Theme.Bad -Bold $true }
+            default { New-GuiText -Text ([string]$Entry.Value) -Size $script:Type.Body }
         }
         [void]$line.Children.Add($value)
 
@@ -1374,9 +1948,9 @@ function New-GuiActivityText {
 
     $reference = Find-WinForgeNavReference -Text $Text
 
-    if ($null -eq $reference) { return (New-GuiText -Text $Text -Size 13.5) }
+    if ($null -eq $reference) { return (New-GuiText -Text $Text -Size $script:Type.Body) }
 
-    $block = New-GuiText -Text "" -Size 13.5
+    $block = New-GuiText -Text "" -Size $script:Type.Body
     $rest = $Text
 
     while ($null -ne $reference) {
@@ -1389,7 +1963,7 @@ function New-GuiActivityText {
         [void]$link.Inlines.Add((New-Object System.Windows.Documents.Run $linked))
         $link.Style = $window.FindResource("SummaryLink")
         $link.Tag = $reference.ItemId
-        $link.ToolTip = "Abrir $linked"
+        $link.ToolTip = (Get-WinForgeText 'Abrir {0}' "$linked")
         $link.Add_Click({
             param ($sender, $eventArgs)
             $item = Get-WinForgeNavItem -Id ([string]$sender.Tag)
@@ -1441,12 +2015,26 @@ function Add-GuiActivity {
 
     # A frase em destaque é a etapa: depois da primeira "Etapa N de M" (o Otimizar), só outra etapa a troca; um título no
     # meio dela ("Lixeira", "Reparar imagem e componentes") a faria parecer outra etapa. Sem etapas, vale o último título.
-    if ($Kind -eq "Step" -and $Text -match '^Etapa ([0-9]+) de ([0-9]+):') {
+    # O padrão sai do mesmo texto que o Otimizar escreve ("Etapa {0} de {1}: {2}"), no idioma da tela.
+    if ($null -eq $script:RunStepPattern) {
+        $script:RunStepPattern = '^' + ([regex]::Escape((Get-WinForgeText 'Etapa {0} de {1}: {2}')) -replace '\\\{0}', '(?<index>[0-9]+)' -replace '\\\{1}', '(?<total>[0-9]+)' -replace '\\\{2}.*$', '')
+    }
+
+    if ($Kind -eq "Step" -and $Text -match $script:RunStepPattern) {
         $script:RunStepSeen = $true
-        $script:RunStepIndex = [int]$Matches[1]
-        $script:RunStepTotal = [int]$Matches[2]
+        $script:RunStepIndex = [int]$Matches["index"]
+        $script:RunStepTotal = [int]$Matches["total"]
+        $script:RunStepDone = $false
         Set-GuiRunStep -Text $Text
         [void](Update-GuiOverallProgress -Fraction 0.0)
+        Send-GuiAnnouncement -Element $runStepText
+    }
+    elseif ($Kind -eq "Phase") {
+        # Uma parte do fluxo que não é etapa (as perguntas antes da parte automática, o fim do Otimizar): ela toma o lugar
+        # da etapa em destaque, que já terminou, e a barra mostra essa etapa inteira feita. A conta das etapas não muda.
+        Set-GuiRunStep -Text $Text
+        $script:RunStepDone = $script:RunStepSeen
+        [void](Update-GuiOverallProgress)
         Send-GuiAnnouncement -Element $runStepText
     }
     elseif (($Kind -eq "Section" -or $Kind -eq "Step") -and -not $script:RunStepSeen) {
@@ -1462,6 +2050,7 @@ function Update-GuiOverallProgress {
     param ([double]$Fraction = 0.0)
 
     if ($script:RunStepTotal -le 0) { return $false }
+    if ($script:RunStepDone) { $Fraction = 1.0 }
 
     $value = Get-WinForgeOverallProgress -Index $script:RunStepIndex -Total $script:RunStepTotal -Fraction $Fraction
     $runProgress.IsIndeterminate = $false
@@ -1517,7 +2106,7 @@ function Set-GuiDetailsOpen {
     $script:DetailsOpen = $Open
     $detailsPanel.Visibility = $(if ($Open) { "Visible" } else { "Collapsed" })
     $detailsActions.Visibility = $detailsPanel.Visibility
-    Set-GuiAutomationName -Element $detailsToggle -Name $(if ($Open) { "Ocultar os detalhes técnicos" } else { "Mostrar os detalhes técnicos" })
+    Set-GuiAutomationName -Element $detailsToggle -Name $(if ($Open) { (Get-WinForgeText 'Ocultar os detalhes técnicos') } else { (Get-WinForgeText 'Mostrar os detalhes técnicos') })
     $detailsCard.VerticalAlignment = $(if ($Open) { "Stretch" } else { "Top" })
     Update-GuiSummaryHeight -Refresh
 
@@ -1576,11 +2165,11 @@ function Set-GuiPromptState {
             $runHero.Visibility = "Collapsed"
         }
 
-        Set-GuiRunStatus -Text "Esperando a sua resposta" -DotColor $script:Theme.Warn
+        Set-GuiRunStatus -Text (Get-WinForgeText 'Esperando a sua resposta') -DotColor $script:Theme.Warn
     }
     else {
         Restore-GuiAroundPrompt
-        Set-GuiRunStatus -Text "Em execução" -DotColor $script:Theme.Accent
+        Set-GuiRunStatus -Text (Get-WinForgeText 'Em execução') -DotColor $script:Theme.Accent
     }
 }
 
@@ -1612,7 +2201,7 @@ function Set-GuiPromptContext {
     $count = $entries.Count
     $start = $count
 
-    while ($start -gt 0 -and [string]$entries[$start - 1].Kind -ne "Section" -and [string]$entries[$start - 1].Kind -ne "Step") { $start-- }
+    while ($start -gt 0 -and [string]$entries[$start - 1].Kind -notin @("Section", "Step", "Phase")) { $start-- }
 
     $picked = @(for ($i = $start; $i -lt $count; $i++) { $i })
     if ($picked.Count -gt 4) { $picked = @($picked | Where-Object { [string]$entries[$_].Kind -ne "Fact" }) }
@@ -1853,7 +2442,7 @@ function Update-GuiPromptFilter {
 
     foreach ($child in $promptButtons.Children) {
         if ($child.Tag -is [hashtable] -and $child.Tag.Role -eq "all") {
-            $child.Content = $(if ($words.Count -gt 0) { "Marcar os $shown à vista" } else { "Marcar todos" })
+            $child.Content = $(if ($words.Count -gt 0) { (Get-WinForgeText 'Marcar os {0} à vista' "$shown") } else { (Get-WinForgeText 'Marcar todos') })
         }
     }
 }
@@ -1871,7 +2460,7 @@ function Update-GuiMultiPromptCount {
             $label = [string]$child.Tag.Label
 
             if ($review) {
-                $child.Content = $(if ($changes -gt 0) { "$label ($changes)" } else { "Continuar" })
+                $child.Content = $(if ($changes -gt 0) { "$label ($changes)" } else { (Get-WinForgeText 'Continuar') })
                 $child.IsEnabled = $true
             }
             else {
@@ -1883,15 +2472,18 @@ function Update-GuiMultiPromptCount {
 }
 
 function New-GuiPromptButton {
+    # Danger: a resposta apaga algo sem volta (o Sim de esvaziar a Lixeira): o botão de perigo, mesmo sendo o padrão.
     param (
         [string]$Text,
         [string]$Description = "",
         [bool]$Accent = $false,
         [bool]$Exit = $false,
+        [bool]$Danger = $false,
         $Tag
     )
 
-    $button = New-GuiButton -Text $Text -Kind $(if ($Accent -and -not $Exit) { "Primary" } else { "Secondary" }) -Tag $Tag
+    $kind = $(if ($Danger -and -not $Exit) { "Danger" } elseif ($Accent -and -not $Exit) { "Primary" } else { "Secondary" })
+    $button = New-GuiButton -Text $Text -Kind $kind -Tag $Tag
     $button.Margin = New-Object System.Windows.Thickness (0, 0, 10, 8)
 
     if (-not [string]::IsNullOrWhiteSpace($Description)) {
@@ -1903,11 +2495,12 @@ function New-GuiPromptButton {
 
 function New-GuiPromptOption {
     # Uma opção da pergunta em linha, como nas listas de escolha dos sistemas atuais: título, descrição e a seta. A
-    # opção recomendada vem destacada.
+    # opção recomendada vem destacada; a que apaga algo sem volta (Danger), com o título e o contorno na cor de perigo.
     param (
         [string]$Text,
         [string]$Description = "",
         [bool]$Accent = $false,
+        [bool]$Danger = $false,
         $Tag
     )
 
@@ -1925,10 +2518,10 @@ function New-GuiPromptOption {
 
     $stack = New-Object System.Windows.Controls.StackPanel
     $stack.VerticalAlignment = "Center"
-    [void]$stack.Children.Add((New-GuiText -Text $Text -Size 14 -Bold $true))
+    [void]$stack.Children.Add((New-GuiText -Text $Text -Size $script:Type.Body -Bold $true -Color $(if ($Danger) { $script:Theme.Danger } else { $script:Theme.Text })))
 
     if (-not [string]::IsNullOrWhiteSpace($Description)) {
-        $detail = New-GuiText -Text $Description -Size 12.5 -Color $script:Theme.Muted
+        $detail = New-GuiText -Text $Description -Size $script:Type.Caption -Color $script:Theme.Muted
         $detail.Margin = New-Object System.Windows.Thickness (0, 2, 0, 0)
         [void]$stack.Children.Add($detail)
     }
@@ -1936,11 +2529,14 @@ function New-GuiPromptOption {
     [void]$row.Children.Add($stack)
     $button.Content = $row
 
-    # A borda na cor do texto de destaque: no tema escuro, o azul do botão principal fica abaixo do contraste mínimo
-    # (3:1) sobre o fundo do cartão.
+    # A borda na cor do texto de destaque, que passa de 3:1 sobre o fundo do cartão nos dois temas (é a mesma do anel de
+    # foco).
     if ($Accent) {
         $button.Background = New-GuiBrush $script:Theme.AccentCard
         $button.BorderBrush = New-GuiBrush $script:Theme.AccentText
+    }
+    elseif ($Danger) {
+        $button.BorderBrush = New-GuiBrush $script:Theme.Danger
     }
 
     return $button
@@ -1986,10 +2582,10 @@ function Show-GuiPromptBar {
             $box.IsChecked = [bool]$option.Selected
 
             $stack = New-Object System.Windows.Controls.StackPanel
-            [void]$stack.Children.Add((New-GuiText -Text ([string]$option.Label) -Size 13.5))
+            [void]$stack.Children.Add((New-GuiText -Text ([string]$option.Label) -Size $script:Type.Body))
 
             if (-not [string]::IsNullOrWhiteSpace([string]$option.Description)) {
-                [void]$stack.Children.Add((New-GuiText -Text ([string]$option.Description) -Size 12 -Color $script:Theme.Muted))
+                [void]$stack.Children.Add((New-GuiText -Text ([string]$option.Description) -Size $script:Type.Caption -Color $script:Theme.Muted))
             }
 
             $box.Content = $stack
@@ -2011,8 +2607,8 @@ function Show-GuiPromptBar {
         $script:PromptReview = $review
         $script:PromptInitialKeys = $(if ($review) { @($plan.Options | Where-Object { [bool]$_.Selected } | ForEach-Object { [string]$_.Key }) } else { @() })
 
-        $confirmLabel = $(if ($null -ne $Prompt.PSObject.Properties["ConfirmLabel"] -and -not [string]::IsNullOrWhiteSpace([string]$Prompt.ConfirmLabel)) { [string]$Prompt.ConfirmLabel } elseif ($review) { "Aplicar" } else { "Confirmar" })
-        $cancelLabel = $(if ($null -ne $Prompt.PSObject.Properties["CancelLabel"] -and -not [string]::IsNullOrWhiteSpace([string]$Prompt.CancelLabel)) { [string]$Prompt.CancelLabel } else { "Cancelar" })
+        $confirmLabel = $(if ($null -ne $Prompt.PSObject.Properties["ConfirmLabel"] -and -not [string]::IsNullOrWhiteSpace([string]$Prompt.ConfirmLabel)) { [string]$Prompt.ConfirmLabel } elseif ($review) { (Get-WinForgeText 'Aplicar') } else { (Get-WinForgeText 'Confirmar') })
+        $cancelLabel = $(if ($null -ne $Prompt.PSObject.Properties["CancelLabel"] -and -not [string]::IsNullOrWhiteSpace([string]$Prompt.CancelLabel)) { [string]$Prompt.CancelLabel } else { (Get-WinForgeText 'Cancelar') })
 
         $confirm = New-GuiPromptButton -Text "$confirmLabel (0)" -Accent $true -Tag @{ Role = "confirm"; Label = $confirmLabel }
         $confirm.Add_Click({ Submit-GuiMultiPrompt -Accepted $true })
@@ -2022,7 +2618,7 @@ function Show-GuiPromptBar {
         $noSelectAll = ($null -ne $Prompt.PSObject.Properties["NoSelectAll"] -and [bool]$Prompt.NoSelectAll)
 
         if (-not $noSelectAll) {
-            $all = New-GuiPromptButton -Text "Marcar todos" -Tag @{ Role = "all" }
+            $all = New-GuiPromptButton -Text (Get-WinForgeText 'Marcar todos') -Tag @{ Role = "all" }
             $all.Add_Click({
                 foreach ($child in $promptList.Children) { if ($child.Visibility -eq "Visible") { $child.IsChecked = $true } }
                 Update-GuiMultiPromptCount
@@ -2031,7 +2627,7 @@ function Show-GuiPromptBar {
         }
 
         if (-not $review) {
-            $none = New-GuiPromptButton -Text "Desmarcar tudo" -Tag @{ Role = "none" }
+            $none = New-GuiPromptButton -Text (Get-WinForgeText 'Desmarcar tudo') -Tag @{ Role = "none" }
             $none.Add_Click({
                 foreach ($child in $promptList.Children) { if ($child.Visibility -eq "Visible") { $child.IsChecked = $false } }
                 Update-GuiMultiPromptCount
@@ -2067,10 +2663,10 @@ function Show-GuiPromptBar {
             $accent = ([bool]$definition.Accent -and -not $plan.ShowText)
 
             if ($asRows -and -not $definition.Exit) {
-                $control = New-GuiPromptOption -Text $definition.Text -Description $definition.Description -Accent $accent -Tag $tag
+                $control = New-GuiPromptOption -Text $definition.Text -Description $definition.Description -Accent $accent -Danger ([bool](Get-WinForgeJsonValue -Object $definition -Name "Danger" -Default $false)) -Tag $tag
             }
             else {
-                $control = New-GuiPromptButton -Text $definition.Text -Description $definition.Description -Accent $accent -Exit ([bool]$definition.Exit) -Tag $tag
+                $control = New-GuiPromptButton -Text $definition.Text -Description $definition.Description -Accent $accent -Exit ([bool]$definition.Exit) -Danger ([bool](Get-WinForgeJsonValue -Object $definition -Name "Danger" -Default $false)) -Tag $tag
             }
 
             if ($null -eq $firstControl) { $firstControl = $control }
@@ -2160,7 +2756,9 @@ function Get-GuiRunElapsed {
 }
 
 function Show-GuiRunView {
-    # Mostra a tela de execução (saída, andamento, perguntas) no lugar da página aberta.
+    # Mostra a tela de execução (saída, andamento, perguntas) no lugar da página aberta. Uma chave que mudava na própria
+    # linha passa a ser uma ação como as outras (a pergunta dela, o resultado com algo a ler).
+    $script:InPlaceRun = $null
     $pagesView.Visibility = "Collapsed"
     $runView.Visibility = "Visible"
     $script:RunUnseen = $false
@@ -2169,8 +2767,9 @@ function Show-GuiRunView {
 }
 
 function Update-GuiRunStrip {
-    # A faixa no alto das páginas: mostra a ação em andamento (ou o resultado que ainda não foi visto).
-    $showStrip = ($script:Running -or $script:RunUnseen) -and ($runView.Visibility -ne "Visible")
+    # A faixa no alto das páginas: mostra a ação em andamento (ou o resultado que ainda não foi visto). A chave que muda na
+    # própria linha não ganha a faixa enquanto a página dela está aberta: a linha diz "Alterando…".
+    $showStrip = ($script:Running -or $script:RunUnseen) -and ($runView.Visibility -ne "Visible") -and -not (Test-GuiInPlaceHere)
 
     if (-not $showStrip) {
         $runStrip.Visibility = "Collapsed"
@@ -2182,7 +2781,7 @@ function Update-GuiRunStrip {
 
     if ($script:Running) {
         $runStripDot.Fill = New-GuiBrush $script:Theme.Accent
-        $text = "Em execução · $(Format-WinForgeClock -Span (Get-GuiRunElapsed))"
+        $text = (Get-WinForgeText 'Em execução · {0}' "$(Format-WinForgeClock -Span (Get-GuiRunElapsed))")
 
         # A etapa do Otimizar diz mais do que a ferramenta da vez ("Etapa 9 de 22: Reparar o Windows").
         if ($script:RunStepSeen -and -not [string]::IsNullOrWhiteSpace($runStepText.Text)) {
@@ -2191,20 +2790,20 @@ function Update-GuiRunStrip {
         elseif (-not [string]::IsNullOrWhiteSpace($progressText.Text)) {
             $text += " · $($progressText.Text)"
         }
-        elseif (-not [string]::IsNullOrWhiteSpace($runStepText.Text) -and $runStepText.Text -ne "Em andamento") {
+        elseif (-not [string]::IsNullOrWhiteSpace($runStepText.Text) -and $runStepText.Text -ne (Get-WinForgeText 'Em andamento')) {
             $text += " · $($runStepText.Text)"
         }
 
         if ($null -ne $script:ShownPrompt) {
-            $text = "Esperando a sua resposta"
+            $text = (Get-WinForgeText 'Esperando a sua resposta')
             $runStripDot.Fill = New-GuiBrush $script:Theme.Warn
         }
 
         $runStripText.Text = $text
         $runStripStop.Visibility = "Visible"
         $runStripDismiss.Visibility = "Collapsed"
-        $runStripView.Content = "Ver"
-        Set-GuiAutomationName -Element $runStripView -Name "Ver a ação em andamento: $($runTitle.Text)"
+        $runStripView.Content = (Get-WinForgeText 'Ver')
+        Set-GuiAutomationName -Element $runStripView -Name (Get-WinForgeText 'Ver a ação em andamento: {0}' "$($runTitle.Text)")
     }
     else {
         $view = $script:LastRunView
@@ -2213,8 +2812,8 @@ function Update-GuiRunStrip {
         $runStripText.Text = "$($view.StatusText) · $($view.ElapsedText)"
         $runStripStop.Visibility = "Collapsed"
         $runStripDismiss.Visibility = "Visible"
-        $runStripView.Content = "Ver resultado"
-        Set-GuiAutomationName -Element $runStripView -Name "Ver o resultado: $($runTitle.Text)"
+        $runStripView.Content = (Get-WinForgeText 'Ver resultado')
+        Set-GuiAutomationName -Element $runStripView -Name (Get-WinForgeText 'Ver o resultado: {0}' "$($runTitle.Text)")
     }
 }
 
@@ -2245,13 +2844,17 @@ function Set-GuiResultView {
 
         if ([string]::IsNullOrWhiteSpace($label)) {
             $item = Get-WinForgeNavItem -Id $next
-            $label = $(if ($null -ne $item) { [string]$item.Label } else { "Abrir" })
+            $label = $(if ($null -ne $item) { [string]$item.Label } else { (Get-WinForgeText 'Abrir') })
         }
 
         $resultAction.Content = $label
     }
 
     if ($View.ShowBanner) {
+        # A faixa entra uma vez, quando aparece (só ela: o resumo que já estava aberto embaixo não pisca); refeita no
+        # lugar (troca de tema), ela não se mexe.
+        if ($resultBanner.Visibility -ne "Visible") { Start-GuiEntrance -Element $resultBanner -Offset 6 -Milliseconds 200 }
+
         $resultIcon.Background = New-GuiBrush $colors.Back
         $resultIcon.Child = New-GuiIcon -Name ([string]$colors.Icon) -Size 26 -Color $colors.Dot
         $resultBannerTitle.Text = $View.BannerTitle
@@ -2326,11 +2929,17 @@ function Complete-GuiRun {
     $view = Get-WinForgeRunView -Status $Status -Outcome $Outcome -Elapsed (Get-GuiRunElapsed)
     $script:LastRunView = $view
 
+    # A chave que mudou na própria linha (a tela de execução não abriu): sem nada a ler além do novo estado, a linha mostra
+    # como o recurso ficou, e a janela fica na página.
+    $inPlace = $script:InPlaceRun
+    $script:InPlaceRun = $null
+    $quietDone = ($null -ne $inPlace -and $runView.Visibility -ne "Visible" -and (Test-GuiQuietOutcome -Status $Status -Outcome $Outcome))
+
     # Com um próximo passo na faixa (ameaças que pedem ação), rodar de novo não resolve nada: o botão sairia do lugar dele.
     $hasNext = -not [string]::IsNullOrWhiteSpace([string](Get-WinForgeJsonValue -Object $view -Name "Next" -Default ""))
     $hideSummary = [bool](Get-WinForgeJsonValue -Object $view -Name "HideSummary" -Default $false)
     # "Nada a fazer" (outro antivírus no lugar, nada para limpar) também não muda rodando de novo; "Cancelado" muda.
-    $nothing = ($null -ne $Outcome -and [string]$Outcome.Kind -eq "Skipped" -and [string]$Outcome.Detail -notmatch "(?i)cancelad|reiniciando")
+    $nothing = ($null -ne $Outcome -and [string]$Outcome.Kind -eq "Skipped" -and -not (Test-WinForgeCanceledText -Text ([string]$Outcome.Detail)) -and -not (Test-WinForgeRestartingText -Text ([string]$Outcome.Detail)))
     # Os históricos, só de ver (sem veredito), mostrariam a mesma coisa de novo.
     $viewOnly = (-not $view.ShowBanner -and $script:LastAction -is [hashtable] -and [string]$script:LastAction["Command"] -in @("Show-WinForgeMaintenanceHistory", "Show-WinForgeChangeHistory"))
     $rerunButton.Visibility = $(if ($null -ne $script:LastAction -and -not $isTweak -and -not $isLong -and -not $hasNext -and -not $nothing -and -not $viewOnly) { "Visible" } else { "Collapsed" })
@@ -2349,23 +2958,46 @@ function Complete-GuiRun {
     else {
         Update-GuiSummaryHeight -Refresh
 
-        # Com o resumo de etapas (o "Resumo" do fim do Otimizar), a tela abre nele, e não no fim da lista. Com um próximo
-        # passo na faixa (as ameaças que pedem ação), abre na última seção, a da lista: numa janela baixa, o fim dela
-        # deixaria a primeira ameaça cortada.
-        if ($view.ShowBanner) { Show-GuiSummarySection -Title $(if ($hasNext) { "" } else { "Resumo" }) }
+        # Com o resumo de etapas (o "Resumo" do fim do Otimizar), a tela abre nele, e não no fim da lista: é lá que está a
+        # etapa que o botão da faixa resolve. Com um próximo passo na faixa de outra ação (as ameaças que pedem ação), abre
+        # na última seção, a da lista: numa janela baixa, o fim dela deixaria a primeira ameaça cortada.
+        if ($view.ShowBanner) { Show-GuiSummarySection -Title $(if ($hasNext -and -not $isLong) { "" } else { (Get-WinForgeText 'Resumo') }) }
+    }
+
+    if ($null -ne $inPlace -and -not $quietDone -and $script:CurrentPage -eq $inPlace.Page -and $pagesView.Visibility -eq "Visible") {
+        # A chave terminou com algo a ler (ficou como estava, falhou, pede reinício): o resultado abre, como nas outras ações.
+        Show-GuiRunView
     }
 
     # Se a pessoa estava em outra página, o resultado fica na faixa até ela ver; se a janela não está em primeiro
-    # plano, o botão pisca na barra de tarefas e mostra a cor do resultado.
-    $script:RunUnseen = ($runView.Visibility -ne "Visible")
+    # plano, o botão pisca na barra de tarefas e mostra a cor do resultado. A chave que terminou na linha não tem o que ver.
+    $script:RunUnseen = ($runView.Visibility -ne "Visible" -and -not $quietDone)
     Update-GuiRunStrip
 
-    if (-not $window.IsActive -and $view.Notify) {
+    if (-not $window.IsActive -and $view.Notify -and -not $quietDone) {
         Set-GuiTaskbarProgress -State $view.Taskbar -Value 1
         Set-GuiTaskbarFlash -On $true
     }
 
-    Send-GuiAnnouncement -Element $runStatus
+    if ($quietDone) {
+        # A linha mostra o estado lido de novo; o leitor de tela ouve como o recurso ficou. O Modo escuro troca o tema da
+        # janela (com a aparência Automática), e a página é refeita com o estado novo: aí o foco e o aviso vão para a linha
+        # nova, quando a lista fica pronta.
+        if ($script:CurrentPage -eq $inPlace.Page) {
+            $themed = $false
+            try { $themed = [bool](Update-GuiTheme) } catch { Write-Verbose "Tema: $($_.Exception.Message)" }
+
+            if ($themed) {
+                $script:TweakRefocus = @{ Id = [string]$inPlace.Id; Page = [string]$inPlace.Page; Refocus = [bool]$inPlace.HadFocus }
+            }
+            else {
+                try { Update-GuiTweakRow -Id ([string]$inPlace.Id) -Refocus ([bool]$inPlace.HadFocus) } catch { Write-Verbose "Linha do ajuste: $($_.Exception.Message)" }
+            }
+        }
+    }
+    else {
+        Send-GuiAnnouncement -Element $runStatus
+    }
 
     if ($runView.Visibility -eq "Visible") {
         # O foco vai para o botão de destaque: o do próximo passo, quando há um, senão o Voltar.
@@ -2378,6 +3010,22 @@ function Complete-GuiRun {
 
     # Uma ação pode ter trocado o tema do Windows (o ajuste Modo escuro): com "Automático", a janela acompanha já.
     try { [void](Update-GuiTheme) } catch { Write-Verbose "Tema: $($_.Exception.Message)" }
+
+    # A atualização com um clique: o instalador da versão nova espera esta janela fechar para trocar os arquivos. Um
+    # instante para a faixa "Instalando a..." aparecer antes.
+    if ((Get-WinForgeAppExitRequest) -eq "update") { $script:UpdateExitTimer.Start() }
+}
+
+function Show-GuiUpdateResult {
+    # Aberta pelo instalador depois de uma atualização: diz como ela terminou, uma vez.
+    $update = $null
+
+    try { $update = Read-WinForgeUpdateResult } catch { $update = $null }
+
+    if ($null -eq $update) { return }
+
+    $message = Get-WinForgeUpdateResultText -Result $update
+    [void](Show-GuiMessage -Icon $(if ($message.Ok) { "Information" } else { "Warning" }) -Title $message.Title -Text $message.Text)
 }
 
 function Update-GuiRunView {
@@ -2435,7 +3083,7 @@ function Update-GuiRunView {
 
                 # Uma ação que ainda não escreveu nenhum título (o Verificar o PC lendo o PC, o ponto de restauração sendo
                 # criado) mostra o que está fazendo em destaque, em vez de "Em andamento".
-                if ($runStepText.Text -eq "Em andamento" -and -not [string]::IsNullOrWhiteSpace([string]$info.Activity)) { Set-GuiRunStep -Text ([string]$info.Activity) }
+                if ($runStepText.Text -eq (Get-WinForgeText 'Em andamento') -and -not [string]::IsNullOrWhiteSpace([string]$info.Activity)) { Set-GuiRunStep -Text ([string]$info.Activity) }
 
                 # Com etapas numeradas, a barra é a da execução inteira, e a porcentagem da ferramenta fica no texto. Sem
                 # porcentagem (a verificação de vírus, o Windows Update procurando), a faixa corre por cima da barra: parada,
@@ -2516,10 +3164,10 @@ function Update-GuiRunView {
             Set-GuiDetailsOpen -Open $true
         }
         catch {
-            Set-GuiRunStatus -Text "Não foi concluído" -DotColor $script:Theme.Bad
+            Set-GuiRunStatus -Text (Get-WinForgeText 'Não foi concluído') -DotColor $script:Theme.Bad
         }
 
-        [void](Show-GuiMessage -Icon Error -Title "Ação interrompida" -Text "A janela parou de acompanhar a ação e, por segurança, ela foi interrompida.`n`nO que já foi feito continua feito. Tente de novo; se acontecer outra vez, abra Sobre o WinForge > Pasta de logs e relatórios e envie o log mais recente ao suporte.`n`nDetalhe técnico: $failure")
+        [void](Show-GuiMessage -Icon Error -Title (Get-WinForgeText 'Ação interrompida') -Text (Get-WinForgeText "A janela parou de acompanhar a ação e, por segurança, ela foi interrompida.`n`nO que já foi feito continua feito. Tente de novo; se acontecer outra vez, abra Sobre o WinForge > Pasta de logs e relatórios e envie o log mais recente ao suporte.`n`nDetalhe técnico: {0}" "$failure"))
     }
 }
 
@@ -2546,7 +3194,8 @@ function Request-GuiAdministrator {
 
     if ($script:IsAdmin) { return $true }
 
-    $answer = Show-GuiMessage -Buttons YesNo -Icon Question -Default Yes -Title "Administrador" -Text "$Reason`n`nPara continuar, o WinForge precisa ser reaberto como Administrador, na mesma página. Reabrir agora?"
+    $answer = Show-GuiMessage -Buttons YesNo -Icon Question -Default Yes -Title (Get-WinForgeText 'Reabrir como Administrador?') -Text (Get-WinForgeText "{0}`n`nPara continuar, o WinForge precisa ser reaberto como Administrador, na mesma página." "$Reason") `
+        -YesText (Get-WinForgeText 'Reabrir') -YesIcon "admin" -NoText (Get-WinForgeText 'Cancelar')
 
     if ($answer -ne "Yes") { return $false }
 
@@ -2559,7 +3208,7 @@ function Request-GuiAdministrator {
         $window.Close()
     }
     else {
-        [void](Show-GuiMessage -Icon Warning -Title "Administrador" -Text "O Windows não concedeu a permissão, então o WinForge continua sem Administrador.`n`nTente de novo e aceite o aviso do Windows (Controle de Conta de Usuário).")
+        [void](Show-GuiMessage -Icon Warning -Title (Get-WinForgeText 'O WinForge continua sem Administrador') -Text (Get-WinForgeText 'O Windows não concedeu a permissão. Tente de novo e aceite o aviso do Windows (Controle de Conta de Usuário).'))
     }
 
     return $false
@@ -2622,15 +3271,19 @@ function Start-GuiAction {
         [string]$FocusTweak = "",
 
         # O item da navegação que pediu a ação: se for preciso reabrir como Administrador, a janela nova já o roda.
-        [string]$NavId = ""
+        [string]$NavId = "",
+
+        # A chave de um ajuste (FocusTweak): a ação roda com a página na tela, e a linha diz "Alterando…". A tela de
+        # execução só abre se a ação perguntar algo ou terminar com algo a ler (Complete-GuiRun).
+        [switch]$InPlace
     )
 
     if ($script:Running) {
-        [void](Show-GuiMessage -Text "Já existe uma ação em andamento ($($runTitle.Text)). Aguarde terminar ou use Parar.`n`nPara voltar a ela, use o botão Ver, na faixa no alto da página." -Icon Information)
+        [void](Show-GuiMessage -Icon Information -Title (Get-WinForgeText 'Já existe uma ação em andamento') -Text (Get-WinForgeText "`"{0}`" ainda está rodando. Aguarde terminar ou use Parar.`n`nPara voltar a ela, use o botão Ver, na faixa no alto da página." "$($runTitle.Text)"))
         return
     }
 
-    if ($RequiresAdmin -and -not (Request-GuiAdministrator -Reason "A ação '$Label' precisa de permissão de Administrador." -Action $NavId)) {
+    if ($RequiresAdmin -and -not (Request-GuiAdministrator -Reason (Get-WinForgeText 'A ação ''{0}'' precisa de permissão de Administrador.' "$Label") -Action $NavId)) {
         return
     }
 
@@ -2644,14 +3297,15 @@ function Start-GuiAction {
         Reset-GuiActivity
         $script:OutputBacklog.Clear()
         $script:LastAction = @{ Label = $Label; Command = $Command; RequiresAdmin = $RequiresAdmin; FocusTweak = $FocusTweak }
+        $script:InPlaceRun = $null
         $script:RunPage = $script:CurrentPage
         $script:RunUnseen = $false
         $script:LastRunView = $null
         $runTitle.Text = $Label
         try { $runStatus.ClearValue([System.Windows.Automation.AutomationProperties]::NameProperty) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
-        Set-GuiRunStatus -Text "Em execução" -DotColor $script:Theme.Accent
+        Set-GuiRunStatus -Text (Get-WinForgeText 'Em execução') -DotColor $script:Theme.Accent
         $runElapsed.Text = "· 00:00"
-        Set-GuiRunStep -Text "Em andamento"
+        Set-GuiRunStep -Text (Get-WinForgeText 'Em andamento')
         $progressText.Text = ""
         $runProgress.IsIndeterminate = $true
         $runProgress.Tag = $null
@@ -2664,34 +3318,80 @@ function Start-GuiAction {
         $rerunButton.Visibility = "Collapsed"
         $promptBar.Visibility = "Collapsed"
         Set-GuiDetailsOpen -Open $false
-        $copyButton.Content = "Copiar"
-        $saveButton.Content = "Salvar"
+        $copyButton.Content = (Get-WinForgeText 'Copiar')
+        $saveButton.Content = (Get-WinForgeText 'Salvar')
         $script:ShownPrompt = $null
         $script:ProgressVersionShown = -1
         Set-GuiTaskbarFlash -On $false
 
-        $pagesView.Visibility = "Collapsed"
-        $runView.Visibility = "Visible"
-        $runStrip.Visibility = "Collapsed"
-        $window.UpdateLayout()
+        if ($InPlace -and -not [string]::IsNullOrEmpty($FocusTweak) -and $script:TweakRows.ContainsKey($FocusTweak)) {
+            # A página fica: a linha diz que está mudando, e a faixa do alto não aparece enquanto ela está na tela.
+            $script:InPlaceRun = @{ Id = $FocusTweak; Page = $script:CurrentPage; HadFocus = (Set-GuiTweakRowBusy -Id $FocusTweak) }
+            $runStrip.Visibility = "Collapsed"
+        }
+        else {
+            $pagesView.Visibility = "Collapsed"
+            $runView.Visibility = "Visible"
+            $runStrip.Visibility = "Collapsed"
+            $window.UpdateLayout()
 
-        # O foco do teclado sai da caixa de busca (ou do cartão clicado, que sumiu): um Enter a mais não abre a ação de novo.
-        [void]$runView.Focus()
+            # O foco do teclado sai da caixa de busca (ou do cartão clicado, que sumiu): um Enter a mais não abre a ação de novo.
+            [void]$runView.Focus()
+        }
 
         $started = Start-WinForgeGuiCommand -Session $script:GuiSession -Command $Command -Columns (Get-GuiOutputColumns)
 
-        if (-not $started) { throw "Já existe uma ação em execução." }
+        if (-not $started) { throw (Get-WinForgeText 'Já existe uma ação em execução.') }
 
         $script:Running = $true
         Set-GuiTaskbarProgress -State Indeterminate
         $script:Timer.Start()
     }
     catch {
+        # A linha que dizia "Alterando…" volta ao estado lido.
+        if ($null -ne $script:InPlaceRun) {
+            $id = [string]$script:InPlaceRun.Id
+            $script:InPlaceRun = $null
+            try { Update-GuiTweakRow -Id $id } catch { Write-Verbose "Linha do ajuste: $($_.Exception.Message)" }
+        }
+
         $pagesView.Visibility = "Visible"
         $runView.Visibility = "Collapsed"
         Set-GuiTaskbarProgress -State None
-        [void](Show-GuiMessage -Icon Error -Text "Não foi possível começar ""$Label"".`n`nTente de novo. Se continuar, feche e abra o WinForge.`n`nDetalhe técnico: $($_.Exception.Message)")
+        [void](Show-GuiMessage -Icon Error -Title (Get-WinForgeText "`"{0}`" não começou" "$Label") -Text (Get-WinForgeText "Tente de novo. Se continuar, feche e abra o WinForge.`n`nDetalhe técnico: {0}" "$($_.Exception.Message)"))
     }
+}
+
+
+function Test-GuiInPlaceHere {
+    # Se uma chave está mudando na própria linha e a página dela está na tela.
+    return ($null -ne $script:InPlaceRun -and $script:Running -and $script:CurrentPage -eq [string]$script:InPlaceRun.Page -and $pagesView.Visibility -eq "Visible")
+}
+
+
+function Test-GuiQuietOutcome {
+    # Se o fim de uma ação não tem nada a ler além do novo estado (a chave de um ajuste que mudou sem aviso: Quiet, de
+    # Set-WinForgeResultView): ela terminou, deu certo e não pede reinício nem um próximo passo.
+    param (
+        [string]$Status,
+        $Outcome = $null
+    )
+
+    if ($Status -ne "Completed" -or $null -eq $Outcome) { return $false }
+    if ([string]$Outcome.Kind -ne "Ok") { return $false }
+    if ([bool](Get-WinForgeJsonValue -Object $Outcome -Name "RebootRequired" -Default $false)) { return $false }
+    if (-not [string]::IsNullOrWhiteSpace([string](Get-WinForgeJsonValue -Object $Outcome -Name "Next" -Default ""))) { return $false }
+
+    return [bool](Get-WinForgeJsonValue -Object $Outcome -Name "Quiet" -Default $false)
+}
+
+function Get-GuiOutsideNote {
+    # O que a dica e o leitor de tela dizem de um item que abre fora do WinForge: o site abre no navegador; os outros, no
+    # Windows (uma janela dele ou o Explorador de Arquivos).
+    param ([Parameter(Mandatory)]$Item)
+
+    if ([string](Get-WinForgeJsonValue -Object $Item -Name "Shortcut" -Default "") -eq "Website") { return (Get-WinForgeText 'Abre no navegador') }
+    return (Get-WinForgeText 'Abre no Windows')
 }
 
 function Open-GuiShortcut {
@@ -2717,8 +3417,8 @@ function Open-GuiShortcut {
 
     if (-not $opened) {
         # As pastas (Downloads e logs) existem em qualquer edição; para elas, "recurso inexistente" seria enganoso.
-        $reason = $(if ($Name -in @("Downloads", "LogFolder")) { "O Explorador de Arquivos não abriu a pasta. Tente abri-la manualmente." } else { "O recurso pode não existir nesta edição do Windows." })
-        [void](Show-GuiMessage -Icon Warning -Title $Title -Text "Não foi possível abrir '$Title'.`n`n$reason")
+        $reason = $(if ($Name -in @("Downloads", "LogFolder")) { (Get-WinForgeText 'O Explorador de Arquivos não abriu a pasta. Tente abri-la manualmente.') } elseif ($Name -eq "Website") { (Get-WinForgeText 'O navegador não abriu. O endereço do site é {0}.' "$(Get-WinForgeWebsiteUrl)") } else { (Get-WinForgeText 'O recurso pode não existir nesta edição do Windows.') })
+        [void](Show-GuiMessage -Icon Warning -Title (Get-WinForgeText "`"{0}`" não abriu" "$Title") -Text $reason)
     }
 }
 
@@ -2727,7 +3427,7 @@ function Get-GuiNavCommand {
     param ([Parameter(Mandatory)]$Item)
 
     if ([string]$Item.Command -notmatch '^[A-Za-z]+-[A-Za-z0-9]+$') {
-        throw "Comando inválido na navegação: $($Item.Command)"
+        throw (Get-WinForgeText 'Comando inválido na navegação: {0}' "$($Item.Command)")
     }
 
     return [string]$Item.Command
@@ -2743,7 +3443,7 @@ function Get-GuiTweakCommand {
     )
 
     if ($Id -notmatch '^[a-z0-9][a-z0-9-]*$') {
-        throw "Identificador de ajuste inválido: $Id"
+        throw (Get-WinForgeText 'Identificador de ajuste inválido: {0}' "$Id")
     }
 
     $command = "Invoke-WinForgeTweakToggle -Tweak (Get-WinForgeTweakById -Id '$Id')"
@@ -2779,19 +3479,27 @@ function Invoke-GuiNavItem {
 
         if ($focus.Advanced) { $script:TweaksAdvancedOpen = $true }
 
-        # A Aparência achada na busca: o foco do teclado vai para a opção marcada, como depois de trocar o tema.
+        # A Aparência ou o Idioma achados na busca: o foco do teclado vai para a opção marcada do cartão, como depois de
+        # trocar o tema.
         $script:AppearanceRefocus = ($focus.Section -eq "appearance")
+        $script:LanguageRefocus = ($focus.Section -eq "language")
 
         try {
             Show-GuiPage -Id ([string]$Item.Command) -FocusTweak $focus.TweakId
         }
         finally {
             $script:AppearanceRefocus = $false
+            $script:LanguageRefocus = $false
         }
 
         if ($null -ne $script:AppearanceFocusTarget) {
             [void]$script:AppearanceFocusTarget.Focus()
             $script:AppearanceFocusTarget = $null
+        }
+
+        if ($null -ne $script:LanguageFocusTarget) {
+            [void]$script:LanguageFocusTarget.Focus()
+            $script:LanguageFocusTarget = $null
         }
 
         return
@@ -2801,102 +3509,105 @@ function Invoke-GuiNavItem {
         Start-GuiAction -Label $Item.Label -Command (Get-GuiNavCommand -Item $Item) -RequiresAdmin ([bool]$Item.RequiresAdmin) -NavId ([string]$Item.Id)
     }
     catch {
-        [void](Show-GuiMessage -Text $_.Exception.Message -Icon Error)
+        [void](Show-GuiMessage -Icon Error -Title (Get-WinForgeText "`"{0}`" não começou" "$($Item.Label)") -Text $_.Exception.Message)
     }
 }
 
-function New-GuiActionCard {
+function New-GuiActionRow {
+    <#
+    Uma linha de lista (estilo RowButton): o ícone do assunto, o nome, uma linha do que faz e, no fim, o escudo (pede
+    Administrador, como nos botões do Windows) e a seta, ou o ícone de "abre fora" num atalho do Windows. A frase inteira
+    do item (Detail, quando a da linha é a curta) aparece ao passar o mouse e o leitor de tela a ouve. Context: de onde
+    vem o item (a página, nos resultados da busca, ou "Página > Categoria"); EnterHint: a tecla Enter no fim (o primeiro
+    resultado, que o Enter da caixa abre).
+    #>
     param (
         [Parameter(Mandatory)]$Item,
-
-        # Texto discreto acima do título (por exemplo, a página, nos resultados da busca).
         [string]$Context = "",
+        [switch]$EnterHint,
 
-        # O primeiro resultado da busca: a tecla "Enter" no canto diz que o Enter da caixa abre este.
-        [switch]$EnterHint
+        # Sem o ícone do assunto: a linha dentro de um grupo de ajustes começa o texto onde as chaves começam (a UX13 da R38).
+        [switch]$NoIcon
     )
 
-    # O destaque (ícone cheio e a etiqueta "Recomendado") marca o caminho recomendado de uma página. Os atalhos do Início
-    # usam outro cartão (New-GuiQuickActionCard), sem destaque: lá o caminho recomendado é o botão da nota de saúde.
-    $accent = [bool]$Item.Accent
+    $needsAdmin = ([bool]$Item.RequiresAdmin -and -not $script:IsAdmin)
+    $outside = ([string]$Item.Kind -eq "Shortcut")
+    $about = [string]$Item.Description
+    $detail = [string](Get-WinForgeJsonValue -Object $Item -Name "Detail" -Default "")
 
     $button = New-Object System.Windows.Controls.Button
-    $button.Style = $window.FindResource("CardButton")
+    $button.Style = $window.FindResource("RowButton")
     $button.Tag = $Item
-    $button.MinHeight = 148
 
-    # A descrição já aparece no cartão; o leitor de tela recebe título, de onde vem (na busca) e descrição juntos, e
-    # também o que o cartão mostra em etiqueta e nota ("Recomendado", "Abre no Windows", "Pede Administrador ao
-    # executar"): sem isso, quem usa o leitor de tela só descobre a janela do Windows ou o aviso de Administrador depois.
-    $spoken = $(if ($Context) { "$($Item.Label), $Context. $($Item.Description)" } else { "$($Item.Label). $($Item.Description)" })
-    if ([bool]$Item.Accent) { $spoken += ". Recomendado" }
-    if ($Item.Kind -eq "Shortcut") { $spoken += ". Abre no Windows" }
-    elseif ($Item.RequiresAdmin -and -not $script:IsAdmin) { $spoken += ". Pede Administrador ao executar" }
+    $row = New-Object System.Windows.Controls.DockPanel
+    $row.LastChildFill = $true
+
+    if (-not $NoIcon) {
+        $icon = New-GuiIcon -Name (Get-WinForgeIconName -Id ([string]$Item.Id)) -Size 20 -Color $script:Theme.Text
+        $icon.Margin = New-Object System.Windows.Thickness (0, 0, 16, 0)
+        Set-GuiDock -Element $icon -Side "Left"
+        [void]$row.Children.Add($icon)
+    }
+
+    $end = New-Object System.Windows.Controls.StackPanel
+    $end.Orientation = "Horizontal"
+    $end.VerticalAlignment = "Center"
+    $end.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
+
+    if ($EnterHint) {
+        $key = New-GuiKeyChip -Text (Get-WinForgeText 'Enter')
+        $key.VerticalAlignment = "Center"
+        $key.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+        [void]$end.Children.Add($key)
+    }
+
+    if ($needsAdmin) {
+        $shield = New-GuiIcon -Name "admin" -Size 16 -Color $script:Theme.Muted
+        $shield.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+        [void]$end.Children.Add($shield)
+    }
+
+    [void]$end.Children.Add((New-GuiIcon -Name $(if ($outside) { "external" } else { "chevron-right" }) -Size 16 -Color $script:Theme.Muted))
+    Set-GuiDock -Element $end -Side "Right"
+    [void]$row.Children.Add($end)
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = "Center"
+
+    $lines = @()
+    if (-not [string]::IsNullOrEmpty($Context)) { $lines += New-GuiText -Text $Context -Size $script:Type.Caption -Color $script:Theme.Muted }
+    $lines += New-GuiText -Text ([string]$Item.Label) -Size $script:Type.Body -Bold $true
+    if (-not [string]::IsNullOrEmpty($about)) { $lines += New-GuiText -Text $about -Size $script:Type.Caption -Color $script:Theme.Muted }
+
+    # Uma linha para cada texto: o que não cabe termina em reticências e aparece inteiro na dica.
+    foreach ($line in $lines) {
+        $line.TextWrapping = "NoWrap"
+        $line.TextTrimming = "CharacterEllipsis"
+        [void]$texts.Children.Add($line)
+    }
+
+    [void]$row.Children.Add($texts)
+    $button.Content = $row
+
+    # A dica e o leitor de tela dizem o que a linha mostra em símbolo (o escudo, o "abre fora").
+    $note = $(if ($outside) { (Get-GuiOutsideNote -Item $Item) } elseif ($needsAdmin) { (Get-WinForgeText 'Pede Administrador ao executar') } else { "" })
+    $tip = @(@($(if ($detail) { $detail } else { $about }), $note) | Where-Object { -not [string]::IsNullOrEmpty($_) })
+    if ($tip.Count -gt 0) { $button.ToolTip = ($tip -join "`n") }
+
+    # O ">" do caminho é para os olhos: o leitor de tela o leria ("maior"). Falado, o caminho vai com vírgulas.
+    $spoken = $(if ($Context) { "$($Item.Label), $($Context.Replace(' > ', ', ')). $about" } else { "$($Item.Label). $about" })
+    if ($outside) { $spoken += ". $(Get-GuiOutsideNote -Item $Item)" }
+    elseif ($needsAdmin) { $spoken += (Get-WinForgeText '. Pede Administrador ao executar') }
     Set-GuiAutomationName -Element $button -Name $spoken
 
-    if ($EnterHint) {
-        [System.Windows.Automation.AutomationProperties]::SetHelpText($button, "Primeiro resultado: o Enter na caixa de busca abre este")
-    }
-
-    $stack = New-Object System.Windows.Controls.StackPanel
-
-    # No alto, o ícone do assunto; o cartão de destaque (o caminho recomendado da página) tem o ícone cheio e a etiqueta.
-    $top = New-Object System.Windows.Controls.DockPanel
-    $top.LastChildFill = $false
-
-    $tile = New-Object System.Windows.Controls.Border
-    $tile.Width = 38
-    $tile.Height = 38
-    $tile.CornerRadius = New-Object System.Windows.CornerRadius 10
-    $tile.Background = New-GuiBrush $(if ($accent) { $script:Theme.Accent } else { $script:Theme.AccentCard })
-    $tile.Child = New-GuiIcon -Name (Get-WinForgeIconName -Id ([string]$Item.Id)) -Size 20 -Color $(if ($accent) { $script:Theme.OnAccent } else { $script:Theme.AccentText })
-    Set-GuiDock -Element $tile -Side "Left"
-    [void]$top.Children.Add($tile)
-
-    if ($accent) {
-        $chip = New-GuiChip -Text "Recomendado"
-        Set-GuiDock -Element $chip -Side "Right"
-        [void]$top.Children.Add($chip)
+    if ($detail) {
+        try { [System.Windows.Automation.AutomationProperties]::SetHelpText($button, $detail) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
     }
 
     if ($EnterHint) {
-        $key = New-GuiKeyChip -Text "Enter"
-        if ($accent) { $key.Margin = New-Object System.Windows.Thickness (0, 0, 6, 0) }
-        Set-GuiDock -Element $key -Side "Right"
-        [void]$top.Children.Add($key)
+        [System.Windows.Automation.AutomationProperties]::SetHelpText($button, (Get-WinForgeText 'Primeiro resultado: o Enter na caixa de busca abre este'))
     }
 
-    [void]$stack.Children.Add($top)
-
-    if (-not [string]::IsNullOrEmpty($Context)) {
-        $where = New-GuiText -Text $Context -Size 12 -Color $script:Theme.Dim
-        $where.Margin = New-Object System.Windows.Thickness (0, 12, 0, 0)
-        [void]$stack.Children.Add($where)
-    }
-
-    $title = New-GuiText -Text $Item.Label -Size 15 -Color $script:Theme.Text -Bold $true
-    $title.Margin = New-Object System.Windows.Thickness (0, $(if ([string]::IsNullOrEmpty($Context)) { 14 } else { 2 }), 0, 0)
-    [void]$stack.Children.Add($title)
-
-    $description = New-GuiText -Text $Item.Description -Size 13 -Color $script:Theme.Muted
-    $description.Margin = New-Object System.Windows.Thickness (0, 4, 0, 0)
-    [void]$stack.Children.Add($description)
-
-    $note = $null
-
-    if ($Item.Kind -eq "Shortcut") {
-        $note = New-GuiNote -Text "Abre no Windows" -Icon "external"
-    }
-    elseif ($Item.RequiresAdmin -and -not $script:IsAdmin) {
-        $note = New-GuiNote -Text "Pede Administrador ao executar" -Icon "admin"
-    }
-
-    if ($null -ne $note) {
-        $note.Margin = New-Object System.Windows.Thickness (0, 12, 0, 0)
-        [void]$stack.Children.Add($note)
-    }
-
-    $button.Content = $stack
     $button.Add_Click({
         param ($sender, $eventArgs)
         Invoke-GuiNavItem -Item $sender.Tag
@@ -2905,48 +3616,350 @@ function New-GuiActionCard {
     return $button
 }
 
-function Set-GuiCardWidth {
+function New-GuiRowGroup {
     <#
-    Liga a largura de um cartão à da grade da página (os recursos CardWidth e WideCardWidth da janela, que
-    Update-GuiContentWidth ajusta ao tamanho dela): a mudança de largura da janela alcança os cartões que já estão na
-    tela. -Wide: meia linha (os atalhos de "Por onde começar"). Os cartões com o estilo CardButton já seguem CardWidth.
+    Um grupo de linhas (New-GuiActionRow) com contorno e cantos de 8, como nas Configurações do Windows; um traço fino
+    separa uma linha da outra (Add-GuiRowToGroup). O conteúdo é recortado nos cantos: o fundo de uma linha sob o mouse não
+    passa da curva. Devolve Element (o que entra na página) e Rows (onde entram as linhas).
     #>
+    $rows = New-Object System.Windows.Controls.StackPanel
+    $border = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness 0) -Content $rows
+    $border.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+
+    $rows.Add_SizeChanged({
+        param ($sender, $eventArgs)
+
+        try {
+            $sender.Clip = New-Object System.Windows.Media.RectangleGeometry ((New-Object System.Windows.Rect (0, 0, $sender.ActualWidth, $sender.ActualHeight)), 7, 7)
+        }
+        catch {
+            Write-Verbose "Recorte do grupo: $($_.Exception.Message)"
+        }
+    })
+
+    return [PSCustomObject]@{ Element = $border; Rows = $rows }
+}
+
+function Add-GuiRowToGroup {
+    # Põe a linha no grupo, com um traço fino separando-a da anterior.
     param (
-        [Parameter(Mandatory)]$Element,
-        [switch]$Wide
+        [Parameter(Mandatory)]$Group,
+        [Parameter(Mandatory)]$Row
     )
 
-    $key = $(if ($Wide) { "WideCardWidth" } else { "CardWidth" })
-
-    try {
-        $Element.SetResourceReference([System.Windows.FrameworkElement]::WidthProperty, $key)
+    if ($Group.Rows.Children.Count -gt 0) {
+        $line = New-Object System.Windows.Controls.Border
+        $line.Height = 1
+        $line.Background = New-GuiBrush $script:Theme.Line
+        $line.IsHitTestVisible = $false
+        [void]$Group.Rows.Children.Add($line)
     }
-    catch {
-        $Element.Width = $(if ($Wide) { [double]$script:WideCardWidth } else { [double]$script:CardWidth })
+
+    [void]$Group.Rows.Children.Add($Row)
+}
+
+function New-GuiHeroCard {
+    <#
+    O destaque de uma página: o caminho recomendado (o item com Accent), maior, com o ícone cheio na cor de destaque e, à
+    direita, o botão que o faz, com o verbo do item (ButtonText: "Limpar agora", "Reparar"...), como nas Configurações do
+    Windows. O botão é o principal da página; o resto vem em listas (New-GuiActionRow). Sem ButtonText, o cartão inteiro é
+    o botão, com a etiqueta "Recomendado".
+    #>
+    param ([Parameter(Mandatory)]$Item)
+
+    $needsAdmin = ([bool]$Item.RequiresAdmin -and -not $script:IsAdmin)
+    $outside = ([string]$Item.Kind -eq "Shortcut")
+    $about = [string]$Item.Description
+    $detail = [string](Get-WinForgeJsonValue -Object $Item -Name "Detail" -Default "")
+    $verb = [string](Get-WinForgeJsonValue -Object $Item -Name "ButtonText" -Default "")
+
+    $note = $(if ($outside) { (Get-GuiOutsideNote -Item $Item) } elseif ($needsAdmin) { (Get-WinForgeText 'Pede Administrador ao executar') } else { "" })
+    $tip = @(@($(if ($detail) { $detail } else { $about }), $note) | Where-Object { -not [string]::IsNullOrEmpty($_) })
+
+    $row = New-Object System.Windows.Controls.DockPanel
+    $row.LastChildFill = $true
+
+    $tile = New-Object System.Windows.Controls.Border
+    $tile.Width = 48
+    $tile.Height = 48
+    $tile.CornerRadius = New-Object System.Windows.CornerRadius 8
+    $tile.Background = New-GuiBrush $script:Theme.Accent
+    $tile.Margin = New-Object System.Windows.Thickness (0, 0, 18, 0)
+    $tile.VerticalAlignment = "Center"
+    $tile.Child = New-GuiIcon -Name (Get-WinForgeIconName -Id ([string]$Item.Id)) -Size 24 -Color $script:Theme.OnAccent
+    Set-GuiDock -Element $tile -Side "Left"
+    [void]$row.Children.Add($tile)
+
+    $end = New-Object System.Windows.Controls.StackPanel
+    $end.Orientation = "Horizontal"
+    $end.VerticalAlignment = "Center"
+    $end.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
+
+    if ($verb) {
+        # O botão diz o que faz; o escudo (pede Administrador) ou o "abre fora" vêm nele, como nos botões do Windows.
+        $go = New-GuiButton -Text $verb -Kind Primary -Icon $(if ($outside) { "external" } elseif ($needsAdmin) { "admin" } else { "" }) -Tag $Item
+        $go.VerticalAlignment = "Center"
+        if ($tip.Count -gt 0) { $go.ToolTip = ($tip -join "`n") }
+        Set-GuiAutomationName -Element $go -Name "$($verb): $($Item.Label)$(if ($outside) { ". $(Get-GuiOutsideNote -Item $Item)" } elseif ($needsAdmin) { (Get-WinForgeText '. Pede Administrador ao executar') })"
+        if ($detail) {
+            try { [System.Windows.Automation.AutomationProperties]::SetHelpText($go, $detail) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
+        }
+        $go.Add_Click({
+            param ($sender, $eventArgs)
+            Invoke-GuiNavItem -Item $sender.Tag
+        })
+        [void]$end.Children.Add($go)
+    }
+    else {
+        $chip = New-GuiChip -Text (Get-WinForgeText 'Recomendado')
+        $chip.VerticalAlignment = "Center"
+        $chip.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+        [void]$end.Children.Add($chip)
+
+        if ($needsAdmin) {
+            $shield = New-GuiIcon -Name "admin" -Size 16 -Color $script:Theme.Muted
+            $shield.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+            [void]$end.Children.Add($shield)
+        }
+
+        [void]$end.Children.Add((New-GuiIcon -Name $(if ($outside) { "external" } else { "chevron-right" }) -Size 16 -Color $script:Theme.Muted))
+    }
+
+    Set-GuiDock -Element $end -Side "Right"
+    [void]$row.Children.Add($end)
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = "Center"
+
+    # O nome em negrito, na fonte dos títulos, como a frase da nota de saúde no Início.
+    $title = New-GuiText -Text ([string]$Item.Label) -Size $script:Type.Subtitle -Display
+    $title.TextWrapping = "NoWrap"
+    $title.TextTrimming = "CharacterEllipsis"
+    [void]$texts.Children.Add($title)
+
+    if (-not [string]::IsNullOrEmpty($about)) {
+        $line = New-GuiText -Text $about -Size $script:Type.Body -Color $script:Theme.Muted
+        $line.TextWrapping = "NoWrap"
+        $line.TextTrimming = "CharacterEllipsis"
+        [void]$texts.Children.Add($line)
+    }
+
+    [void]$row.Children.Add($texts)
+
+    if ($verb) {
+        # Um painel (o clique é no botão), na largura toda da página, no fundo do cartão da nota de saúde.
+        $card = New-GuiPanelBorder -Background $script:Theme.Hero -Padding (New-Object System.Windows.Thickness (20, 18, 20, 18)) -Content $row
+        $card.Margin = New-Object System.Windows.Thickness (0, 0, 12, 4)
+        if ($tip.Count -gt 0) { $texts.ToolTip = ($tip -join "`n") }
+        return $card
+    }
+
+    $button = New-Object System.Windows.Controls.Button
+    $button.Style = $window.FindResource("CardButton")
+    $button.Background = New-GuiBrush $script:Theme.Hero
+    $button.Tag = $Item
+
+    # A largura toda da página (o estilo dos cartões usa a de uma coluna).
+    $button.Width = [double]::NaN
+    $button.HorizontalAlignment = "Stretch"
+    $button.Margin = New-Object System.Windows.Thickness (0, 0, 12, 4)
+    $button.Padding = New-Object System.Windows.Thickness (20, 18, 20, 18)
+    $button.VerticalContentAlignment = "Center"
+    $button.Content = $row
+
+    if ($tip.Count -gt 0) { $button.ToolTip = ($tip -join "`n") }
+
+    $spoken = "$($Item.Label). $about$(Get-WinForgeText '. Recomendado')"
+    if ($outside) { $spoken += ". $(Get-GuiOutsideNote -Item $Item)" }
+    elseif ($needsAdmin) { $spoken += (Get-WinForgeText '. Pede Administrador ao executar') }
+    Set-GuiAutomationName -Element $button -Name $spoken
+
+    if ($detail) {
+        try { [System.Windows.Automation.AutomationProperties]::SetHelpText($button, $detail) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
+    }
+
+    $button.Add_Click({
+        param ($sender, $eventArgs)
+        Invoke-GuiNavItem -Item $sender.Tag
+    })
+
+    return $button
+}
+
+function Invoke-GuiSetupStep {
+    # Um passo da configuração inicial (no fim do Início): roda o item da navegação (ou o comando próprio do passo).
+    param ([Parameter(Mandatory)]$Step)
+
+    $item = Get-WinForgeNavItem -Id ([string]$Step.NavId)
+
+    if ([string]$Step.Command) {
+        Start-GuiAction -Label $(if ($null -ne $item) { [string]$item.Label } else { [string]$Step.Label }) -Command ([string]$Step.Command) -RequiresAdmin ([bool]$Step.Admin) -NavId ([string]$Step.NavId)
+    }
+    elseif ($null -ne $item) {
+        Invoke-GuiNavItem -Item $item
     }
 }
 
-function New-GuiFactCard {
-    # Cartão de informação do Início: ícone, nome, o valor em destaque e um complemento embaixo. Todos têm a mesma altura e
-    # cada texto ocupa uma linha (o que não cabe termina em "..." e aparece inteiro ao passar o mouse), para as fileiras
-    # ficarem alinhadas. Com destino (Target), o cartão é um botão (com a seta) que leva à tela do assunto.
+function New-GuiSetupCard {
+    <#
+    A configuração inicial, no fim do Início, enquanto faltar algum passo (Get-WinForgeSetupChecklist): o atalho, o monitor
+    na bandeja e a manutenção mensal. Uma faixa de uma linha com o próximo passo (o ícone e o nome), quantos estão feitos,
+    "Agora não" (fecha a faixa de vez; os três continuam em Sobre o WinForge e em Manutenção) e o botão que faz o passo.
+    Checklist: a lista já lida (Update-GuiSetupCard). $null quando a faixa não aparece.
+    #>
+    param ($Checklist)
+
+    if ($null -eq $Checklist -or -not $Checklist.Visible) { return $null }
+
+    $steps = @($Checklist.Steps)
+    $done = @($steps | Where-Object { $_.Done }).Count
+    $next = @($steps | Where-Object { -not $_.Done }) | Select-Object -First 1
+
+    if ($null -eq $next) { return $null }
+
+    $row = New-Object System.Windows.Controls.DockPanel
+    $row.LastChildFill = $true
+
+    $glyph = New-GuiIcon -Name ([string]$next.Icon) -Size 20 -Color $script:Theme.Muted
+    $glyph.Margin = New-Object System.Windows.Thickness (0, 0, 16, 0)
+    Set-GuiDock -Element $glyph -Side "Left"
+    [void]$row.Children.Add($glyph)
+
+    $end = New-Object System.Windows.Controls.StackPanel
+    $end.Orientation = "Horizontal"
+    $end.VerticalAlignment = "Center"
+    $end.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
+
+    $later = New-GuiButton -Text (Get-WinForgeText 'Agora não') -Kind Ghost
+    $later.VerticalAlignment = "Center"
+    $later.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+    $later.ToolTip = (Get-WinForgeText 'O cartão não volta; os três ficam em Sobre o WinForge e em Manutenção.')
+    $later.Add_Click({
+        param ($sender, $eventArgs)
+        Close-GuiSetupCard -Button $sender
+    })
+    [void]$end.Children.Add($later)
+
+    $needsAdmin = ([bool]$next.Admin -and -not $script:IsAdmin)
+    $button = New-GuiButton -Text ([string]$next.Button) -Icon $(if ($needsAdmin) { "admin" } else { "" }) -Tag $next
+    $button.VerticalAlignment = "Center"
+    $button.ToolTip = $(if ($needsAdmin) { (Get-WinForgeText "{0}`nPede Administrador ao executar." "$($next.Description)") } else { [string]$next.Description })
+    Set-GuiAutomationName -Element $button -Name "$($next.Button): $($next.Label)"
+    $button.Add_Click({
+        param ($sender, $eventArgs)
+        Invoke-GuiSetupStep -Step $sender.Tag
+    })
+    [void]$end.Children.Add($button)
+
+    Set-GuiDock -Element $end -Side "Right"
+    [void]$row.Children.Add($end)
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = "Center"
+
+    $title = New-GuiText -Text ([string]$next.Label) -Size $script:Type.Body -Bold $true
+    $title.TextWrapping = "NoWrap"
+    $title.TextTrimming = "CharacterEllipsis"
+    [void]$texts.Children.Add($title)
+
+    $progress = (Get-WinForgeText 'Configuração inicial · {0} de {1} etapas concluídas' "$done" "$($steps.Count)")
+    $line = New-GuiText -Text $progress -Size $script:Type.Body -Color $script:Theme.Muted
+    $line.TextWrapping = "NoWrap"
+    $line.TextTrimming = "CharacterEllipsis"
+    [void]$texts.Children.Add($line)
+
+    [void]$row.Children.Add($texts)
+
+    $card = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness (20, 14, 16, 14)) -Content $row
+    $card.Margin = New-Object System.Windows.Thickness (0, 32, 12, 0)
+    $card.ToolTip = (@($steps | ForEach-Object { "$(if ($_.Done) { '✓' } else { '•' }) $($_.Label): $($_.Description)" }) -join "`n")
+    Set-GuiAutomationName -Element $card -Name "$(Get-WinForgeText 'Configuração inicial'): $($next.Label). $progress"
+
+    return $card
+}
+
+function Update-GuiSetupCard {
+    <#
+    Põe (ou tira) a configuração inicial no lugar dela, no fim do Início ($script:HomeSetup). ScheduleDone: se a
+    manutenção mensal desta pasta está agendada, que vem da leitura do Início (Read-WinForgeHomeSchedule): ela consulta o
+    Agendador de Tarefas fora da thread da janela, com prazo, e um Agendador travado não congela a janela. Os outros dois
+    passos são leituras rápidas (arquivos e registro). Refaz a faixa só quando ela muda: um botão com o foco não some à toa.
+    #>
+    param ([bool]$ScheduleDone = $false)
+
+    if ($null -eq $script:HomeSetup) { return }
+
+    $checklist = $null
+
+    try { $checklist = Get-WinForgeSetupChecklist -ScheduleDone $ScheduleDone } catch { $checklist = $null }
+
+    $key = ""
+
+    if ($null -ne $checklist -and $checklist.Visible) {
+        $key = (@($checklist.Steps) | ForEach-Object { "$($_.Id)=$([bool]$_.Done)" }) -join ","
+        $key += ";admin=$([bool]$script:IsAdmin)"
+    }
+
+    if ($key -eq $script:HomeSetupKey -and $script:HomeSetup.Children.Count -eq [int]($key -ne "")) { return }
+
+    $script:HomeSetupKey = $key
+    $script:HomeSetup.Children.Clear()
+
+    $card = New-GuiSetupCard -Checklist $checklist
+    if ($null -ne $card) { [void](Add-GuiHomePart -Element $card -Name (Get-WinForgeText 'Configuração inicial') -Panel $script:HomeSetup) }
+}
+
+function Close-GuiSetupCard {
+    # "Agora não": a faixa fecha de vez e sai no lugar, sem refazer a página (o que leria o PC de novo, no meio de uma
+    # leitura, e animaria a entrada). O foco do teclado vai para o que vem antes dela, em vez de se perder com o botão.
+    param ($Button = $null)
+
+    Close-WinForgeSetupCard
+
+    if ($null -ne $Button) {
+        try { [void]$Button.MoveFocus((New-Object System.Windows.Input.TraversalRequest ([System.Windows.Input.FocusNavigationDirection]::Previous))) } catch { Write-Verbose "Foco: $($_.Exception.Message)" }
+    }
+
+    $script:HomeSetupKey = ""
+    if ($null -ne $script:HomeSetup) { $script:HomeSetup.Children.Clear() }
+}
+
+function New-GuiHomeSkeleton {
+    # A barra cinza no lugar de um valor que ainda não chegou (sem texto piscando "Lendo..."): Set-GuiHomeCardText a
+    # esconde quando o valor chega.
+    param ([double]$Width, [double]$Height, $Margin = $null)
+
+    $skeleton = New-Object System.Windows.Controls.Border
+    $skeleton.Width = $Width
+    $skeleton.Height = [Math]::Round($Height * $script:TextScale)
+    $skeleton.CornerRadius = New-Object System.Windows.CornerRadius 4
+    $skeleton.Background = New-GuiBrush $script:Theme.Line
+    $skeleton.HorizontalAlignment = "Left"
+    if ($null -ne $Margin) { $skeleton.Margin = $Margin }
+
+    return $skeleton
+}
+
+function New-GuiHomeCard {
+    <#
+    Um cartão de "Seu PC" no Início: o ícone e o nome no alto, com a seta quando o cartão leva a uma tela; o valor grande
+    (na cor do nível, e que diminui até caber, sem cortar); embaixo, o complemento. O do disco tem também quanto está em
+    uso, à direita, e a barra de uso (Bar: o espaço usado; o resto, o trilho). Enquanto o valor não chega, uma barra cinza
+    no lugar dele. A largura é a da coluna (Set-GuiHomeColumns), e a altura, a do maior cartão da fileira. Devolve as
+    partes que Set-GuiHomeCardText preenche, com as linhas de texto (Rows) que Get-GuiHomeFitWidth mede.
+    #>
     param (
         [Parameter(Mandatory)][string]$Id,
         [Parameter(Mandatory)][string]$Label
     )
 
-    $row = New-Object System.Windows.Controls.DockPanel
+    $stack = New-Object System.Windows.Controls.StackPanel
 
-    $tile = New-Object System.Windows.Controls.Border
-    $tile.Width = 32
-    $tile.Height = 32
-    $tile.CornerRadius = New-Object System.Windows.CornerRadius 8
-    $tile.Background = New-GuiBrush $script:Theme.Inset
-    $tile.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
-    $tile.VerticalAlignment = "Center"
-    $tile.Child = New-GuiIcon -Name (Get-WinForgeIconName -Id "fact.$Id") -Size 17 -Color $script:Theme.Muted
-    Set-GuiDock -Element $tile -Side "Left"
-    [void]$row.Children.Add($tile)
+    $head = New-Object System.Windows.Controls.DockPanel
+    $icon = New-GuiIcon -Name (Get-WinForgeIconName -Id "fact.$Id") -Size 18 -Color $script:Theme.Muted
+    $icon.Margin = New-Object System.Windows.Thickness (0, 0, 10, 0)
+    Set-GuiDock -Element $icon -Side "Left"
+    [void]$head.Children.Add($icon)
 
     $target = Get-WinForgeHomeFactTarget -Id $Id
     $item = $null
@@ -2957,116 +3970,498 @@ function New-GuiFactCard {
         $chevron = New-GuiIcon -Name "chevron-right" -Size 14 -Color $script:Theme.Dim
         $chevron.Margin = New-Object System.Windows.Thickness (8, 0, 0, 0)
         Set-GuiDock -Element $chevron -Side "Right"
-        [void]$row.Children.Add($chevron)
+        [void]$head.Children.Add($chevron)
     }
 
-    $stack = New-Object System.Windows.Controls.StackPanel
-    $stack.VerticalAlignment = "Center"
+    $name = New-GuiText -Text $Label -Size $script:Type.Body -Color $script:Theme.Muted
+    $name.TextWrapping = "NoWrap"
+    $name.TextTrimming = "CharacterEllipsis"
+    $name.VerticalAlignment = "Center"
+    [void]$head.Children.Add($name)
+    [void]$stack.Children.Add($head)
 
-    $name = New-GuiText -Text $Label -Size 12 -Color $script:Theme.Dim
-    $value = New-GuiText -Text "Lendo..." -Size 14 -Color $script:Theme.Dim -Bold $true
-    $detail = New-GuiText -Text "" -Size 12 -Color $script:Theme.Muted
+    $skeleton = New-GuiHomeSkeleton -Width 120 -Height 22 -Margin (New-Object System.Windows.Thickness (0, 18, 0, 8))
+    [void]$stack.Children.Add($skeleton)
+
+    $value = New-GuiText -Text "" -Size $script:Type.Title -Display
+    $valueBox = New-GuiValueBox -Text $value
+    $valueBox.Margin = New-Object System.Windows.Thickness (0, 12, 0, 0)
+    $valueBox.Visibility = "Collapsed"
+    [void]$stack.Children.Add($valueBox)
+
+    # O complemento à esquerda e, no disco, quanto está em uso à direita, na mesma linha.
+    $foot = New-Object System.Windows.Controls.DockPanel
+    $foot.Margin = New-Object System.Windows.Thickness (0, 4, 0, 0)
+
+    $extra = New-GuiText -Text "" -Size $script:Type.Body -Color $script:Theme.Muted
+    $extra.TextWrapping = "NoWrap"
+    $extra.Margin = New-Object System.Windows.Thickness (12, 0, 0, 0)
+    $extra.Visibility = "Collapsed"
+    Set-GuiDock -Element $extra -Side "Right"
+    [void]$foot.Children.Add($extra)
+
+    $detail = New-GuiText -Text "" -Size $script:Type.Body -Color $script:Theme.Muted
+    $detail.TextWrapping = "NoWrap"
+    $detail.TextTrimming = "CharacterEllipsis"
     $detail.Visibility = "Collapsed"
+    [void]$foot.Children.Add($detail)
+    [void]$stack.Children.Add($foot)
 
-    foreach ($line in @($name, $value, $detail)) {
-        $line.TextWrapping = "NoWrap"
-        $line.TextTrimming = "CharacterEllipsis"
-        [void]$stack.Children.Add($line)
+    $track = $null
+    $usedColumn = $null
+    $freeColumn = $null
+    $fill = $null
+
+    if ($Id -eq "disk") {
+        # A barra de uso: duas colunas proporcionais (o usado e o livre), sem medir a largura na tela.
+        $track = New-Object System.Windows.Controls.Grid
+        $track.Height = [Math]::Max(4, [Math]::Round(6 * [Math]::Sqrt($script:TextScale)))
+        $track.Margin = New-Object System.Windows.Thickness (0, 14, 0, 0)
+        $track.Visibility = "Collapsed"
+        $track.IsHitTestVisible = $false
+
+        $usedColumn = New-Object System.Windows.Controls.ColumnDefinition
+        $freeColumn = New-Object System.Windows.Controls.ColumnDefinition
+        [void]$track.ColumnDefinitions.Add($usedColumn)
+        [void]$track.ColumnDefinitions.Add($freeColumn)
+
+        $rail = New-Object System.Windows.Controls.Border
+        $rail.CornerRadius = New-Object System.Windows.CornerRadius 3
+        $rail.Background = New-GuiBrush $script:Theme.Track
+        [System.Windows.Controls.Grid]::SetColumnSpan($rail, 2)
+        [void]$track.Children.Add($rail)
+
+        $fill = New-Object System.Windows.Controls.Border
+        $fill.CornerRadius = New-Object System.Windows.CornerRadius 3
+        $fill.Background = New-GuiBrush $script:Theme.Bar
+        [void]$track.Children.Add($fill)
+
+        [void]$stack.Children.Add($track)
     }
-
-    [void]$row.Children.Add($stack)
 
     if ($null -ne $item) {
         $card = New-Object System.Windows.Controls.Button
         $card.Style = $window.FindResource("CardButton")
         $card.Tag = $item
-        $card.Content = $row
-
-        # O estilo dos cartões de ação alinha o conteúdo no alto; aqui ele ocupa a altura toda, e o texto fica no meio
-        # (com ou sem a segunda linha), como nos cartões que só informam.
-        $card.VerticalContentAlignment = "Stretch"
-        $card.Padding = New-Object System.Windows.Thickness (14, 10, 14, 10)
-        Set-GuiAutomationName -Element $card -Name "$($Label): lendo. Abre: $($item.Label)"
+        $card.Content = $stack
+        Set-GuiAutomationName -Element $card -Name (Get-WinForgeText '{0}: lendo. Abre: {1}' "$($Label)" "$($item.Label)")
         $card.Add_Click({
             param ($sender, $eventArgs)
             Invoke-GuiNavItem -Item $sender.Tag
         })
     }
     else {
-        $card = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness (14, 10, 14, 10)) -Content $row
-        $card.Margin = New-Object System.Windows.Thickness (0, 0, 12, 12)
-        Set-GuiAutomationName -Element $card -Name "$($Label): lendo"
+        $card = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness (20, 18, 20, 18)) -Content $stack
+        Set-GuiAutomationName -Element $card -Name (Get-WinForgeText '{0}: lendo' "$($Label)")
     }
 
-    # A largura acompanha a da página (Update-GuiContentWidth), como a dos outros cartões.
-    Set-GuiCardWidth -Element $card
-    $card.Height = 80
+    # A largura é a da coluna da fileira, e não a de um cartão de ação (CardWidth).
+    $card.Width = [double]::NaN
+    $card.HorizontalAlignment = "Stretch"
+    $card.Margin = New-Object System.Windows.Thickness (0, 0, 12, 12)
+    if ($card -is [System.Windows.Controls.Button]) { $card.Padding = New-Object System.Windows.Thickness (20, 18, 20, 18) }
 
-    return [PSCustomObject]@{ Card = $card; Value = $value; Detail = $detail; Opens = $(if ($null -ne $item) { [string]$item.Label } else { "" }) }
+    return [PSCustomObject]@{
+        Kind = "Card"; Id = $Id; Label = $Label; Holder = $card; Card = $card; Value = $value; ValueBox = $valueBox; Skeleton = $skeleton
+        Detail = $detail; Extra = $extra; Track = $track; UsedColumn = $usedColumn; FreeColumn = $freeColumn; Fill = $fill
+        Opens = $(if ($null -ne $item) { [string]$item.Label } else { "" }); Strip = $null
+        Content = $stack; Rows = @($head, $foot); Grid = $null
+    }
 }
 
-function New-GuiQuickActionCard {
-    # Um atalho de "Por onde começar": da altura dos cartões de Seu PC e da largura de meia linha da página, para que os
-    # quatro fiquem em dois por dois (um por linha, na página de uma coluna só) e o nome da ação caiba inteiro. O ícone em destaque, o nome numa linha e a frase do que faz em até duas (inteira ao passar o
-    # mouse). Uma ação que pede Administrador mostra o escudo no lugar da seta. O clique faz o mesmo que o cartão da página.
-    param ([Parameter(Mandatory)]$Item)
+function New-GuiHomeStrip {
+    <#
+    A linha do Início com a última manutenção, o reinício pendente e, num notebook, a bateria: um cartão dividido em partes
+    iguais, cada uma com o ícone, o nome e o valor à direita; o clique leva à tela do assunto. Uma parte que só existe em
+    alguns PCs (a bateria) só aparece quando a leitura confirma, e as colunas se refazem (Update-GuiHomeStripLayout).
+    Numa janela estreita, as partes ficam uma embaixo da outra. Devolve o cartão (Card) e as partes de cada fato (Parts).
+    #>
+    param (
+        [Parameter(Mandatory)][string[]]$Ids,
+        [Parameter(Mandatory)]$Labels,
+        [string[]]$Optional = @()
+    )
 
-    $needsAdmin = ([bool]$Item.RequiresAdmin -and -not $script:IsAdmin)
-    $row = New-Object System.Windows.Controls.DockPanel
+    $grid = New-Object System.Windows.Controls.Primitives.UniformGrid
+    $grid.Rows = 0
+    $grid.Columns = $Ids.Count
+    $strip = [PSCustomObject]@{ Grid = $grid; Cells = @() }
+    $parts = @{}
 
-    $tile = New-Object System.Windows.Controls.Border
-    $tile.Width = 32
-    $tile.Height = 32
-    $tile.CornerRadius = New-Object System.Windows.CornerRadius 8
-    $tile.Background = New-GuiBrush $script:Theme.AccentCard
-    $tile.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
-    $tile.VerticalAlignment = "Center"
-    $tile.Child = New-GuiIcon -Name (Get-WinForgeIconName -Id ([string]$Item.Id)) -Size 17 -Color $script:Theme.AccentText
-    Set-GuiDock -Element $tile -Side "Left"
-    [void]$row.Children.Add($tile)
+    foreach ($id in $Ids) {
+        $label = [string]$Labels[$id]
+        $target = Get-WinForgeHomeFactTarget -Id $id
+        $item = $null
+        if (-not [string]::IsNullOrEmpty($target)) { $item = Get-WinForgeNavItem -Id $target }
 
-    $mark = New-GuiIcon -Name $(if ($needsAdmin) { "admin" } else { "chevron-right" }) -Size 14 -Color $script:Theme.Dim
-    $mark.Margin = New-Object System.Windows.Thickness (8, 0, 0, 0)
-    Set-GuiDock -Element $mark -Side "Right"
-    [void]$row.Children.Add($mark)
+        $row = New-Object System.Windows.Controls.DockPanel
+        $row.LastChildFill = $true
 
-    $stack = New-Object System.Windows.Controls.StackPanel
-    $stack.VerticalAlignment = "Center"
+        $icon = New-GuiIcon -Name (Get-WinForgeIconName -Id "fact.$id") -Size 18 -Color $script:Theme.Muted
+        $icon.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+        Set-GuiDock -Element $icon -Side "Left"
+        [void]$row.Children.Add($icon)
 
-    $title = New-GuiText -Text $Item.Label -Size 14 -Bold $true
-    $title.TextWrapping = "NoWrap"
-    $title.TextTrimming = "CharacterEllipsis"
-    [void]$stack.Children.Add($title)
+        # O valor à direita, em seminegrito; enquanto não chega, a barra cinza no lugar dele.
+        $end = New-Object System.Windows.Controls.Grid
+        $end.VerticalAlignment = "Center"
+        $end.Margin = New-Object System.Windows.Thickness (12, 0, 0, 0)
+        $skeleton = New-GuiHomeSkeleton -Width 64 -Height 12
+        $skeleton.HorizontalAlignment = "Right"
+        [void]$end.Children.Add($skeleton)
 
-    # Duas linhas de 12 pontos; uma frase maior termina em reticências na segunda.
-    $about = New-GuiText -Text $Item.Description -Size 12 -Color $script:Theme.Muted
-    $about.TextWrapping = "Wrap"
-    $about.TextTrimming = "CharacterEllipsis"
-    $about.MaxHeight = 33
-    $about.Margin = New-Object System.Windows.Thickness (0, 1, 0, 0)
-    [void]$stack.Children.Add($about)
+        $value = New-GuiText -Text "" -Size $script:Type.Body -Bold $true
+        $value.TextWrapping = "NoWrap"
+        $value.HorizontalAlignment = "Right"
+        $value.Visibility = "Collapsed"
+        [void]$end.Children.Add($value)
+        Set-GuiDock -Element $end -Side "Right"
+        [void]$row.Children.Add($end)
 
-    [void]$row.Children.Add($stack)
+        $name = New-GuiText -Text $label -Size $script:Type.Body -Color $script:Theme.Muted
+        $name.TextWrapping = "NoWrap"
+        $name.TextTrimming = "CharacterEllipsis"
+        $name.VerticalAlignment = "Center"
+        [void]$row.Children.Add($name)
 
-    $card = New-Object System.Windows.Controls.Button
-    $card.Style = $window.FindResource("CardButton")
-    $card.Tag = $Item
-    $card.Content = $row
-    $card.VerticalContentAlignment = "Stretch"
-    Set-GuiCardWidth -Element $card -Wide
-    $card.Height = 80
-    $card.Padding = New-Object System.Windows.Thickness (14, 10, 14, 10)
+        $cell = New-Object System.Windows.Controls.Button
+        $cell.Style = $window.FindResource("RowButton")
+        $cell.MinHeight = 0
+        $cell.Padding = New-Object System.Windows.Thickness (20, 16, 20, 16)
+        $cell.HorizontalContentAlignment = "Stretch"
+        $cell.Tag = $item
+        $cell.Content = $row
+        Set-GuiAutomationName -Element $cell -Name $(if ($null -ne $item) { (Get-WinForgeText '{0}: lendo. Abre: {1}' "$label" "$($item.Label)") } else { (Get-WinForgeText '{0}: lendo' "$label") })
+        $cell.Add_Click({
+            param ($sender, $eventArgs)
+            if ($null -ne $sender.Tag) { Invoke-GuiNavItem -Item $sender.Tag }
+        })
 
-    $note = $(if ($needsAdmin) { "Pede Administrador ao executar" } else { "" })
-    $card.ToolTip = $(if ($note) { "$($Item.Description)`n$note" } else { [string]$Item.Description })
-    Set-GuiAutomationName -Element $card -Name $(if ($note) { "$($Item.Label). $($Item.Description). $note" } else { "$($Item.Label). $($Item.Description)" })
+        # O traço entre as partes fica na moldura de cada uma (à esquerda, lado a lado; em cima, uma embaixo da outra).
+        $holder = New-Object System.Windows.Controls.Border
+        $holder.BorderBrush = New-GuiBrush $script:Theme.Line
+        $holder.Child = $cell
+        if ($id -in $Optional) { $holder.Visibility = "Collapsed" }
+        [void]$grid.Children.Add($holder)
+        $strip.Cells += $holder
 
-    $card.Add_Click({
+        $parts[$id] = [PSCustomObject]@{
+            Kind = "Cell"; Id = $id; Label = $label; Holder = $holder; Card = $cell; Value = $value; ValueBox = $value; Skeleton = $skeleton
+            Detail = $null; Extra = $null; Track = $null; UsedColumn = $null; FreeColumn = $null; Fill = $null
+            Opens = $(if ($null -ne $item) { [string]$item.Label } else { "" }); Strip = $strip
+            Content = $row; Rows = @($row); Grid = $null
+        }
+    }
+
+    # As partes ficam dentro dos cantos arredondados do cartão.
+    $grid.Add_SizeChanged({
         param ($sender, $eventArgs)
-        Invoke-GuiNavItem -Item $sender.Tag
-    })
 
-    return $card
+        try {
+            $sender.Clip = New-Object System.Windows.Media.RectangleGeometry ((New-Object System.Windows.Rect (0, 0, $sender.ActualWidth, $sender.ActualHeight)), 7, 7)
+            if ($eventArgs.WidthChanged) { Update-GuiHomeStripLayout -Strip $sender.Tag }
+        }
+        catch {
+            Write-Verbose "Linha do Início: $($_.Exception.Message)"
+        }
+    })
+    $grid.Tag = $strip
+
+    $card = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness 0) -Content $grid
+    $card.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+    Update-GuiHomeStripLayout -Strip $strip
+
+    return [PSCustomObject]@{ Card = $card; Parts = $parts }
+}
+
+function Update-GuiHomeStripLayout {
+    # As colunas da linha do Início: as partes visíveis lado a lado, ou uma embaixo da outra quando alguma não cabe
+    # inteira (Get-WinForgeHomeColumns), com o traço entre elas do lado certo.
+    param ([Parameter(Mandatory)]$Strip)
+
+    $visible = @($Strip.Cells | Where-Object { $_.Visibility -ne "Collapsed" })
+
+    # Lado a lado só quando cada parte cabe inteira (o nome sem reticências e o valor), nunca abaixo de 240. O nome de
+    # cada parte e o valor mudam com o idioma e com a leitura, então a medida é a do texto de agora, mais o traço (1).
+    $need = 240 * $script:TextScale
+
+    if ($Strip.Grid.ActualWidth -gt 0) {
+        foreach ($holder in $visible) { $need = [Math]::Max($need, (Measure-GuiNaturalWidth -Element $holder.Child) + 1) }
+    }
+
+    $columns = Get-WinForgeHomeColumns -Width $Strip.Grid.ActualWidth -Count $visible.Count -MinWidth $need
+    $Strip.Grid.Columns = [Math]::Max(1, $columns)
+
+    $first = $true
+
+    foreach ($holder in $visible) {
+        if ($first) { $holder.BorderThickness = New-Object System.Windows.Thickness 0 }
+        elseif ($columns -gt 1) { $holder.BorderThickness = New-Object System.Windows.Thickness (1, 0, 0, 0) }
+        else { $holder.BorderThickness = New-Object System.Windows.Thickness (0, 1, 0, 0) }
+
+        $first = $false
+    }
+}
+
+function Measure-GuiNaturalWidth {
+    # A largura que um elemento pede sem limite: o texto numa linha só e inteiro (sem as reticências), com as margens.
+    # É só a pergunta "quanto ele quer?": no passo seguinte do layout, o WPF mede de novo com a largura de verdade.
+    param ([Parameter(Mandatory)][System.Windows.UIElement]$Element)
+
+    if ($Element.Visibility -eq "Collapsed") { return 0.0 }
+
+    $Element.Measure((New-Object System.Windows.Size ([double]::PositiveInfinity, [double]::PositiveInfinity)))
+    return [double]$Element.DesiredSize.Width
+}
+
+function Get-GuiHomeFitWidth {
+    <#
+    A largura que um cartão do Início precisa para não cortar texto: a linha mais larga dele (Rows: o nome com a seta, o
+    complemento com o "em uso"), mais o que a moldura põe em volta (o recuo, o contorno e a margem, medidos como a
+    diferença entre o cartão e o conteúdo). O valor grande não entra: ele diminui até caber (New-GuiValueBox).
+    #>
+    param ([Parameter(Mandatory)]$Part)
+
+    $rows = 0.0
+
+    foreach ($row in @($Part.Rows)) {
+        if ($null -ne $row) { $rows = [Math]::Max($rows, (Measure-GuiNaturalWidth -Element $row)) }
+    }
+
+    $frame = (Measure-GuiNaturalWidth -Element $Part.Card) - (Measure-GuiNaturalWidth -Element $Part.Content)
+    return ([Math]::Max(0.0, $frame) + $rows)
+}
+
+function Update-GuiHomeColumns {
+    # As colunas de uma fileira do Início (Set-GuiHomeColumns): Count lado a lado quando cada um fica com MinWidth, ou
+    # com o que o texto do cartão mais largo pede (Get-GuiHomeFitWidth); senão, um embaixo do outro.
+    param ([Parameter(Mandatory)]$Grid)
+
+    $rule = $Grid.Tag
+    $need = [double]$rule.MinWidth
+
+    if ($Grid.ActualWidth -gt 0) {
+        foreach ($part in @($rule.Fit)) {
+            if ($null -ne $part -and $part.Holder.Visibility -ne "Collapsed") { $need = [Math]::Max($need, (Get-GuiHomeFitWidth -Part $part)) }
+        }
+    }
+
+    $columns = Get-WinForgeHomeColumns -Width $Grid.ActualWidth -Count $rule.Count -MinWidth $need
+    if ($Grid.Columns -ne $columns) { $Grid.Columns = $columns }
+    Set-GuiHomeDividers -Holders $rule.Divided -Columns $columns
+}
+
+function Set-GuiHomeDividers {
+    # O traço entre os números do histórico: lado a lado, à esquerda de cada um depois do primeiro, com o recuo; um
+    # embaixo do outro, sem traço e sem recuo (rentes à página, como o primeiro).
+    param (
+        [object[]]$Holders = @(),
+        [int]$Columns
+    )
+
+    $index = 0
+
+    foreach ($holder in @($Holders)) {
+        if ($null -eq $holder) { continue }
+
+        $side = ($Columns -gt 1 -and $index -gt 0)
+        $holder.BorderThickness = New-Object System.Windows.Thickness ($(if ($side) { 1 } else { 0 }), 0, 0, 0)
+        $padding = $holder.Child.Padding
+        $holder.Child.Padding = New-Object System.Windows.Thickness ($(if ($side) { 20 } else { 0 }), $padding.Top, $padding.Right, $padding.Bottom)
+        $index++
+    }
+}
+
+function Set-GuiHomeColumns {
+    # Liga as colunas de uma fileira do Início (UniformGrid) à largura dela: Count lado a lado quando cada um fica com
+    # MinWidth (já com o tamanho do texto) e, com Fit (as partes dos cartões), sem cortar o texto de nenhum; senão, um
+    # embaixo do outro (Update-GuiHomeColumns). O texto que chega depois (Set-GuiHomeCardText) refaz a conta. Divided:
+    # as molduras com o traço entre elas, que acompanham as colunas (Set-GuiHomeDividers).
+    param (
+        [Parameter(Mandatory)]$Grid,
+        [int]$Count,
+        [double]$MinWidth,
+        [object[]]$Fit = @(),
+        [object[]]$Divided = @()
+    )
+
+    $Grid.Rows = 0
+    $Grid.Columns = [Math]::Max(1, $Count)
+    $Grid.Tag = [PSCustomObject]@{ Count = $Count; MinWidth = $MinWidth; Fit = @($Fit); Divided = @($Divided) }
+    Set-GuiHomeDividers -Holders $Divided -Columns $Grid.Columns
+
+    foreach ($part in @($Fit)) {
+        if ($null -ne $part) { $part.Grid = $Grid }
+    }
+
+    $Grid.Add_SizeChanged({
+        param ($sender, $eventArgs)
+
+        if (-not $eventArgs.WidthChanged) { return }
+
+        try {
+            Update-GuiHomeColumns -Grid $sender
+        }
+        catch {
+            Write-Verbose "Colunas do Início: $($_.Exception.Message)"
+        }
+    })
+}
+
+function New-GuiValueSummary {
+    <#
+    "Histórico neste PC", no fim do Início: o que o WinForge já fez aqui, só com o que ele anota
+    (Get-WinForgeHomeValueSummary): o espaço que as manutenções liberaram, quantas foram feitas e as mudanças anotadas (com
+    quantas têm desfazer). Os números ficam grandes, direto na página, com um traço entre eles; cada um leva à tela de onde
+    vem. Só os números que existem aparecem; sem nenhum, $null. Devolve o título, o traço e a fileira, nesta ordem.
+    #>
+    $summary = $null
+
+    try { $summary = Get-WinForgeHomeValueSummary } catch { return $null }
+
+    if ($null -eq $summary -or -not $summary.Visible) { return $null }
+
+    $cells = @()
+
+    if ($null -ne $summary.Freed) {
+        $cells += [PSCustomObject]@{ Label = (Get-WinForgeText 'Liberado nas manutenções'); Value = (Format-WinForgeBytes -Bytes ([int64]$summary.Freed)); Note = ""; Opens = "maintenance.history" }
+    }
+
+    # Com o histórico cheio, ele guarda só as últimas: "20+".
+    if ([int]$summary.Runs -gt 0) {
+        $cells += [PSCustomObject]@{ Label = (Get-WinForgeText 'Manutenções feitas'); Value = "$($summary.Runs)$(if ($summary.Full) { '+' })"; Note = ""; Opens = "maintenance.history" }
+    }
+
+    if ([int]$summary.Changes -gt 0) {
+        $cells += [PSCustomObject]@{ Label = (Get-WinForgeText 'Mudanças anotadas'); Value = "$($summary.Changes)"; Note = $(if ([int]$summary.Undoable -gt 0) { (Get-WinForgeText '{0} com desfazer' "$($summary.Undoable)") } else { "" }); Opens = "maintenance.changes" }
+    }
+
+    if ($cells.Count -eq 0) { return $null }
+
+    $heading = New-GuiSectionHeading -Text (Get-WinForgeText 'Histórico neste PC')
+    $heading.Margin = New-Object System.Windows.Thickness (0, 30, 12, 12)
+
+    $rule = New-Object System.Windows.Controls.Border
+    $rule.Height = 1
+    $rule.Background = New-GuiBrush $script:Theme.Line
+    $rule.Margin = New-Object System.Windows.Thickness (0, 0, 12, 6)
+
+    $grid = New-Object System.Windows.Controls.Primitives.UniformGrid
+    $grid.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+    $holders = @()
+
+    foreach ($cell in $cells) {
+        $item = Get-WinForgeNavItem -Id $cell.Opens
+
+        $button = New-Object System.Windows.Controls.Button
+        $button.Style = $window.FindResource("RowButton")
+        $button.Padding = New-Object System.Windows.Thickness (0, 12, 16, 12)
+        $button.MinHeight = 0
+        $button.Tag = $item
+        $button.HorizontalContentAlignment = "Left"
+
+        $stack = New-Object System.Windows.Controls.StackPanel
+        [void]$stack.Children.Add((New-GuiText -Text $cell.Label -Size $script:Type.Body -Color $script:Theme.Muted))
+
+        # O número grande (diminui até caber na coluna) e, logo ao lado, embaixo, a nota ("27 com desfazer").
+        $value = New-Object System.Windows.Controls.DockPanel
+        $value.Margin = New-Object System.Windows.Thickness (0, 6, 0, 0)
+        $value.LastChildFill = $true
+
+        $number = New-GuiValueBox -Text (New-GuiText -Text $cell.Value -Size $script:Type.TitleLarge -Display)
+        $number.VerticalAlignment = "Bottom"
+        Set-GuiDock -Element $number -Side "Left"
+        [void]$value.Children.Add($number)
+
+        if ($cell.Note) {
+            $note = New-GuiText -Text $cell.Note -Size $script:Type.Body -Color $script:Theme.Muted
+            $note.TextWrapping = "NoWrap"
+            $note.TextTrimming = "CharacterEllipsis"
+            $note.VerticalAlignment = "Bottom"
+            $note.HorizontalAlignment = "Left"
+            $note.Margin = New-Object System.Windows.Thickness (12, 0, 0, 8)
+            [void]$value.Children.Add($note)
+        }
+
+        [void]$stack.Children.Add($value)
+        $button.Content = $stack
+
+        $spoken = "$($cell.Label): $($cell.Value)$(if ($cell.Note) { " $($cell.Note)" })"
+        if ($null -ne $item) { $spoken += (Get-WinForgeText '. Abre: {0}' "$($item.Label)") }
+        Set-GuiAutomationName -Element $button -Name $spoken
+        if ($null -ne $item) { $button.ToolTip = [string]$item.Label }
+
+        $button.Add_Click({
+            param ($sender, $eventArgs)
+            if ($null -ne $sender.Tag) { Invoke-GuiNavItem -Item $sender.Tag }
+        })
+
+        # O traço fino entre os números fica na moldura de cada um (Set-GuiHomeDividers).
+        $holder = New-Object System.Windows.Controls.Border
+        $holder.BorderBrush = New-GuiBrush $script:Theme.Line
+        $holder.Child = $button
+        [void]$grid.Children.Add($holder)
+        $holders += $holder
+    }
+
+    Set-GuiHomeColumns -Grid $grid -Count $cells.Count -MinWidth (200 * $script:TextScale) -Divided $holders
+
+    # O título, o traço e os números numa peça só: a parte entra (ou fica de fora) inteira (Add-GuiHomePart).
+    $section = New-Object System.Windows.Controls.StackPanel
+    foreach ($part in @($heading, $rule, $grid)) { [void]$section.Children.Add($part) }
+
+    return $section
+}
+
+function Add-GuiHomePart {
+    <#
+    Põe uma parte do Início na tela (em Panel; sem ele, na página). Cada parte vem numa peça só ("Seu PC" com o título, os
+    cartões e a linha; o histórico com o título, o traço e os números) e entra inteira. Se o WPF recusar a entrada (um valor
+    que ele não aceita só aparece quando a parte entra na tela), ela fica de fora inteira, sem um título ou um traço
+    sobrando; o alto da página diz qual parte faltou, e o motivo vai para o log da janela (Add-WinForgeWindowProblem), que
+    o Pacote de suporte leva. Sem isso, a janela, que roda sem console, perdia a parte sem deixar rastro. $true quando entrou.
+    #>
+    param (
+        [Parameter(Mandatory)]$Element,
+        [Parameter(Mandatory)][string]$Name,
+        $Panel = $null
+    )
+
+    if ($null -eq $Panel) { $Panel = $contentPanel }
+
+    try {
+        [void]$Panel.Children.Add($Element)
+        return $true
+    }
+    catch {
+        $reasons = @()
+        $exception = $_.Exception
+
+        # O erro de verdade costuma vir por dentro (a chamada do .NET embrulha o do WPF).
+        while ($null -ne $exception -and $reasons.Count -lt 4) {
+            $reasons += "$($exception.GetType().FullName): $($exception.Message)"
+            $exception = $exception.InnerException
+        }
+
+        Add-WinForgeWindowProblem -Part "$(Get-WinForgeText 'Início') > $Name ($($Element.GetType().Name))" -Reason $reasons
+        Show-GuiHomeProblem -Name $Name
+        return $false
+    }
+}
+
+function Show-GuiHomeProblem {
+    # O aviso no alto do Início quando uma parte não pôde ser mostrada (Add-GuiHomePart): quais faltaram e onde ficou o
+    # motivo. Um aviso só, com todas as partes, refeito a cada uma.
+    param ([Parameter(Mandatory)][string]$Name)
+
+    if ($null -eq $script:HomeProblems) { return }
+
+    if ($Name -notin @($script:HomeProblemParts)) { $script:HomeProblemParts = @($script:HomeProblemParts) + $Name }
+
+    $script:HomeProblems.Children.Clear()
+    $text = (Get-WinForgeText 'Parte do Início não pôde ser mostrada: {0}. O motivo vai no Pacote de suporte (Sobre o WinForge).' "$(Join-WinForgeList -Items @($script:HomeProblemParts))")
+
+    try { [void]$script:HomeProblems.Children.Add((New-GuiNotice -Text $text)) } catch { Write-Verbose "Aviso do Início: $($_.Exception.Message)" }
 }
 
 function Show-GuiHomePage {
@@ -3074,13 +4469,13 @@ function Show-GuiHomePage {
     # depois dos 30 segundos, com a hora dela) ou continua a leitura em andamento de onde ela estava.
     param ([switch]$Rerender)
 
-    # Sem a frase embaixo do título: "Seu PC" e "Por onde começar" já dizem o que a página tem, e a nota sobe.
-    $pageTitle.Text = "Início"
+    # Sem a frase embaixo do título: a nota de saúde, "Seu PC" e "Histórico neste PC" já dizem o que a página tem.
+    $pageTitle.Text = (Get-WinForgeText 'Início')
     $pageSubtitle.Text = ""
     $contentPanel.Children.Clear()
     $script:HomeFacts = @{}
-    $script:HomeCards = @{}
     $script:HomeFactInfo = @{}
+    $script:HomeRefreshFocus = $false
 
     # Uma leitura que ficou pela metade em outra visita não vale mais: os cartões abaixo são novos. Na troca de tema, a
     # leitura em andamento continua a mesma (e não fica solta se a montagem falhar) e passa para os cartões novos.
@@ -3090,56 +4485,85 @@ function Show-GuiHomePage {
     # A hora da leitura e o Atualizar entram na nota de saúde (Update-GuiHealthCard), que guarda o texto e o estado.
     if (-not $Rerender) { $script:HomeStamp = @{ Text = (Get-GuiHomeReadingText); CanRefresh = $false; ReadAt = $null } }
 
+    # Cada parte entra na página inteira, numa peça só (Add-GuiHomePart); a que não puder ser mostrada é dita aqui, no alto.
+    $script:HomeProblems = New-Object System.Windows.Controls.StackPanel
+    $script:HomeProblemParts = @()
+    [void]$contentPanel.Children.Add($script:HomeProblems)
+
     # Avisos (por exemplo, WinForge elevado com outra conta) entram aqui quando a leitura do sistema termina.
     $script:HomeBanner = New-Object System.Windows.Controls.StackPanel
     [void]$contentPanel.Children.Add($script:HomeBanner)
 
-    # A nota de saúde também chega com a leitura; até lá o cartão mostra que está calculando.
+    # A nota de saúde chega com a leitura (ou com a última, mais abaixo); até lá, o cartão mostra que está lendo. Ela é
+    # montada uma vez por visita, no fim, quando já se sabe o que mostrar.
     $script:HomeHealth = New-Object System.Windows.Controls.StackPanel
     $script:HomeHealth.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
     [void]$contentPanel.Children.Add($script:HomeHealth)
-    Update-GuiHealthCard -Health $null
 
-    [void]$contentPanel.Children.Add((New-GuiSectionHeading -Text "Seu PC"))
+    # "Seu PC": o disco, a proteção e o Windows em três cartões; embaixo, numa linha só, a última manutenção, o reinício
+    # pendente e (num notebook) a bateria. O título, os cartões e a linha numa peça só.
+    $yourPc = New-Object System.Windows.Controls.StackPanel
+    [void]$yourPc.Children.Add((New-GuiSectionHeading -Text (Get-WinForgeText 'Seu PC')))
 
-    $facts = New-Object System.Windows.Controls.WrapPanel
     $labels = Get-WinForgeHomeFactLabels
     $optional = @(Get-WinForgeHomeOptionalFacts)
+    $stripIds = @(@("maintenance", "reboot", "battery") | Where-Object { $labels.Contains($_) })
+    $cardIds = @(@($labels.Keys) | Where-Object { $_ -notin $stripIds })
 
-    foreach ($id in $labels.Keys) {
-        $fact = New-GuiFactCard -Id $id -Label $labels[$id]
-        $script:HomeFacts[$id] = $fact.Value
-        $script:HomeCards[$id] = $fact.Card
-        $script:HomeFactInfo[$id] = [PSCustomObject]@{ Label = [string]$labels[$id]; Opens = $fact.Opens; Detail = $fact.Detail }
+    $cards = New-Object System.Windows.Controls.Primitives.UniformGrid
+    $cardParts = @()
 
-        # Um cartão que só existe em alguns PCs (a bateria) só aparece quando a leitura confirma; antes disso, num desktop
-        # ele apareceria em "Lendo..." e sumiria.
-        if ($id -in $optional) { $fact.Card.Visibility = "Collapsed" }
-
-        [void]$facts.Children.Add($fact.Card)
+    foreach ($id in $cardIds) {
+        $parts = New-GuiHomeCard -Id $id -Label $labels[$id]
+        if ($id -in $optional) { $parts.Holder.Visibility = "Collapsed" }
+        $script:HomeFacts[$id] = $parts
+        $script:HomeFactInfo[$id] = [PSCustomObject]@{ Label = [string]$labels[$id] }
+        [void]$cards.Children.Add($parts.Card)
+        $cardParts += $parts
     }
 
-    [void]$contentPanel.Children.Add($facts)
+    Set-GuiHomeColumns -Grid $cards -Count $cardIds.Count -MinWidth (200 * $script:TextScale) -Fit $cardParts
 
-    $heading = New-GuiSectionHeading -Text "Por onde começar"
-    $heading.Margin = New-Object System.Windows.Thickness (0, 12, 0, 12)
-    [void]$contentPanel.Children.Add($heading)
+    [void]$yourPc.Children.Add($cards)
 
-    $shortcuts = New-Object System.Windows.Controls.WrapPanel
+    if ($stripIds.Count -gt 0) {
+        $strip = New-GuiHomeStrip -Ids $stripIds -Labels $labels -Optional $optional
 
-    foreach ($item in @(Get-WinForgeHomeActions)) {
-        [void]$shortcuts.Children.Add((New-GuiQuickActionCard -Item $item))
+        foreach ($id in $stripIds) {
+            $script:HomeFacts[$id] = $strip.Parts[$id]
+            $script:HomeFactInfo[$id] = [PSCustomObject]@{ Label = [string]$labels[$id] }
+        }
+
+        [void]$yourPc.Children.Add($strip.Card)
     }
 
-    [void]$contentPanel.Children.Add($shortcuts)
+    # Fora da tela, "Seu PC" não recebe leitura: os fatos dele não teriam onde aparecer.
+    if (-not (Add-GuiHomePart -Element $yourPc -Name (Get-WinForgeText 'Seu PC'))) {
+        $script:HomeFacts = @{}
+    }
+
+    # O que o WinForge já fez neste PC: só aparece com algo anotado (uma manutenção, uma mudança).
+    $summary = New-GuiValueSummary
+    if ($null -ne $summary) { [void](Add-GuiHomePart -Element $summary -Name (Get-WinForgeText 'Histórico neste PC')) }
+
+    # Enquanto faltar o atalho, o monitor ou a manutenção mensal: a configuração inicial, no fim da página. Ela entra
+    # quando se sabe se a manutenção mensal está agendada (a leitura do Início, ou a última leitura, Update-GuiSetupCard).
+    $script:HomeSetup = New-Object System.Windows.Controls.StackPanel
+    $script:HomeSetupKey = $null
+    [void]$contentPanel.Children.Add($script:HomeSetup)
 
     if ($Rerender -and $null -ne $pending) {
         # Numa atualização, os cartões que a leitura nova ainda não alcançou continuam com a anterior (e a nota também).
+        $shown = $false
+
         if ($pending.Refresh -and $null -ne $script:HomeLastSnapshot) {
-            try { Show-GuiHomeResult -Snapshot $script:HomeLastSnapshot } catch { $script:HomeLastSnapshot = $null }
+            try { Show-GuiHomeResult -Snapshot $script:HomeLastSnapshot; $shown = $true } catch { $script:HomeLastSnapshot = $null }
         }
 
+        if (-not $shown) { Update-GuiHealthCard -Health $null }
+
         foreach ($fact in @($pending.Facts)) { Set-GuiHomeFact -Fact $fact }
+        if ($null -ne $pending.ScheduleSetup) { Update-GuiSetupCard -ScheduleDone ([bool]$pending.ScheduleSetup) }
 
         # Os avisos vêm da primeira etapa: depois dela, valem os da leitura nova.
         if ($pending.Next -gt 0 -or -not $pending.Refresh) {
@@ -3154,7 +4578,7 @@ function Show-GuiHomePage {
 
     # Voltar ao Início logo depois de uma leitura mostra o que já se sabe. Depois disso (ou depois de uma ação, que pode
     # ter mudado o PC), a última leitura aparece na hora e a nova a atualiza no lugar, cartão por cartão; só a primeira
-    # visita começa com os cartões em "Lendo...".
+    # visita começa com os cartões esperando (a barra cinza no lugar do valor).
     $snapshot = $(if ($Rerender) { $script:HomeLastSnapshot } else { Get-GuiHomeSnapshot })
     $stale = ($null -eq $snapshot -and $null -ne $script:HomeLastSnapshot)
     if ($stale) { $snapshot = $script:HomeLastSnapshot }
@@ -3168,6 +4592,7 @@ function Show-GuiHomePage {
             # de novo, em vez de o Início ficar sem leitura até alguém apertar F5.
             $script:HomeSnapshot = $null
             $script:HomeLastSnapshot = $null
+            Update-GuiHealthCard -Health $null
             Start-GuiHomeRead
             return
         }
@@ -3176,6 +4601,7 @@ function Show-GuiHomePage {
         return
     }
 
+    Update-GuiHealthCard -Health $null
     Start-GuiHomeRead
 }
 
@@ -3213,7 +4639,12 @@ function Set-GuiHomeStamp {
     $script:HomeStamp = @{ Text = $Text; CanRefresh = $CanRefresh; ReadAt = $ReadAt }
 
     if ($null -ne $script:HomeStampText) { $script:HomeStampText.Text = $Text }
-    if ($null -ne $script:HomeRefreshButton) { $script:HomeRefreshButton.IsEnabled = $CanRefresh }
+
+    if ($null -ne $script:HomeRefreshButton) {
+        # Desligado, o botão perde o foco do teclado: a nota refeita no fim da leitura o devolve (Get-GuiHomeHealthFocus).
+        if (-not $CanRefresh -and $script:HomeRefreshButton.IsKeyboardFocused) { $script:HomeRefreshFocus = $true }
+        $script:HomeRefreshButton.IsEnabled = $CanRefresh
+    }
 }
 
 function New-GuiHomeStampBar {
@@ -3224,7 +4655,7 @@ function New-GuiHomeStampBar {
     $bar.HorizontalAlignment = "Left"
     $bar.Margin = New-Object System.Windows.Thickness (0, 2, 0, 0)
 
-    $stamp = New-GuiText -Text ([string]$script:HomeStamp.Text) -Size 12 -Color $script:Theme.Dim
+    $stamp = New-GuiText -Text ([string]$script:HomeStamp.Text) -Size $script:Type.Caption -Color $script:Theme.Dim
     $stamp.VerticalAlignment = "Center"
     $stamp.TextWrapping = "NoWrap"
     [void]$bar.Children.Add($stamp)
@@ -3235,15 +4666,14 @@ function New-GuiHomeStampBar {
     $refresh.Padding = New-Object System.Windows.Thickness (6, 4, 6, 4)
     $refresh.Margin = New-Object System.Windows.Thickness (4, 0, 0, 0)
     $refresh.VerticalAlignment = "Center"
-    $refresh.ToolTip = "Ler o PC de novo (F5)"
+    $refresh.ToolTip = (Get-WinForgeText 'Ler o PC de novo (F5)')
     $refresh.IsEnabled = [bool]$script:HomeStamp.CanRefresh
-    Set-GuiAutomationName -Element $refresh -Name "Ler o estado do PC de novo"
+    Set-GuiAutomationName -Element $refresh -Name (Get-WinForgeText 'Ler o estado do PC de novo')
     $refresh.Add_Click({ Request-GuiHomeRefresh })
     [void]$bar.Children.Add($refresh)
 
     $script:HomeRefreshButton = $refresh
     $script:HomeStampText = $stamp
-    $script:HomeStampBar = $bar
 
     return $bar
 }
@@ -3253,17 +4683,16 @@ function Get-GuiHomeStampText {
     # ficar aberta de um dia para o outro, e só a hora enganaria.
     param ([Parameter(Mandatory)][datetime]$ReadAt, [datetime]$Now = (Get-Date))
 
-    $culture = [System.Globalization.CultureInfo]::InvariantCulture
-    $time = $ReadAt.ToString("HH:mm", $culture)
+    $time = Format-WinForgeDateTime -When $ReadAt -Pattern "HH:mm"
 
-    if ($ReadAt.Date -eq $Now.Date) { return "Atualizado às $time" }
-    if ($ReadAt.Date -eq $Now.Date.AddDays(-1)) { return "Atualizado ontem às $time" }
+    if ($ReadAt.Date -eq $Now.Date) { return (Get-WinForgeText 'Atualizado às {0}' "$time") }
+    if ($ReadAt.Date -eq $Now.Date.AddDays(-1)) { return (Get-WinForgeText 'Atualizado ontem às {0}' "$time") }
 
-    return "Atualizado em $($ReadAt.ToString('dd/MM', $culture)) às $time"
+    return (Get-WinForgeText 'Atualizado em {0} às {1}' "$(Format-WinForgeDateTime -When $ReadAt -Pattern 'dd/MM')" "$time")
 }
 
 function Set-GuiHomeFact {
-    # Mostra um fato do Início no cartão dele (Set-GuiFactCardText).
+    # Mostra um fato do Início no cartão (ou na parte da linha) dele (Set-GuiHomeCardText).
     param ([Parameter(Mandatory)]$Fact)
 
     $id = [string]$Fact.Id
@@ -3272,24 +4701,22 @@ function Set-GuiHomeFact {
     # bateria" (PC de mesa, nenhuma bateria ou um nobreak) diz que não há. Uma leitura que não terminou não decide nada.
     if ($id -eq "battery") {
         if ([bool]$Fact.Visible) { $script:HasBattery = $true }
-        elseif ([string]$Fact.Text -eq "Sem bateria") { $script:HasBattery = $false }
+        elseif ([string]$Fact.Text -eq (Get-WinForgeText 'Sem bateria')) { $script:HasBattery = $false }
     }
 
     if (-not $script:HomeFacts.ContainsKey($id)) { return }
 
-    $info = $script:HomeFactInfo[$id]
-    Set-GuiFactCardText -Card $script:HomeCards[$id] -Value $script:HomeFacts[$id] -Detail $info.Detail -Label $info.Label -Opens $info.Opens -Fact $Fact
+    Set-GuiHomeCardText -Parts $script:HomeFacts[$id] -Fact $Fact
 }
 
-function Set-GuiFactCardText {
-    # Mostra um fato num cartão de informação (New-GuiFactCard): o valor (na cor do nível), o complemento, se o cartão
-    # aparece, a frase inteira ao passar o mouse e o nome que o leitor de tela fala.
+function Set-GuiHomeCardText {
+    <#
+    Mostra um fato do Início no cartão de "Seu PC" ou na parte da linha dele (New-GuiHomeCard, New-GuiHomeStrip): o valor
+    na cor do nível, o complemento, a barra de uso do disco (com quanto está em uso, Usage), se ele aparece, a frase inteira
+    ao passar o mouse e o nome que o leitor de tela fala.
+    #>
     param (
-        [Parameter(Mandatory)]$Card,
-        [Parameter(Mandatory)]$Value,
-        [Parameter(Mandatory)]$Detail,
-        [Parameter(Mandatory)][string]$Label,
-        [AllowEmptyString()][string]$Opens = "",
+        [Parameter(Mandatory)]$Parts,
         [Parameter(Mandatory)]$Fact
     )
 
@@ -3299,19 +4726,51 @@ function Set-GuiFactCardText {
     $shown = [string](Get-WinForgeJsonValue -Object $Fact -Name "Value" -Default $text)
     $more = [string](Get-WinForgeJsonValue -Object $Fact -Name "Detail" -Default "")
 
-    $Value.Text = $shown
-    $Value.Foreground = New-GuiBrush $(if ($colors.ContainsKey($level)) { $colors[$level] } else { $script:Theme.Text })
-    $Detail.Text = $more
-    $Detail.Visibility = $(if ([string]::IsNullOrEmpty($more)) { "Collapsed" } else { "Visible" })
-    $Card.ToolTip = $text
+    # O valor fica sozinho no cartão: começa em maiúscula ("há 5 horas" vira "Há 5 horas").
+    $Parts.Value.Text = ConvertTo-WinForgeHeadline -Text $shown
+    $Parts.Value.Foreground = New-GuiBrush $(if ($colors.ContainsKey($level)) { $colors[$level] } else { $script:Theme.Text })
+    $Parts.Value.Visibility = "Visible"
+    $Parts.ValueBox.Visibility = "Visible"
+    $Parts.Skeleton.Visibility = "Collapsed"
 
-    # Cartões que não se aplicam a este PC (bateria em desktop) saem da tela.
-    $Card.Visibility = $(if ($Fact.Visible) { "Visible" } else { "Collapsed" })
+    if ($null -ne $Parts.Detail) {
+        $Parts.Detail.Text = $more
+        $Parts.Detail.Visibility = $(if ([string]::IsNullOrEmpty($more)) { "Collapsed" } else { "Visible" })
+    }
+
+    if ($null -ne $Parts.Track) {
+        # A barra de uso só com um número de 0 a 100 (uma leitura que falhou não tem barra).
+        $usage = Get-WinForgeJsonValue -Object $Fact -Name "Usage" -Default $null
+        $percent = -1.0
+        if ($null -ne $usage -and -not [double]::TryParse([string]$usage, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$percent)) { $percent = -1.0 }
+
+        if ($null -ne $usage -and $percent -ge 0 -and $percent -le 100) {
+            $Parts.UsedColumn.Width = New-Object System.Windows.GridLength ($percent, [System.Windows.GridUnitType]::Star)
+            $Parts.FreeColumn.Width = New-Object System.Windows.GridLength ((100.0 - $percent), [System.Windows.GridUnitType]::Star)
+            $Parts.Fill.Background = New-GuiBrush $(if ($level -eq "Warn") { $script:Theme.Warn } else { $script:Theme.Bar })
+            $Parts.Extra.Text = (Get-WinForgeText '{0}% em uso' "$([int]$percent)")
+            $Parts.Extra.Visibility = "Visible"
+            $Parts.Track.Visibility = "Visible"
+        }
+        else {
+            $Parts.Extra.Visibility = "Collapsed"
+            $Parts.Track.Visibility = "Collapsed"
+        }
+    }
+
+    $Parts.Card.ToolTip = $text
+
+    # Partes que não se aplicam a este PC (bateria em desktop) saem da tela.
+    $Parts.Holder.Visibility = $(if ($Fact.Visible) { "Visible" } else { "Collapsed" })
 
     # O leitor de tela lê o nome do botão no lugar do conteúdo: a frase inteira precisa estar nele.
-    $name = "$($Label): $text"
-    if (-not [string]::IsNullOrEmpty($Opens)) { $name += ". Abre: $($Opens)" }
-    Set-GuiAutomationName -Element $Card -Name $name
+    $name = "$($Parts.Label): $text"
+    if (-not [string]::IsNullOrEmpty($Parts.Opens)) { $name += (Get-WinForgeText '. Abre: {0}' "$($Parts.Opens)") }
+    Set-GuiAutomationName -Element $Parts.Card -Name $name
+
+    # O texto novo pode não caber mais lado a lado (ou voltar a caber): a linha ou a fileira refaz as colunas.
+    if ($null -ne $Parts.Strip) { Update-GuiHomeStripLayout -Strip $Parts.Strip }
+    elseif ($null -ne $Parts.Grid) { Update-GuiHomeColumns -Grid $Parts.Grid }
 }
 
 function Get-GuiSavedAntivirusMode {
@@ -3346,7 +4805,7 @@ function Show-GuiHomeResult {
     foreach ($fact in @($Snapshot.Facts)) { Set-GuiHomeFact -Fact $fact }
 
     # Quem protege o PC, pelo cartão Proteção: com outro antivírus (ou nenhum funcionando), o que só o Defender faz
-    # (Verificar vírus) sai do Início e da página Segurança. Sem leitura, fica como estava.
+    # (Verificar vírus) sai da página Segurança. Sem leitura, fica como estava.
     foreach ($fact in @($Snapshot.Facts)) {
         if ($null -ne $fact -and [string](Get-WinForgeJsonValue -Object $fact -Name "Id" -Default "") -eq "security") {
             Save-GuiAntivirusMode -Mode ([string](Get-WinForgeJsonValue -Object $fact -Name "AntivirusMode" -Default ""))
@@ -3355,20 +4814,21 @@ function Show-GuiHomeResult {
 
     $failed = [bool](Get-WinForgeJsonValue -Object $Snapshot -Name "Failed" -Default $false)
 
-    if ($failed) { Update-GuiHealthCard -Failed } else { Update-GuiHealthCard -Health $Snapshot.Health }
-
-    $script:HomeBanner.Children.Clear()
-    Add-GuiHomeNotices -Notices $Snapshot.Notices
-
+    # A hora e o botão de ler de novo antes da nota: ela nasce com o botão ligado, que pode receber o foco de volta.
     if ($failed) {
-        Set-GuiHomeStamp -Text "A leitura não terminou" -CanRefresh $true
+        Set-GuiHomeStamp -Text (Get-WinForgeText 'A leitura não terminou') -CanRefresh $true
     }
     else {
         Set-GuiHomeStamp -Text (Get-GuiHomeStampText -ReadAt $Snapshot.ReadAt) -CanRefresh $true -ReadAt $Snapshot.ReadAt
     }
 
-    # O leitor de tela ouve a frase nova da nota, que chegou sem a pessoa pedir.
-    if ($null -ne $script:HomeHeadline) { Send-GuiAnnouncement -Element $script:HomeHeadline }
+    if ($failed) { Update-GuiHealthCard -Failed } else { Update-GuiHealthCard -Health $Snapshot.Health }
+
+    $script:HomeBanner.Children.Clear()
+    Add-GuiHomeNotices -Notices $Snapshot.Notices
+
+    # A configuração inicial, com o agendamento lido junto (uma leitura de antes da R40 não o tem: não agendada).
+    Update-GuiSetupCard -ScheduleDone ([bool](Get-WinForgeJsonValue -Object $Snapshot -Name "ScheduleSetup" -Default $false))
 }
 
 function Update-GuiHomeStampAge {
@@ -3399,9 +4859,9 @@ function Get-GuiHomeReadingText {
     # sendo atualizada. Sem contagem de etapas: cada cartão já mostra quando chega, e nem toda etapa tem cartão.
     param ([switch]$Refresh)
 
-    if ($Refresh) { return "Atualizando..." }
+    if ($Refresh) { return (Get-WinForgeText 'Atualizando...') }
 
-    return "Lendo o PC..."
+    return (Get-WinForgeText 'Lendo o PC...')
 }
 
 function Stop-GuiHomeRead {
@@ -3411,7 +4871,7 @@ function Stop-GuiHomeRead {
     $script:HomeReaderOwner = $null
     $script:HomeReaderWaiting = $null
 
-    try { Set-GuiHomeStamp -Text "A leitura não terminou" -CanRefresh $true } catch { Write-Verbose "Início: $($_.Exception.Message)" }
+    try { Set-GuiHomeStamp -Text (Get-WinForgeText 'A leitura não terminou') -CanRefresh $true } catch { Write-Verbose "Início: $($_.Exception.Message)" }
 }
 
 function Start-GuiHomeRead {
@@ -3424,7 +4884,7 @@ function Start-GuiHomeRead {
 
     $script:HomeRead = [PSCustomObject]@{
         Steps = $steps; Next = 0; Facts = @(); Notices = @(); Issues = @(); Unread = @(); Failed = $false
-        Version = $script:HomeCacheVersion; Refresh = [bool]$Refresh
+        Version = $script:HomeCacheVersion; Refresh = [bool]$Refresh; ScheduleSetup = $null
     }
 
     Set-GuiHomeStamp -Text (Get-GuiHomeReadingText -Refresh:$Refresh) -CanRefresh $false
@@ -3495,6 +4955,13 @@ function Receive-GuiHomeStep {
             $Read.Notices += @($Result.Notices)
             $Read.Issues += @($Result.Issues)
             $Read.Unread += @($Result.Unread)
+
+            # A etapa da manutenção agendada diz também se ela está agendada para esta pasta: a configuração inicial
+            # aparece agora, sem consultar o Agendador de Tarefas na thread da janela.
+            if ($null -ne $Result.PSObject.Properties["ScheduleSetup"]) {
+                $Read.ScheduleSetup = [bool]$Result.ScheduleSetup
+                Update-GuiSetupCard -ScheduleDone $Read.ScheduleSetup
+            }
         }
         catch {
             $Read.Failed = $true
@@ -3612,7 +5079,7 @@ function Complete-GuiHomeRead {
     $built = $null
 
     try {
-        # Um cartão cuja etapa falhou por inteiro não fica em "Lendo..." para sempre (o da bateria, que só existe em
+        # Um cartão cuja etapa falhou por inteiro não fica esperando para sempre (o da bateria, que só existe em
         # alguns PCs, continua escondido); se ele entra na nota, a nota diz que ele ficou de fora.
         $known = @($read.Facts | ForEach-Object { [string]$_.Id })
         $optional = @(Get-WinForgeHomeOptionalFacts)
@@ -3621,22 +5088,25 @@ function Complete-GuiHomeRead {
         $missing = @()
 
         # Esses cartões também entram na leitura guardada: mostrada de novo (na volta ao Início ou na troca de tema), ela
-        # diz "Não foi possível ler", e não "Lendo...".
+        # diz "Não foi possível ler", e não volta a esperar.
         foreach ($id in @($script:HomeFacts.Keys)) {
             if ($id -notin $known) {
-                $fact = [PSCustomObject]@{ Id = $id; Text = "Não foi possível ler"; Level = "Muted"; Visible = ($id -notin $optional) }
+                $fact = [PSCustomObject]@{ Id = $id; Text = (Get-WinForgeText 'Não foi possível ler'); Level = "Muted"; Visible = ($id -notin $optional) }
                 Set-GuiHomeFact -Fact $fact
                 $missing += $fact
                 if ($id -in $scored) { $unread += $script:HomeFactInfo[$id].Label }
             }
         }
 
+        # Sem a etapa da manutenção agendada (falhou ou passou do prazo), ela conta como não agendada, como quando o
+        # Agendador de Tarefas não responde.
         $snapshot = [PSCustomObject]@{
-            Facts   = @(@($read.Facts) + $missing)
-            Notices = @($read.Notices)
-            Health  = $null
-            ReadAt  = (Get-Date)
-            Failed  = $false
+            Facts         = @(@($read.Facts) + $missing)
+            Notices       = @($read.Notices)
+            Health        = $null
+            ReadAt        = (Get-Date)
+            Failed        = $false
+            ScheduleSetup = [bool]$read.ScheduleSetup
         }
 
         # Os cartões ficam guardados mesmo que a nota não possa ser montada: a troca de tema mostra de novo o que foi
@@ -3659,9 +5129,15 @@ function Complete-GuiHomeRead {
         $script:HomeSnapshot = $null
         if ($null -ne $built) { $built.Failed = $true; $built.Health = $null }
 
-        Set-GuiHomeStamp -Text "A leitura não terminou" -CanRefresh $true
+        Set-GuiHomeStamp -Text (Get-WinForgeText 'A leitura não terminou') -CanRefresh $true
 
         try { Update-GuiHealthCard -Failed } catch { Write-Verbose "Nota de saúde: $($_.Exception.Message)" }
+    }
+
+    # O leitor de tela ouve a frase nova da nota, que chegou sem a pessoa pedir. Só quando uma leitura termina: ao voltar
+    # ao Início com a leitura guardada, a frase já está na tela, e anunciá-la de novo a cada visita repetiria a página.
+    if ($null -ne $script:HomeHeadline) {
+        try { Send-GuiAnnouncement -Element $script:HomeHeadline } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
     }
 }
 
@@ -3678,110 +5154,93 @@ function Request-GuiHomeRefresh {
     Start-GuiHomeRead -Refresh:($null -ne $script:HomeLastSnapshot)
 }
 
-function New-GuiScoreRing {
-    # O anel da nota de saúde: o trilho inteiro e, por cima, o arco proporcional à nota, com o número no meio. Score
-    # negativo = ainda sem nota (só o trilho e um traço).
+function New-GuiScoreBlock {
+    <#
+    A nota de saúde, à direita do cartão: o número grande com "/ 100" na mesma linha de base, os dez traços
+    (Get-WinForgeScoreMarks: cheios na cor da nota, vazios no trilho) e, embaixo, a hora da leitura com o botão de ler de
+    novo. Score negativo = ainda sem nota (um traço no lugar do número, os traços vazios). A largura (Width) acompanha o
+    tamanho do texto do Windows, e o número diminui até caber nela.
+    #>
     param (
         [int]$Score,
-        [string]$Color
+        [string]$Color,
+        [double]$Width
     )
 
-    $size = 124.0
-    $thickness = 10.0
-    $radius = ($size - $thickness) / 2
-    $center = $size / 2
+    $block = New-Object System.Windows.Controls.StackPanel
+    $block.Width = $Width
+    $block.VerticalAlignment = "Center"
 
-    $grid = New-Object System.Windows.Controls.Grid
-    $grid.Width = $size
-    $grid.Height = $size
+    # O número e "/ 100" num texto só, para ficarem na mesma linha de base.
+    $number = New-Object System.Windows.Controls.TextBlock
+    $number.TextWrapping = "NoWrap"
+    Set-GuiDisplayFont -Element $number
 
-    # O trilho tem um tom claro da cor da nota: com a nota baixa, o anel quase vazio continua dizendo "vermelho", e não
-    # parece cinza de desligado. Sem nota, o trilho neutro.
-    $trackColor = $script:Theme.Track
-    if ($Score -ge 0 -and $Color -match '^#[0-9A-Fa-f]{6}$') { $trackColor = "#38$($Color.Substring(1))" }
+    $big = New-Object System.Windows.Documents.Run
+    $big.Text = $(if ($Score -lt 0) { "–" } else { "$Score" })
+    $big.FontSize = $script:Type.Display
+    $big.FontWeight = [System.Windows.FontWeights]::Bold
+    $big.Foreground = New-GuiBrush $script:Theme.Text
+    [void]$number.Inlines.Add($big)
 
-    $track = New-Object System.Windows.Shapes.Ellipse
-    $track.Stroke = New-GuiBrush $trackColor
-    $track.StrokeThickness = $thickness
-    [void]$grid.Children.Add($track)
+    # O espaço entre os dois no tamanho do número, como no desenho.
+    $gap = New-Object System.Windows.Documents.Run
+    $gap.Text = " "
+    $gap.FontSize = $script:Type.Display
+    [void]$number.Inlines.Add($gap)
 
-    $fraction = [Math]::Max(0, [Math]::Min(100, $Score)) / 100.0
+    $of = New-Object System.Windows.Documents.Run
+    $of.Text = "/ 100"
+    $of.FontSize = $script:Type.Subtitle
+    $of.Foreground = New-GuiBrush $script:Theme.Muted
+    [void]$number.Inlines.Add($of)
 
-    if ($Score -ge 100) {
-        $full = New-Object System.Windows.Shapes.Ellipse
-        $full.Stroke = New-GuiBrush $Color
-        $full.StrokeThickness = $thickness
-        [void]$grid.Children.Add($full)
-    }
-    elseif ($fraction -gt 0) {
-        # O arco começa no alto (12 horas) e anda no sentido horário.
-        $angle = 360.0 * $fraction
-        $radians = ($angle - 90.0) * [Math]::PI / 180.0
+    [void]$block.Children.Add((New-GuiValueBox -Text $number))
 
-        $figure = New-Object System.Windows.Media.PathFigure
-        $figure.StartPoint = New-Object System.Windows.Point ($center, ($center - $radius))
+    $marks = New-Object System.Windows.Controls.Primitives.UniformGrid
+    $marks.Rows = 1
+    $marks.Columns = 10
+    $marks.Height = [Math]::Max(4, [Math]::Round(5 * [Math]::Sqrt($script:TextScale)))
+    $marks.Margin = New-Object System.Windows.Thickness (0, 8, -4, 0)
+    $marks.IsHitTestVisible = $false
+    $filled = Get-WinForgeScoreMarks -Score $Score -Count 10
 
-        $arc = New-Object System.Windows.Media.ArcSegment
-        $arc.Point = New-Object System.Windows.Point (($center + $radius * [Math]::Cos($radians)), ($center + $radius * [Math]::Sin($radians)))
-        $arc.Size = New-Object System.Windows.Size ($radius, $radius)
-        $arc.IsLargeArc = ($angle -gt 180.0)
-        $arc.SweepDirection = "Clockwise"
-        [void]$figure.Segments.Add($arc)
-
-        $geometry = New-Object System.Windows.Media.PathGeometry
-        [void]$geometry.Figures.Add($figure)
-
-        $path = New-Object System.Windows.Shapes.Path
-        $path.Data = $geometry
-        $path.Stroke = New-GuiBrush $Color
-        $path.StrokeThickness = $thickness
-        $path.StrokeStartLineCap = "Round"
-        $path.StrokeEndLineCap = "Round"
-        [void]$grid.Children.Add($path)
+    for ($i = 0; $i -lt 10; $i++) {
+        $mark = New-Object System.Windows.Controls.Border
+        $mark.CornerRadius = New-Object System.Windows.CornerRadius 2
+        $mark.Margin = New-Object System.Windows.Thickness (0, 0, 4, 0)
+        $mark.Background = New-GuiBrush $(if ($i -lt $filled) { $Color } else { $script:Theme.Track })
+        [void]$marks.Children.Add($mark)
     }
 
-    $middle = New-Object System.Windows.Controls.StackPanel
-    $middle.VerticalAlignment = "Center"
-    $middle.HorizontalAlignment = "Center"
+    [void]$block.Children.Add($marks)
 
-    $number = New-GuiText -Text $(if ($Score -lt 0) { "–" } else { "$Score" }) -Size 36 -Bold $true
-    try { [System.Windows.Media.TextOptions]::SetTextFormattingMode($number, "Ideal") } catch { Write-Verbose "Texto: $($_.Exception.Message)" }
-    $number.HorizontalAlignment = "Center"
-    $number.TextAlignment = "Center"
-    [void]$middle.Children.Add($number)
+    $stamp = New-GuiHomeStampBar
+    $stamp.Margin = New-Object System.Windows.Thickness (0, 10, 0, 0)
+    [void]$block.Children.Add($stamp)
 
-    $scale = New-GuiText -Text "de 100" -Size 12 -Color $script:Theme.Dim
-    $scale.HorizontalAlignment = "Center"
-    [void]$middle.Children.Add($scale)
-
-    [void]$grid.Children.Add($middle)
-
-    return $grid
+    return $block
 }
 
 function New-GuiHealthButtons {
-    # Os dois caminhos para cuidar do PC, sempre à mão: o Otimizar (a manutenção completa e guiada) e Verificar vírus. Eles
-    # não dependem da leitura: aparecem também enquanto a nota é calculada e quando ela não pôde ser calculada. O Otimizar
-    # é o botão principal só quando nenhum ponto pede atenção: com pontos, o principal é o do primeiro deles, que resolve
-    # o que a nota acusa (uma tela, um botão em destaque). Verificar vírus usa o Windows Defender: quando a última leitura
-    # viu outro antivírus protegendo o PC, ou o Defender desligado, em modo passivo ou sem resposta, ele não aparece
-    # (a verificação falharia, e o ponto da nota já leva à Segurança do Windows).
-    param ([bool]$Primary = $true)
+    # Os dois caminhos para cuidar do PC, sempre à mão: Verificar o PC (que confere e corrige num clique o que é seguro) e
+    # o Otimizar (a manutenção completa e guiada), nessa ordem, do mais leve ao mais completo. Eles não dependem da
+    # leitura: aparecem também enquanto a nota é calculada e quando ela não pôde ser calculada. PrimaryId é o que fica em
+    # destaque (Update-GuiHealthCard decide): o Otimizar sem pontos de atenção; com pontos, o que resolve o mais pesado,
+    # que pode ser um destes ("" quando é o botão do próprio ponto). Verificar vírus fica na página Segurança, aonde o
+    # cartão Proteção leva. Os dois são maiores que os botões comuns: são o caminho principal da tela.
+    param ([AllowEmptyString()][string]$PrimaryId = "maintenance.recommended")
 
     $buttons = New-Object System.Windows.Controls.WrapPanel
-    $buttons.Margin = New-Object System.Windows.Thickness (0, 16, 0, 0)
-    $mode = [string](Get-Variable -Name AntivirusMode -Scope Script -ValueOnly -ErrorAction SilentlyContinue)
-    $noDefender = ($mode -in @("Other", "Off", "Passive", "Unavailable"))
 
-    foreach ($entry in @(@{ Id = "maintenance.recommended"; Kind = $(if ($Primary) { "Primary" } else { "Secondary" }); Icon = "sparkles" }, @{ Id = "security.scan"; Kind = "Secondary"; Icon = "search" })) {
-        if ($noDefender -and $entry.Id -eq "security.scan") { continue }
-
+    foreach ($entry in @(@{ Id = "maintenance.checkup"; Icon = "scan" }, @{ Id = "maintenance.recommended"; Icon = "sparkles" })) {
         $navItem = Get-WinForgeNavItem -Id $entry.Id
 
         if ($null -eq $navItem) { continue }
 
-        $go = New-GuiButton -Text $navItem.Label -Kind $entry.Kind -Icon $entry.Icon -Tag $navItem
-        $go.Margin = New-Object System.Windows.Thickness (0, 0, 10, 0)
+        $go = New-GuiButton -Text $navItem.Label -Kind $(if ($entry.Id -eq $PrimaryId) { "Primary" } else { "Secondary" }) -Icon $entry.Icon -Tag $navItem
+        $go.Padding = New-Object System.Windows.Thickness (16, 10, 18, 10)
+        $go.Margin = New-Object System.Windows.Thickness (0, 0, 12, 4)
         $go.Add_Click({
             param ($sender, $eventArgs)
             Invoke-GuiNavItem -Item $sender.Tag
@@ -3792,220 +5251,536 @@ function New-GuiHealthButtons {
     return $buttons
 }
 
+function Set-GuiHeroLayout {
+    # A nota à direita da frase (Wide), numa faixa inclinada, ou embaixo dos botões, sem a faixa; muda só quando o arranjo
+    # muda.
+    param (
+        [Parameter(Mandatory)]$Grid,
+        [bool]$Wide
+    )
+
+    $parts = $Grid.Tag
+    if ($parts.Wide -eq $Wide) { return }
+    $parts.Wide = $Wide
+
+    $score = $parts.Score
+
+    if ($Wide) {
+        [System.Windows.Controls.Grid]::SetColumn($score, 1)
+        [System.Windows.Controls.Grid]::SetRow($score, 0)
+        $score.Margin = New-Object System.Windows.Thickness (32, 0, 0, 0)
+        $score.HorizontalAlignment = "Right"
+    }
+    else {
+        [System.Windows.Controls.Grid]::SetColumn($score, 0)
+        [System.Windows.Controls.Grid]::SetRow($score, 1)
+        $score.Margin = New-Object System.Windows.Thickness (0, 24, 0, 0)
+        $score.HorizontalAlignment = "Left"
+    }
+
+    Update-GuiHeroBand -Parts $parts
+}
+
+function Update-GuiHeroBand {
+    <#
+    A faixa inclinada atrás da nota (Get-WinForgeHeroBand): começa no alto um pouco à esquerda da nota e desce inclinada,
+    com uma linha fina no lado inclinado e outra paralela a ele. Só com a nota ao lado da frase e fora do contraste alto;
+    refeita quando o cartão muda de tamanho. Com pontos de atenção embaixo, ela fica só na parte de cima, até o traço que
+    os separa (Get-GuiHeroBandHeight).
+    #>
+    param ([Parameter(Mandatory)]$Parts)
+
+    $frame = $Parts.Frame
+    $band = $null
+
+    if ($Parts.Wide -and $script:ThemeName -ne "Contrast") {
+        $width = [double]$frame.ActualWidth
+        $height = Get-GuiHeroBandHeight -Parts $Parts
+        $start = $width - $Parts.Inset - $Parts.ScoreWidth - [Math]::Round(0.45 * $Parts.ScoreWidth)
+        $band = Get-WinForgeHeroBand -Width $width -Height $height -Start $start -Slant ([Math]::Round(0.9 * $height)) -Gap 12
+    }
+
+    if ($null -eq $band) {
+        foreach ($shape in @($Parts.Band, $Parts.Edge, $Parts.Trail)) { $shape.Visibility = "Collapsed" }
+        return
+    }
+
+    $points = New-Object System.Windows.Media.PointCollection
+    foreach ($point in $band.Points) { [void]$points.Add((New-Object System.Windows.Point ($point[0], $point[1]))) }
+    $Parts.Band.Points = $points
+
+    foreach ($pair in @(@($Parts.Edge, $band.Edge), @($Parts.Trail, $band.Trail))) {
+        $pair[0].X1 = $pair[1][0][0]; $pair[0].Y1 = $pair[1][0][1]
+        $pair[0].X2 = $pair[1][1][0]; $pair[0].Y2 = $pair[1][1][1]
+    }
+
+    foreach ($shape in @($Parts.Band, $Parts.Edge, $Parts.Trail)) { $shape.Visibility = "Visible" }
+}
+
+function Get-GuiHeroBandHeight {
+    <#
+    A altura da faixa inclinada da nota: o cartão inteiro sem pontos de atenção; com eles, só até o traço que os separa da
+    frase e da nota. Atravessando a lista, as duas linhas finas da faixa cortariam o texto e os botões dos pontos, e o
+    lado inclinado ficaria tão comprido quanto a lista.
+    #>
+    param ([Parameter(Mandatory)]$Parts)
+
+    $height = [double]$Parts.Frame.ActualHeight
+
+    if ($null -ne $Parts.Rule -and $null -ne $Parts.Grid -and $null -ne $Parts.Content) {
+        $top = [double]$Parts.Content.Margin.Top + [double]$Parts.Grid.ActualHeight + [double]$Parts.Rule.Margin.Top
+        if ($top -gt 0 -and $top -lt $height) { $height = $top }
+    }
+
+    return $height
+}
+
 function Update-GuiHealthCard {
-    # A nota de saúde: o anel com a nota, a frase do estado, a hora da leitura (com o botão de ler de novo), os botões
-    # Otimizar e Verificar vírus e, embaixo, cada ponto de atenção com o botão que o resolve. Sem nota (Health $null), o
-    # cartão mostra que a leitura está em andamento; com -Failed, que a nota não pôde ser montada.
+    <#
+    O cartão da nota de saúde, no alto do Início. À esquerda: "Saúde do PC" com o ícone do estado, a frase do estado (grande,
+    e que diminui até caber, sem cortar), o resumo e os botões Verificar o PC e Otimizar. À direita, numa faixa inclinada: a
+    nota, os dez traços e a hora da leitura com o botão de ler de novo (New-GuiScoreBlock). Embaixo, cada ponto de atenção
+    com o botão que o resolve. Numa janela estreita (ou com o texto do Windows grande), a nota desce para baixo dos botões e
+    a faixa some (Test-WinForgeHeroWide). Sem nota (Health $null), o cartão mostra que a leitura está em andamento; com
+    -Failed, que a nota não pôde ser montada.
+    #>
     param (
         $Health,
         [switch]$Failed
     )
 
+    # A nota é refeita quando a leitura termina: quem estava num botão dela com o teclado continua nele.
+    $focus = Get-GuiHomeHealthFocus
     $script:HomeHealth.Children.Clear()
-
-    $border = New-GuiPanelBorder -Radius 16 -Padding (New-Object System.Windows.Thickness (24, 22, 24, 22))
-
-    $stack = New-Object System.Windows.Controls.StackPanel
-
-    $grid = New-Object System.Windows.Controls.Grid
-    $ringColumn = New-Object System.Windows.Controls.ColumnDefinition
-    $ringColumn.Width = [System.Windows.GridLength]::Auto
-    $textColumn = New-Object System.Windows.Controls.ColumnDefinition
-    [void]$grid.ColumnDefinitions.Add($ringColumn)
-    [void]$grid.ColumnDefinitions.Add($textColumn)
-
-    $text = New-Object System.Windows.Controls.StackPanel
-    $text.VerticalAlignment = "Center"
 
     $issues = @()
     $line = ""
-    $primary = $true
+    $score = -1
+    $tone = "Muted"
 
     # Nada do que forma a nota foi lido, e nenhum ponto apareceu: um "100" não diria nada sobre o PC.
     $unknown = ($null -ne $Health -and -not (Test-WinForgeHealthKnown -Health $Health))
 
     if ($Failed -or $unknown -or $null -eq $Health) {
-        $ring = New-GuiScoreRing -Score -1 -Color $script:Theme.Dim
-
         if ($Failed) {
-            $title = "Não foi possível calcular a nota"
-            $line = "Os cartões abaixo mostram o que foi lido. Tente ler de novo."
-            $spoken = "Saúde do PC: não foi possível calcular a nota"
+            $title = (Get-WinForgeText 'Não foi possível calcular a nota')
+            $line = (Get-WinForgeText 'Os cartões abaixo mostram o que foi lido. Tente ler de novo.')
+            $spoken = (Get-WinForgeText 'Saúde do PC: não foi possível calcular a nota')
         }
         elseif ($unknown) {
-            $title = "Não foi possível avaliar o PC"
-            $line = "Nenhuma das leituras que formam a nota respondeu. Tente ler de novo."
-            $spoken = "Saúde do PC: não foi possível avaliar"
+            $title = (Get-WinForgeText 'Não foi possível avaliar o PC')
+            $line = (Get-WinForgeText 'Nenhuma das leituras que formam a nota respondeu. Tente ler de novo.')
+            $spoken = (Get-WinForgeText 'Saúde do PC: não foi possível avaliar')
         }
         else {
             # "Lendo", e não "Verificando": verificar é com Verificar o PC e Verificar vírus, que mudam o PC.
-            $title = "Lendo o estado do PC..."
-            $line = "Cada cartão abaixo aparece assim que é lido."
-            $spoken = "Saúde do PC: lendo o estado do PC"
+            $title = (Get-WinForgeText 'Lendo o estado do PC...')
+            $line = (Get-WinForgeText 'Cada cartão abaixo aparece assim que é lido.')
+            $spoken = (Get-WinForgeText 'Saúde do PC: lendo o estado do PC')
         }
     }
     else {
-        $colors = $script:LevelColors[$(if ($Health.Level -eq "Bad") { "Bad" } elseif ($Health.Level -eq "Warn") { "Warn" } else { "Ok" })]
-        $ring = New-GuiScoreRing -Score $Health.Score -Color $colors.Dot
+        $tone = $(if ($Health.Level -eq "Bad") { "Bad" } elseif ($Health.Level -eq "Warn") { "Warn" } else { "Ok" })
+        $score = [int]$Health.Score
         $issues = @($Health.Issues | Where-Object { $null -ne $_ })
 
         $title = Get-WinForgeHealthHeadline -Health $Health
 
         # Com os pontos à vista logo abaixo, a frase não os conta de novo: fica só o que não pôde ser lido.
         $line = Get-WinForgeHealthSummary -Health $Health -WithoutCount:($issues.Count -gt 0)
-        $spoken = "Saúde do PC: nota $($Health.Score) de 100, $($Health.Label). $(Get-WinForgeHealthSummary -Health $Health)"
-        $primary = ($issues.Count -eq 0)
+        $spoken = (Get-WinForgeText 'Saúde do PC: nota {0} de 100, {1}. {2}' "$($Health.Score)" "$($Health.Label)" "$(Get-WinForgeHealthSummary -Health $Health)")
     }
 
-    $headline = New-GuiText -Text $title -Size 22 -Bold $true
+    $colors = $script:LevelColors[$tone]
+
+    # Um botão por ação e um destaque só (Get-WinForgeHealthActionPlan): o ponto que se resolve com Verificar o PC não
+    # ganha outro botão igual, e, sendo o mais pesado, é o da nota que fica em destaque.
+    $plan = Get-WinForgeHealthActionPlan -Issues $issues
+    $primaryId = [string]$plan.PrimaryId
+
+    # A frase, o resumo e os botões (coluna 0) | a nota (coluna 1, ou embaixo, na linha 1, quando não cabe ao lado).
+    $grid = New-Object System.Windows.Controls.Grid
+    $textColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $scoreColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $scoreColumn.Width = [System.Windows.GridLength]::Auto
+    [void]$grid.ColumnDefinitions.Add($textColumn)
+    [void]$grid.ColumnDefinitions.Add($scoreColumn)
+    [void]$grid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
+    $scoreRow = New-Object System.Windows.Controls.RowDefinition
+    $scoreRow.Height = [System.Windows.GridLength]::Auto
+    [void]$grid.RowDefinitions.Add($scoreRow)
+
+    $text = New-Object System.Windows.Controls.StackPanel
+    $text.VerticalAlignment = "Center"
+
+    $kicker = New-Object System.Windows.Controls.StackPanel
+    $kicker.Orientation = "Horizontal"
+    $glyph = New-GuiIcon -Name $colors.Icon -Size 18 -Color $colors.Dot
+    $glyph.Margin = New-Object System.Windows.Thickness (0, 0, 8, 0)
+    [void]$kicker.Children.Add($glyph)
+    $kickerText = New-GuiText -Text (Get-WinForgeText 'Saúde do PC') -Size $script:Type.Body -Color $colors.Dot -Bold $true
+    $kickerText.VerticalAlignment = "Center"
+    [void]$kicker.Children.Add($kickerText)
+    [void]$text.Children.Add($kicker)
+
+    $headline = New-GuiText -Text $title -Size $script:Type.TitleLarge -Display
     Set-GuiAutomationName -Element $headline -Name $spoken
     try { [System.Windows.Automation.AutomationProperties]::SetLiveSetting($headline, [System.Windows.Automation.AutomationLiveSetting]::Polite) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
-    [void]$text.Children.Add($headline)
+    $headlineBox = New-GuiValueBox -Text $headline
+    $headlineBox.Margin = New-Object System.Windows.Thickness (0, 10, 0, 0)
+    [void]$text.Children.Add($headlineBox)
     $script:HomeHeadline = $headline
 
-    # A hora da leitura e o botão de ler de novo, discretos, logo abaixo da frase.
-    [void]$text.Children.Add((New-GuiHomeStampBar))
-
     if (-not [string]::IsNullOrEmpty($line)) {
-        $lineText = New-GuiText -Text $line -Size 14 -Color $script:Theme.Muted
-        $lineText.Margin = New-Object System.Windows.Thickness (0, 4, 0, 0)
+        $lineText = New-GuiText -Text $line -Size $script:Type.Body -Color $script:Theme.Muted
+        $lineText.Margin = New-Object System.Windows.Thickness (0, 6, 0, 0)
         [void]$text.Children.Add($lineText)
     }
 
-    $buttonRow = New-GuiHealthButtons -Primary $primary
-    $buttonRow.Margin = New-Object System.Windows.Thickness (0, 14, 0, 0)
+    $buttonRow = New-GuiHealthButtons -PrimaryId $primaryId
+    $buttonRow.Margin = New-Object System.Windows.Thickness (0, 22, 0, 0)
     [void]$text.Children.Add($buttonRow)
 
-    Set-GuiAutomationName -Element $border -Name $spoken
-
-    $ring.Margin = New-Object System.Windows.Thickness (0, 0, 28, 0)
-    $ring.VerticalAlignment = "Center"
-    [System.Windows.Controls.Grid]::SetColumn($ring, 0)
-    [void]$grid.Children.Add($ring)
-
-    [System.Windows.Controls.Grid]::SetColumn($text, 1)
+    [System.Windows.Controls.Grid]::SetColumn($text, 0)
     [void]$grid.Children.Add($text)
 
-    [void]$stack.Children.Add($grid)
+    # O leitor de tela e o Tab chegam à nota (e ao botão de ler de novo) depois dos botões, nos dois arranjos.
+    $scoreWidth = [Math]::Round(216.0 * [Math]::Sqrt($script:TextScale))
+    $scoreBlock = New-GuiScoreBlock -Score $score -Color $colors.Dot -Width $scoreWidth
+    [void]$grid.Children.Add($scoreBlock)
+
+    $content = New-Object System.Windows.Controls.StackPanel
+    $content.Margin = New-Object System.Windows.Thickness (28, 24, 28, 24)
+    [void]$content.Children.Add($grid)
+    $rule = $null
 
     if ($issues.Count -gt 0) {
         $rule = New-Object System.Windows.Controls.Border
         $rule.Height = 1
         $rule.Background = New-GuiBrush $script:Theme.Line
-        $rule.Margin = New-Object System.Windows.Thickness (0, 20, 0, 6)
-        [void]$stack.Children.Add($rule)
+        $rule.Margin = New-Object System.Windows.Thickness (0, 22, 0, 6)
+        [void]$content.Children.Add($rule)
     }
 
-    $first = $true
+    $index = 0
 
     foreach ($issue in $issues) {
+        $rowPlan = @($plan.Rows)[$index]
+        $index++
+
         $row = New-Object System.Windows.Controls.DockPanel
         $row.Margin = New-Object System.Windows.Thickness (0, 6, 0, 0)
+        # Sem botão na linha, a altura de um botão mantém o espaço entre os pontos igual.
+        $row.MinHeight = 32 * $script:TextScale
 
-        # O botão do primeiro ponto (o mais pesado) é o principal da tela; os outros, comuns.
-        $fix = New-GuiButton -Text $issue.ButtonText -Kind $(if ($first) { "Primary" } else { "Secondary" }) -Tag $issue
-        $first = $false
-        $fix.Margin = New-Object System.Windows.Thickness (12, 0, 0, 0)
-        $fix.VerticalAlignment = "Center"
-        Set-GuiDock -Element $fix -Side "Right"
-        # A gravidade não fica só na cor e no desenho do ícone: o leitor de tela ouve "(grave)".
-        Set-GuiAutomationName -Element $fix -Name "$($issue.ButtonText): $($issue.Text)$(if ($issue.Severe) { ' (grave)' })"
-        $fix.Add_Click({
-            param ($sender, $eventArgs)
-            Invoke-GuiNextStep -Next ([string]$sender.Tag.Target) -Title ([string]$sender.Tag.ButtonText)
-        })
-        [void]$row.Children.Add($fix)
+        # O botão do primeiro ponto (o mais pesado) é o principal da tela; os outros, comuns. Um ponto que se resolve com um
+        # dos botões da nota (Verificar o PC) fica sem botão: o da nota faz o mesmo, logo acima.
+        if ([bool]$rowPlan.Button) {
+            $fix = New-GuiButton -Text $issue.ButtonText -Kind $(if ([bool]$rowPlan.Primary) { "Primary" } else { "Secondary" }) -Tag $issue
+            $fix.Margin = New-Object System.Windows.Thickness (12, 0, 0, 0)
+            $fix.VerticalAlignment = "Center"
+            Set-GuiDock -Element $fix -Side "Right"
+            # A gravidade não fica só na cor e no desenho do ícone: o leitor de tela ouve "(grave)".
+            Set-GuiAutomationName -Element $fix -Name "$($issue.ButtonText): $($issue.Text)$(if ($issue.Severe) { (Get-WinForgeText ' (grave)') })"
+            $fix.Add_Click({
+                param ($sender, $eventArgs)
+                Invoke-GuiNextStep -Next ([string]$sender.Tag.Target) -Title ([string]$sender.Tag.ButtonText)
+            })
+            [void]$row.Children.Add($fix)
+        }
 
         # Um ponto grave (que limita a nota) tem o círculo vermelho; os demais, o triângulo amarelo.
-        $glyph = New-GuiIcon -Name $(if ($issue.Severe) { "error-circle" } else { "warning" }) -Size 18 -Color $(if ($issue.Severe) { $script:Theme.Bad } else { $script:Theme.Warn })
-        $glyph.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
-        Set-GuiDock -Element $glyph -Side "Left"
-        [void]$row.Children.Add($glyph)
+        $issueGlyph = New-GuiIcon -Name $(if ($issue.Severe) { "error-circle" } else { "warning" }) -Size 18 -Color $(if ($issue.Severe) { $script:Theme.Bad } else { $script:Theme.Warn })
+        $issueGlyph.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+        Set-GuiDock -Element $issueGlyph -Side "Left"
+        [void]$row.Children.Add($issueGlyph)
 
-        $issueText = New-GuiText -Text $issue.Text -Size 14
+        $issueText = New-GuiText -Text $issue.Text -Size $script:Type.Body
         $issueText.VerticalAlignment = "Center"
         [void]$row.Children.Add($issueText)
 
-        [void]$stack.Children.Add($row)
+        [void]$content.Children.Add($row)
     }
 
-    Set-GuiPanelContent -Panel $border -Content $stack
-    [void]$script:HomeHealth.Children.Add($border)
+    # A faixa inclinada fica atrás do conteúdo, no cartão inteiro (sem o espaçamento), e os cantos a cortam. Num Canvas,
+    # que não pede tamanho: a faixa de uma largura anterior não segura o cartão largo quando a janela diminui.
+    $frame = New-Object System.Windows.Controls.Grid
+    $decor = New-Object System.Windows.Controls.Canvas
+    $decor.IsHitTestVisible = $false
+
+    $band = New-Object System.Windows.Shapes.Polygon
+    $band.Fill = New-GuiBrush $script:Theme.HeroPanel
+    $band.Visibility = "Collapsed"
+    [void]$decor.Children.Add($band)
+
+    $edge = New-Object System.Windows.Shapes.Line
+    $trail = New-Object System.Windows.Shapes.Line
+
+    foreach ($stroke in @($edge, $trail)) {
+        $stroke.Stroke = New-GuiBrush $script:Theme.Line
+        $stroke.StrokeThickness = 1
+        $stroke.Visibility = "Collapsed"
+        [void]$decor.Children.Add($stroke)
+    }
+
+    [void]$frame.Children.Add($decor)
+    [void]$frame.Children.Add($content)
+
+    $parts = @{
+        Score = $scoreBlock; Wide = $null; Frame = $frame; Band = $band; Edge = $edge; Trail = $trail
+        ScoreWidth = $scoreWidth; Inset = $content.Margin.Right; Content = $content; Grid = $grid; Rule = $rule
+    }
+    $grid.Tag = $parts
+    Set-GuiHeroLayout -Grid $grid -Wide $true
+
+    $grid.Add_SizeChanged({
+        param ($sender, $eventArgs)
+
+        if (-not $eventArgs.WidthChanged) { return }
+
+        try {
+            Set-GuiHeroLayout -Grid $sender -Wide (Test-WinForgeHeroWide -Width $sender.ActualWidth -ScoreWidth ($sender.Tag.ScoreWidth + 32) -MinText (320 * $script:TextScale))
+        }
+        catch {
+            Write-Verbose "Arranjo da nota: $($_.Exception.Message)"
+        }
+    })
+
+    $frame.Tag = $parts
+    $frame.Add_SizeChanged({
+        param ($sender, $eventArgs)
+
+        try {
+            $sender.Clip = New-Object System.Windows.Media.RectangleGeometry ((New-Object System.Windows.Rect (0, 0, $sender.ActualWidth, $sender.ActualHeight)), 8, 8)
+            Update-GuiHeroBand -Parts $sender.Tag
+        }
+        catch {
+            Write-Verbose "Faixa da nota: $($_.Exception.Message)"
+        }
+    })
+
+    $border = New-GuiOutlinedBorder -Background $script:Theme.Hero -BorderColor $script:Theme.Line -Radius 8 -Padding (New-Object System.Windows.Thickness 0)
+    Set-GuiPanelContent -Panel $border -Content $frame
+    Set-GuiAutomationName -Element $border -Name $spoken
+
+    if ((Add-GuiHomePart -Element $border -Name (Get-WinForgeText 'Saúde do PC') -Panel $script:HomeHealth) -and $focus) {
+        Restore-GuiHomeHealthFocus -Key $focus
+    }
+}
+
+function Get-GuiHomeFocusKey {
+    # Como achar de novo um botão da nota de saúde depois de ela ser refeita: pelo item ou ponto que ele abre (Id), ou o
+    # botão de ler de novo.
+    param ($Element)
+
+    if ($null -eq $Element) { return "" }
+    if ([object]::ReferenceEquals($Element, $script:HomeRefreshButton)) { return "refresh" }
+
+    $tag = $Element.Tag
+    if ($null -ne $tag -and $null -ne $tag.PSObject.Properties["Id"] -and [string]$tag.Id) { return "id:$($tag.Id)" }
+
+    return "first"
+}
+
+function Get-GuiHomeHealthFocus {
+    # O botão da nota de saúde com o foco do teclado (Get-GuiHomeFocusKey), ou "" quando o foco está fora dela. O botão de
+    # ler de novo desligado na leitura (HomeRefreshFocus) deixou o foco em nenhum elemento ou num que contém a nota: ele
+    # volta a esse botão. Um foco que a pessoa levou para outro lugar fica onde está.
+    try {
+        $focused = [System.Windows.Input.Keyboard]::FocusedElement
+        $lost = [bool]$script:HomeRefreshFocus
+        $script:HomeRefreshFocus = $false
+
+        if ($null -eq $script:HomeHealth) { return "" }
+        if ($lost -and ($null -eq $focused -or ($focused -is [System.Windows.Media.Visual] -and $focused.IsAncestorOf($script:HomeHealth)))) { return "refresh" }
+        if (-not ($focused -is [System.Windows.DependencyObject])) { return "" }
+        if (-not $script:HomeHealth.IsAncestorOf($focused)) { return "" }
+
+        return (Get-GuiHomeFocusKey -Element $focused)
+    }
+    catch {
+        return ""
+    }
+}
+
+function Restore-GuiHomeHealthFocus {
+    # Põe o foco no botão da nota refeita que corresponde ao de antes; sem ele (o ponto foi resolvido), no primeiro botão
+    # dela, para o teclado continuar ali, e não voltar ao começo da janela.
+    param ([Parameter(Mandatory)][string]$Key)
+
+    # Os botões na ordem da árvore, que é a do Tab: Verificar o PC, Otimizar, ler de novo e os dos pontos.
+    $buttons = New-Object System.Collections.ArrayList
+    $stack = New-Object System.Collections.Stack
+    $stack.Push($script:HomeHealth)
+
+    while ($stack.Count -gt 0) {
+        $node = $stack.Pop()
+
+        if ($node -is [System.Windows.Controls.Button]) { [void]$buttons.Add($node); continue }
+
+        $next = @()
+        if ($node -is [System.Windows.Controls.Panel]) { $next = @($node.Children | ForEach-Object { $_ }) }
+        elseif ($node -is [System.Windows.Controls.Decorator]) { if ($null -ne $node.Child) { $next = @($node.Child) } }
+        elseif ($node -is [System.Windows.Controls.ContentControl] -and $node.Content -is [System.Windows.UIElement]) { $next = @($node.Content) }
+
+        for ($i = $next.Count - 1; $i -ge 0; $i--) { $stack.Push($next[$i]) }
+    }
+
+    $enabled = @($buttons | Where-Object { $_.IsEnabled })
+    $target = $null
+
+    foreach ($candidate in $enabled) {
+        if ((Get-GuiHomeFocusKey -Element $candidate) -eq $Key) { $target = $candidate; break }
+    }
+
+    if ($null -eq $target -and $enabled.Count -gt 0) { $target = $enabled[0] }
+
+    if ($null -ne $target) {
+        try { [void]$target.Focus() } catch { Write-Verbose "Foco: $($_.Exception.Message)" }
+    }
 }
 
 function New-GuiPageStatus {
-    # O resumo no alto de uma página (Limpeza, Desempenho e Sobre o WinForge): uma linha por informação, com
-    # o rótulo à esquerda. Vem de leituras rápidas (arquivos pequenos do WinForge, o espaço do disco, a memória), então
-    # não atrasa a página; se a leitura falhar, a página aparece sem ele.
-    param ([Parameter(Mandatory)]$Page)
+    <#
+    O resumo no alto de uma página (Manutenção, Limpeza, Desempenho, Rede, Atualizações, Programas e Sobre o WinForge):
+    uma linha por informação, com o rótulo à esquerda. Vem de leituras rápidas (arquivos pequenos do WinForge, o espaço do
+    disco, a memória, o que o Windows diz da conexão, o Registro, se o winget existe), então não atrasa a página; se a
+    leitura falhar, ou não houver o que dizer, a página aparece sem ele. As páginas de ajustes passam as linhas já lidas
+    (Rows, de Get-WinForgeTweaksPageStatus), feitas da lista que acabaram de ler. Uma linha com destino (Opens, um item da
+    navegação) é um botão com a seta, como as linhas das listas: a da Manutenção abre o Histórico de manutenções; as da
+    Limpeza, do Desempenho, da Rede, das Atualizações e dos Programas, quando pedem atenção, o que resolve (a Limpeza
+    personalizada, Programas pesando agora, Tempo ligado e energia, Testar conectividade, Suporte do Windows, o Windows
+    Update das Configurações, Instalar atualizações do Windows, Reparar o Instalador de Aplicativo).
+    #>
+    param (
+        [Parameter(Mandatory)]$Page,
+        [object[]]$Rows = $null
+    )
 
-    $reader = switch ([string]$Page.Id) {
-        "cleanup"     { "Get-WinForgeCleanupPageStatus" }
-        "performance" { "Get-WinForgePerformancePageStatus" }
-        "app"         { "Get-WinForgeAboutPageStatus" }
-        default       { $null }
+    if ($PSBoundParameters.ContainsKey("Rows")) {
+        $rows = @($Rows | Where-Object { $null -ne $_ })
     }
+    else {
+        $reader = switch ([string]$Page.Id) {
+            "maintenance" { "Get-WinForgeMaintenancePageStatus" }
+            "cleanup"     { "Get-WinForgeCleanupPageStatus" }
+            "performance" { "Get-WinForgePerformancePageStatus" }
+            "network"     { "Get-WinForgeNetworkPageStatus" }
+            "updates"     { "Get-WinForgeUpdatesPageStatus" }
+            "software"    { "Get-WinForgeSoftwarePageStatus" }
+            "app"         { "Get-WinForgeAboutPageStatus" }
+            default       { $null }
+        }
 
-    if ($null -eq $reader) { return $null }
+        if ($null -eq $reader) { return $null }
 
-    try {
-        $rows = @(& $reader)
-    }
-    catch {
-        return $null
+        try {
+            $rows = @(& $reader)
+        }
+        catch {
+            return $null
+        }
     }
 
     if ($rows.Count -eq 0) { return $null }
 
     $colors = @{ Normal = $script:Theme.Text; Warn = $script:Theme.Warn; Muted = $script:Theme.Muted }
-    $border = New-GuiPanelBorder
-    $border.Margin = New-Object System.Windows.Thickness (0, 0, 12, 16)
-    $stack = New-Object System.Windows.Controls.StackPanel
+    $lines = @()
 
     foreach ($row in $rows) {
         $line = New-Object System.Windows.Controls.DockPanel
-        $line.Margin = New-Object System.Windows.Thickness (0, 3, 0, 3)
 
-        $label = New-GuiText -Text ([string]$row.Label) -Size 13 -Color $script:Theme.Muted
+        $label = New-GuiText -Text ([string]$row.Label) -Size $script:Type.Body -Color $script:Theme.Muted
         $label.Width = 160
         Set-GuiDock -Element $label -Side "Left"
         [void]$line.Children.Add($label)
 
+        $item = $null
+        $opens = [string](Get-WinForgeJsonValue -Object $row -Name "Opens" -Default "")
+        if ($opens) { $item = Get-WinForgeNavItem -Id $opens }
+
+        if ($null -ne $item) {
+            $chevron = New-GuiIcon -Name "chevron-right" -Size 16 -Color $script:Theme.Muted
+            $chevron.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
+            $chevron.VerticalAlignment = "Center"
+            Set-GuiDock -Element $chevron -Side "Right"
+            [void]$line.Children.Add($chevron)
+        }
+
         $level = [string]$row.Level
-        [void]$line.Children.Add((New-GuiText -Text ([string]$row.Text) -Size 13.5 -Color $(if ($colors.ContainsKey($level)) { $colors[$level] } else { $script:Theme.Text })))
-        [void]$stack.Children.Add($line)
+        $text = New-GuiText -Text ([string]$row.Text) -Size $script:Type.Body -Color $(if ($colors.ContainsKey($level)) { $colors[$level] } else { $script:Theme.Text })
+        [void]$line.Children.Add($text)
+
+        $lines += [PSCustomObject]@{ Line = $line; Item = $item; Spoken = "$([string]$row.Label): $([string]$row.Text)" }
     }
 
-    Set-GuiPanelContent -Panel $border -Content $stack
+    if (@($lines | Where-Object { $null -ne $_.Item }).Count -eq 0) {
+        $border = New-GuiPanelBorder
+        $border.Margin = New-Object System.Windows.Thickness (0, 0, 12, 16)
+        $stack = New-Object System.Windows.Controls.StackPanel
 
-    return $border
+        foreach ($entry in $lines) {
+            $entry.Line.Margin = New-Object System.Windows.Thickness (0, 3, 0, 3)
+            [void]$stack.Children.Add($entry.Line)
+        }
+
+        Set-GuiPanelContent -Panel $border -Content $stack
+
+        return $border
+    }
+
+    # Com destino, cada linha ocupa a faixa de ponta a ponta (o fundo sob o mouse vai até a borda): o recuo da moldura
+    # passa para dentro de cada linha, e a altura fica a da faixa sem destino.
+    $group = New-GuiRowGroup
+    $group.Element.Margin = New-Object System.Windows.Thickness (0, 0, 12, 16)
+
+    foreach ($entry in $lines) {
+        if ($null -eq $entry.Item) {
+            $plain = New-Object System.Windows.Controls.Border
+            $plain.Padding = New-Object System.Windows.Thickness (18, 17, 18, 17)
+            $plain.Child = $entry.Line
+            Add-GuiRowToGroup -Group $group -Row $plain
+            continue
+        }
+
+        $button = New-Object System.Windows.Controls.Button
+        $button.Style = $window.FindResource("RowButton")
+        $button.MinHeight = 0
+        $button.Padding = New-Object System.Windows.Thickness (18, 17, 18, 17)
+        $button.Tag = $entry.Item
+        $button.Content = $entry.Line
+        Set-GuiAutomationName -Element $button -Name "$($entry.Spoken)$(Get-WinForgeText '. Abre: {0}' "$($entry.Item.Label)")"
+        $button.Add_Click({
+            param ($sender, $eventArgs)
+            Invoke-GuiNavItem -Item $sender.Tag
+        })
+        Add-GuiRowToGroup -Group $group -Row $button
+    }
+
+    return $group.Element
 }
 
-function New-GuiMaintenanceFact {
-    # O alto da página Manutenção: o cartão "Última manutenção", o mesmo do Início (Read-WinForgeHomeMaintenance, que lê
-    # só arquivos pequenos do WinForge, sem consultar o Windows). O clique abre o Histórico de manutenções. Se a leitura
-    # falhar, o cartão diz isso, sem impedir a página de abrir.
-    $label = "Última manutenção"
-    $info = New-GuiFactCard -Id "maintenance" -Label $label
-    $fact = $null
+function Set-GuiChoiceGroupKeyboard {
+    <#
+    O teclado de um grupo de escolhas na própria página (Aparência e Idioma), como um grupo de opções do Windows: o Tab
+    entra no grupo na escolha marcada (sem nenhuma, na primeira) e sai dele de uma vez; as setas andam pelas escolhas, sem
+    dar a volta do fim para o começo; Espaço ou Enter escolhe a que tem o foco.
+    #>
+    param (
+        [Parameter(Mandatory)]$Panel,
+        $Selected = $null
+    )
 
     try {
-        $fact = @(@((Read-WinForgeHomeMaintenance).Facts) | Where-Object { $null -ne $_ })[0]
+        [System.Windows.Input.KeyboardNavigation]::SetTabNavigation($Panel, [System.Windows.Input.KeyboardNavigationMode]::Once)
+        [System.Windows.Input.KeyboardNavigation]::SetDirectionalNavigation($Panel, [System.Windows.Input.KeyboardNavigationMode]::Contained)
+
+        $target = $(if ($null -ne $Selected) { $Selected } else { @($Panel.Children)[0] })
+        if ($null -ne $target) { [System.Windows.Input.KeyboardNavigation]::SetTabOnceActiveElement($Panel, $target) }
     }
     catch {
-        Write-Verbose "Última manutenção: $($_.Exception.Message)"
+        Write-Verbose "Teclado: $($_.Exception.Message)"
     }
-
-    if ($null -eq $fact) { $fact = [PSCustomObject]@{ Id = "maintenance"; Text = "Não foi possível ler"; Level = "Muted"; Visible = $true } }
-
-    Set-GuiFactCardText -Card $info.Card -Value $info.Value -Detail $info.Detail -Label $label -Opens $info.Opens -Fact $fact
-
-    $panel = New-Object System.Windows.Controls.WrapPanel
-    $panel.Margin = New-Object System.Windows.Thickness (0, 0, 0, 4)
-    $panel.Tag = "fact"
-    [void]$panel.Children.Add($info.Card)
-
-    return $panel
 }
 
 function New-GuiAppearanceCard {
@@ -4018,7 +5793,7 @@ function New-GuiAppearanceCard {
 
     $segment = New-Object System.Windows.Controls.Border
     $segment.Background = New-GuiBrush $script:Theme.Inset
-    $segment.CornerRadius = New-Object System.Windows.CornerRadius 9
+    $segment.CornerRadius = New-Object System.Windows.CornerRadius 4
     $segment.Padding = New-Object System.Windows.Thickness 2
     $segment.VerticalAlignment = "Center"
     $segment.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
@@ -4026,11 +5801,13 @@ function New-GuiAppearanceCard {
 
     $choices = New-Object System.Windows.Controls.StackPanel
     $choices.Orientation = "Horizontal"
+    Set-GuiAutomationName -Element $choices -Name (Get-WinForgeText 'Aparência')
+    $chosen = $null
 
     foreach ($option in @(
-            @{ Value = "System"; Text = "Automático" },
-            @{ Value = "Light"; Text = "Claro" },
-            @{ Value = "Dark"; Text = "Escuro" }
+            @{ Value = "System"; Text = (Get-WinForgeText 'Automático') },
+            @{ Value = "Light"; Text = (Get-WinForgeText 'Claro') },
+            @{ Value = "Dark"; Text = (Get-WinForgeText 'Escuro') }
         )) {
         $button = New-Object System.Windows.Controls.Button
 
@@ -4046,7 +5823,7 @@ function New-GuiAppearanceCard {
 
         # O leitor de tela diz qual opção está marcada (a cor do botão não chega até ele).
         $selected = ($script:ThemePreference -eq $option.Value)
-        Set-GuiAutomationName -Element $button -Name $(if ($selected) { "Aparência: $($option.Text), selecionada" } else { "Aparência: $($option.Text)" })
+        Set-GuiAutomationName -Element $button -Name $(if ($selected) { (Get-WinForgeText 'Aparência: {0}, selecionada' "$($option.Text)") } else { (Get-WinForgeText 'Aparência: {0}' "$($option.Text)") })
         if ($selected -and $script:AppearanceRefocus) { $script:AppearanceFocusTarget = $button }
 
         $button.Add_Click({
@@ -4054,16 +5831,80 @@ function New-GuiAppearanceCard {
             Set-GuiThemePreference -Value ([string]$sender.Tag)
         })
         [void]$choices.Children.Add($button)
+        if ($selected) { $chosen = $button }
     }
 
+    Set-GuiChoiceGroupKeyboard -Panel $choices -Selected $chosen
     $segment.Child = $choices
     [void]$row.Children.Add($segment)
 
     $text = New-Object System.Windows.Controls.StackPanel
     $text.VerticalAlignment = "Center"
-    [void]$text.Children.Add((New-GuiText -Text "Aparência" -Size 15 -Bold $true))
+    [void]$text.Children.Add((New-GuiText -Text (Get-WinForgeText 'Aparência') -Size $script:Type.Body -Bold $true))
 
-    $hint = New-GuiText -Text "Automático acompanha o tema claro ou escuro escolhido nas Configurações do Windows." -Size 13 -Color $script:Theme.Muted
+    $hint = New-GuiText -Text (Get-WinForgeText 'Automático acompanha o tema claro ou escuro escolhido nas Configurações do Windows.') -Size $script:Type.Caption -Color $script:Theme.Muted
+    $hint.Margin = New-Object System.Windows.Thickness (0, 2, 0, 0)
+    [void]$text.Children.Add($hint)
+    [void]$row.Children.Add($text)
+
+    Set-GuiPanelContent -Panel $border -Content $row
+
+    return $border
+}
+
+function New-GuiLanguageCard {
+    # Sobre o WinForge > Idioma: como o Windows (o padrão), português, inglês ou espanhol. Cada idioma aparece escrito
+    # nele mesmo, para quem não lê o idioma atual achar o seu. Vale ao abrir de novo (Set-GuiLanguagePreference).
+    $border = New-GuiPanelBorder
+    $border.Margin = New-Object System.Windows.Thickness (0, 0, 12, 16)
+    $border.Tag = "language"
+
+    # A escolha guardada, relida a cada vez: o menu de texto (aberto em outra janela) também pode tê-la mudado.
+    try { $script:LanguagePreference = Get-WinForgeLanguagePreference } catch { Write-Verbose "Idioma: $($_.Exception.Message)" }
+
+    $row = New-Object System.Windows.Controls.DockPanel
+
+    $segment = New-Object System.Windows.Controls.Border
+    $segment.Background = New-GuiBrush $script:Theme.Inset
+    $segment.CornerRadius = New-Object System.Windows.CornerRadius 4
+    $segment.Padding = New-Object System.Windows.Thickness 2
+    $segment.VerticalAlignment = "Center"
+    $segment.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
+    Set-GuiDock -Element $segment -Side "Right"
+
+    $choices = New-Object System.Windows.Controls.StackPanel
+    $choices.Orientation = "Horizontal"
+    Set-GuiAutomationName -Element $choices -Name (Get-WinForgeText 'Idioma')
+    $chosen = $null
+
+    foreach ($option in @(Get-WinForgeLanguageChoices)) {
+        $button = New-Object System.Windows.Controls.Button
+        $selected = ($script:LanguagePreference -eq [string]$option.Id)
+        $button.Style = $window.FindResource($(if ($selected) { "SegmentButtonSelected" } else { "SegmentButton" }))
+        $button.Content = [string]$option.Label
+        $button.Tag = [string]$option.Id
+
+        # O leitor de tela diz qual opção está marcada (a cor do botão não chega até ele).
+        Set-GuiAutomationName -Element $button -Name $(if ($selected) { (Get-WinForgeText 'Idioma: {0}, selecionado' "$($option.Label)") } else { (Get-WinForgeText 'Idioma: {0}' "$($option.Label)") })
+        if ($selected -and $script:LanguageRefocus) { $script:LanguageFocusTarget = $button }
+
+        $button.Add_Click({
+            param ($sender, $eventArgs)
+            Set-GuiLanguagePreference -Value ([string]$sender.Tag)
+        })
+        [void]$choices.Children.Add($button)
+        if ($selected) { $chosen = $button }
+    }
+
+    Set-GuiChoiceGroupKeyboard -Panel $choices -Selected $chosen
+    $segment.Child = $choices
+    [void]$row.Children.Add($segment)
+
+    $text = New-Object System.Windows.Controls.StackPanel
+    $text.VerticalAlignment = "Center"
+    [void]$text.Children.Add((New-GuiText -Text (Get-WinForgeText 'Idioma') -Size $script:Type.Body -Bold $true))
+
+    $hint = New-GuiText -Text (Get-WinForgeText 'Automático segue o idioma do Windows; fora do português e do espanhol, fica em inglês.') -Size $script:Type.Caption -Color $script:Theme.Muted
     $hint.Margin = New-Object System.Windows.Thickness (0, 2, 0, 0)
     [void]$text.Children.Add($hint)
     [void]$row.Children.Add($text)
@@ -4080,44 +5921,76 @@ function Show-GuiListPage {
     $pageSubtitle.Text = $Page.Summary
     $contentPanel.Children.Clear()
 
-    $status = $(if ([string]$Page.Id -eq "maintenance") { New-GuiMaintenanceFact } else { New-GuiPageStatus -Page $Page })
+    $status = New-GuiPageStatus -Page $Page
 
     if ($null -ne $status) { [void]$contentPanel.Children.Add($status) }
 
-    if ($Page.Id -eq "app") { [void]$contentPanel.Children.Add((New-GuiAppearanceCard)) }
-
-    # Os cartões vêm em seções ("Liberar espaço", "Ferramentas do Windows"), cada uma com o seu título e a sua grade; uma
-    # página sem seções é uma grade só.
-    $panel = $null
+    # O caminho recomendado da página (o item com Accent) vem em destaque no alto; os outros, em listas por seção
+    # ("Liberar espaço", "Ferramentas do Windows"), cada uma com o seu título. Uma página sem seções é uma lista só.
+    $rowGroup = $null
     $group = $null
+    $heroShown = $false
+    $heroId = ""
 
-    # Com outro antivírus protegendo o PC (o que o Início leu), as ações do Windows Defender não fariam nada: saem da
-    # página. Ficam o estado, a auditoria e o aplicativo Segurança do Windows.
-    $otherAntivirus = ([string]$Page.Id -eq "security" -and [string](Get-Variable -Name AntivirusMode -Scope Script -ValueOnly -ErrorAction SilentlyContinue) -eq "Other")
+    if ($Page.Id -eq "app") {
+        # Sobre o WinForge: Criar atalho é o destaque quando falta o atalho desta pasta, um deles abre outra ou o desta
+        # conta precisa ser atualizado (Test-WinForgeAppShortcutNeeded), logo abaixo do resumo que diz isso. Com o atalho
+        # pronto, é uma linha de Integração com o Windows, sem destaque; o destaque desta página se decide aqui.
+        $heroShown = $true
+        $accent = @($Page.Items | Where-Object { [bool]$_.Accent }) | Select-Object -First 1
+        $needed = $true
+        try { $needed = [bool](Test-WinForgeAppShortcutNeeded) } catch { $needed = $true }
 
-    # Num PC sem bateria (o que o Início leu), Saúde da bateria só diria isso: o cartão sai do Diagnóstico.
-    $noBattery = ($false -eq (Get-Variable -Name HasBattery -Scope Script -ValueOnly -ErrorAction SilentlyContinue))
+        if ($null -ne $accent -and $needed) {
+            $hero = New-GuiHeroCard -Item $accent
+            # O mesmo espaço dos cartões de baixo (Aparência, Idioma).
+            $hero.Margin = New-Object System.Windows.Thickness (0, 0, 12, 16)
+            [void]$contentPanel.Children.Add($hero)
+            $heroId = [string]$accent.Id
+        }
+
+        [void]$contentPanel.Children.Add((New-GuiAppearanceCard))
+        [void]$contentPanel.Children.Add((New-GuiLanguageCard))
+    }
+
+    # Com outro antivírus protegendo o PC (o que o Início leu), as ações do Windows Defender não fariam nada; num PC sem
+    # bateria, Saúde da bateria só diria isso: saem da página (Test-WinForgeNavItemHidden, a mesma regra da busca).
+    $hidden = Get-GuiHiddenItemState
 
     foreach ($item in $Page.Items) {
-        if ($otherAntivirus -and [string]$item.Id -in @("security.signatures", "security.scan", "security.full-scan", "security.folder-scan")) { continue }
-        if ($noBattery -and [string]$item.Id -eq "diagnostics.battery") { continue }
+        if (Test-WinForgeNavItemHidden -Id ([string]$item.Id) @hidden) { continue }
 
-        # Itens fora da grade (o histórico de manutenções, aberto pelo cartão do alto): a busca e o console chegam neles.
+        # Itens fora da lista (o histórico de manutenções, aberto pela faixa do alto): a busca e o console chegam neles.
         if ($null -ne $item.PSObject.Properties["Unlisted"] -and [bool]$item.Unlisted) { continue }
+
+        # O destaque já posto no alto (Sobre o WinForge) não se repete na lista.
+        if ($heroId -and [string]$item.Id -eq $heroId) { continue }
+
+        if ([bool]$item.Accent -and -not $heroShown) {
+            [void]$contentPanel.Children.Add((New-GuiHeroCard -Item $item))
+            $heroShown = $true
+            continue
+        }
 
         $itemGroup = [string]$item.Group
 
-        if ($null -eq $panel -or $itemGroup -ne $group) {
+        if ($null -eq $rowGroup -or $itemGroup -ne $group) {
             if ($itemGroup) {
-                [void]$contentPanel.Children.Add((New-GuiGroupHeading -Text $itemGroup -First ($null -eq $panel)))
+                [void]$contentPanel.Children.Add((New-GuiGroupHeading -Text $itemGroup -First ($contentPanel.Children.Count -eq 0)))
+            }
+            elseif ($null -ne $rowGroup -or $heroShown) {
+                # Sem título, a lista nova ainda fica separada do que veio antes.
+                $spacer = New-Object System.Windows.Controls.Border
+                $spacer.Height = 16
+                [void]$contentPanel.Children.Add($spacer)
             }
 
-            $panel = New-Object System.Windows.Controls.WrapPanel
-            [void]$contentPanel.Children.Add($panel)
+            $rowGroup = New-GuiRowGroup
+            [void]$contentPanel.Children.Add($rowGroup.Element)
             $group = $itemGroup
         }
 
-        [void]$panel.Children.Add((New-GuiActionCard -Item $item))
+        Add-GuiRowToGroup -Group $rowGroup -Row (New-GuiActionRow -Item $item)
     }
 }
 
@@ -4126,7 +5999,7 @@ function New-GuiTweakRow {
     param ([Parameter(Mandatory)]$Tweak)
 
     # Fundo e contorno transparentes; ganham cor quando a busca traz a pessoa até este ajuste (Set-GuiTweakRowHighlight).
-    $border = New-GuiOutlinedBorder -Radius 10 -Padding (New-Object System.Windows.Thickness (10, 11, 10, 11))
+    $border = New-GuiOutlinedBorder -Radius 4 -Padding (New-Object System.Windows.Thickness (10, 11, 10, 11))
     $border.Margin = New-Object System.Windows.Thickness (-10, 2, -10, 2)
     $border.Tag = [string]$Tweak.Id
 
@@ -4142,25 +6015,23 @@ function New-GuiTweakRow {
     [void]$grid.ColumnDefinitions.Add($switchColumn)
 
     $text = New-Object System.Windows.Controls.StackPanel
-    [void]$text.Children.Add((New-GuiText -Text $Tweak.Name -Size 14 -Bold $true))
+    [void]$text.Children.Add((New-GuiText -Text $Tweak.Name -Size $script:Type.Body -Bold $true))
 
-    $description = New-GuiText -Text $Tweak.Description -Size 12.5 -Color $script:Theme.Muted
+    # A frase curta (até 60 letras); a inteira, quando é outra, aparece ao passar o mouse (a UX15 da R38).
+    $detail = [string](Get-WinForgeTweakField -Entry $Tweak -Name "Detail" -Default $Tweak.Description)
+    $description = New-GuiText -Text $Tweak.Description -Size $script:Type.Caption -Color $script:Theme.Muted
     $description.Margin = New-Object System.Windows.Thickness (0, 2, 0, 0)
     [void]$text.Children.Add($description)
+    if ($detail -and $detail -ne [string]$Tweak.Description) { $text.ToolTip = $detail }
 
     if (-not [string]::IsNullOrWhiteSpace($Tweak.LaptopNote)) {
-        $warning = New-GuiText -Text "Atenção em notebook: $($Tweak.LaptopNote)" -Size 12.5 -Color $script:Theme.Warn
+        # O aviso já começa com "Em notebook" ("Em notebook, consome mais bateria..."): vai como está, na cor de atenção.
+        $warning = New-GuiText -Text ([string]$Tweak.LaptopNote) -Size $script:Type.Caption -Color $script:Theme.Warn
         $warning.Margin = New-Object System.Windows.Thickness (0, 2, 0, 0)
         [void]$text.Children.Add($warning)
     }
 
     $needsAdmin = ([bool]$Tweak.RequiresAdmin -and -not $script:IsAdmin)
-
-    if ($needsAdmin) {
-        $adminNote = New-GuiNote -Text "Pede Administrador ao executar" -Icon "admin"
-        $adminNote.Margin = New-Object System.Windows.Thickness (0, 4, 0, 0)
-        [void]$text.Children.Add($adminNote)
-    }
 
     [System.Windows.Controls.Grid]::SetColumn($text, 0)
     [void]$grid.Children.Add($text)
@@ -4170,30 +6041,54 @@ function New-GuiTweakRow {
     $state = Get-WinForgeTweakSwitchState -Status $Tweak.Status -Inverted $inverted
     $colors = @{ Normal = $script:Theme.Text; Warn = $script:Theme.Warn; Muted = $script:Theme.Muted }
 
-    $caption = New-GuiText -Text $state.Caption -Size 12.5 -Color $colors[[string]$state.Level] -Bold $true
+    # Elevado com outra conta, o estado lido de um ajuste do perfil do usuário seria o dessa conta, e a chave não o muda: a
+    # linha diz "Outra conta", e a chave fica desligada (o resumo do alto diz por quê).
+    $otherAccount = [bool](Get-WinForgeTweakField -Entry $Tweak -Name "OtherAccount" -Default $false)
+    $captionText = $(if ($otherAccount) { (Get-WinForgeText 'Outra conta') } else { $state.Caption })
+    $captionColor = $(if ($otherAccount) { $script:Theme.Muted } else { $colors[[string]$state.Level] })
+
+    $caption = New-GuiText -Text $captionText -Size $script:Type.Caption -Color $captionColor -Bold $true
     $caption.VerticalAlignment = "Center"
     $caption.TextAlignment = "Right"
-    $caption.Margin = New-Object System.Windows.Thickness (16, 0, 14, 0)
-    [System.Windows.Controls.Grid]::SetColumn($caption, 1)
-    [void]$grid.Children.Add($caption)
+
+    # Pede Administrador: o escudo antes do estado, como nos botões do Windows (a frase fica na dica da chave).
+    $status = New-Object System.Windows.Controls.StackPanel
+    $status.Orientation = "Horizontal"
+    $status.HorizontalAlignment = "Right"
+    $status.VerticalAlignment = "Center"
+    $status.Margin = New-Object System.Windows.Thickness (16, 0, 14, 0)
+
+    if ($needsAdmin) {
+        $shield = New-GuiIcon -Name "admin" -Size 16 -Color $script:Theme.Muted
+        $shield.Margin = New-Object System.Windows.Thickness (0, 0, 8, 0)
+        $shield.ToolTip = (Get-WinForgeText 'Pede Administrador ao executar')
+        $shield.IsHitTestVisible = $true
+        [void]$status.Children.Add($shield)
+    }
+
+    [void]$status.Children.Add($caption)
+    [System.Windows.Controls.Grid]::SetColumn($status, 1)
+    [void]$grid.Children.Add($status)
 
     $toggle = New-Object System.Windows.Controls.Primitives.ToggleButton
     $toggle.Style = $window.FindResource("SwitchToggle")
     $toggle.IsChecked = $state.IsOn
     $toggle.Tag = $Tweak
     $toggle.VerticalAlignment = "Center"
-    $toggle.ToolTip = $(if ($needsAdmin) { "Ligue para ativar e desligue para desativar. Pede Administrador ao executar." } else { "Ligue para ativar e desligue para desativar." })
+    $toggle.ToolTip = $(if ($otherAccount) { (Get-WinForgeText 'Vale para o perfil do usuário, e o WinForge está elevado com outra conta.') } elseif ($needsAdmin) { (Get-WinForgeText 'Ligue para ativar e desligue para desativar. Pede Administrador ao executar.') } else { (Get-WinForgeText 'Ligue para ativar e desligue para desativar.') })
+    if ($otherAccount) { $toggle.IsEnabled = $false }
     Set-GuiAutomationName -Element $toggle -Name $Tweak.Name
 
-    # O leitor de tela lê também o que o ajuste faz (a descrição ao lado da chave), não só o nome.
-    try { [System.Windows.Automation.AutomationProperties]::SetHelpText($toggle, [string]$Tweak.Description) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
+    # O leitor de tela lê também o que o ajuste faz (a frase inteira), não só o nome.
+    try { [System.Windows.Automation.AutomationProperties]::SetHelpText($toggle, $detail) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
 
     $toggle.Add_Click({
         param ($sender, $eventArgs)
         $tweak = $sender.Tag
 
-        # A chave só mostra o estado real: volta ao que era e deixa a ação decidir (o novo estado aparece quando a
-        # página é lida de novo, ao voltar). Assim, uma ação cancelada ou que falha nunca deixa a chave mentindo.
+        # A chave só mostra o estado real: volta ao que era e deixa a ação decidir (o novo estado aparece lido de novo do
+        # Windows, na linha ou ao voltar da tela de execução). Assim, uma ação cancelada ou que falha nunca deixa a chave
+        # mentindo.
         $shown = (Get-WinForgeTweakSwitchState -Status $tweak.Status -Inverted ([bool](Get-WinForgeTweakField -Entry $tweak -Name "Inverted" -Default $false))).IsOn
         $sender.IsChecked = $shown
 
@@ -4204,10 +6099,12 @@ function New-GuiTweakRow {
         $want = $(if (-not $known) { "" } elseif ($shown) { "Off" } else { "On" })
 
         try {
-            Start-GuiAction -Label $tweak.Name -Command (Get-GuiTweakCommand -Id $tweak.Id -Ask:(-not $known) -Want $want) -RequiresAdmin ([bool]$tweak.RequiresAdmin) -FocusTweak ([string]$tweak.Id)
+            # A chave muda na própria linha (UX19 da R38): a tela de execução só abre se a ação perguntar algo ou terminar com
+            # algo a ler.
+            Start-GuiAction -Label $tweak.Name -Command (Get-GuiTweakCommand -Id $tweak.Id -Ask:(-not $known) -Want $want) -RequiresAdmin ([bool]$tweak.RequiresAdmin) -FocusTweak ([string]$tweak.Id) -InPlace
         }
         catch {
-            [void](Show-GuiMessage -Text $_.Exception.Message -Icon Error)
+            [void](Show-GuiMessage -Icon Error -Title (Get-WinForgeText "`"{0}`" não começou" "$($tweak.Name)") -Text $_.Exception.Message)
         }
     })
 
@@ -4215,7 +6112,162 @@ function New-GuiTweakRow {
     [void]$grid.Children.Add($toggle)
 
     Set-GuiPanelContent -Panel $border -Content $grid
+
+    # As partes que mudam depois que a chave muda na própria linha (Update-GuiTweakRow); a página refeita no meio de uma
+    # mudança mostra a linha ainda mudando.
+    $script:TweakRows[[string]$Tweak.Id] = @{ Kind = "tweak"; Row = $border; Caption = $caption; Toggle = $toggle; Tweak = $Tweak }
+    if ($null -ne $script:InPlaceRun -and [string]$script:InPlaceRun.Id -eq [string]$Tweak.Id -and $script:Running) { [void](Set-GuiTweakRowBusy -Id ([string]$Tweak.Id)) }
+
     return $border
+}
+
+function Set-GuiTweakRowBusy {
+    # A linha enquanto a ação dela roda na própria página: "Alterando…" no lugar do estado, e a chave desligada para outro
+    # clique (a ação já está a caminho). Devolve se o foco do teclado estava nela, para ele voltar depois.
+    param ([Parameter(Mandatory)][string]$Id)
+
+    $parts = $script:TweakRows[$Id]
+    if ($null -eq $parts) { return $false }
+
+    $focused = $false
+    try { $focused = [bool]$parts.Toggle.IsKeyboardFocusWithin } catch { $focused = $false }
+
+    $parts.Caption.Text = (Get-WinForgeText 'Alterando…')
+    $parts.Caption.Foreground = New-GuiBrush $script:Theme.Muted
+    $parts.Toggle.IsEnabled = $false
+
+    return $focused
+}
+
+function Update-GuiTweakRow {
+    <#
+    A linha de um ajuste depois que a chave mudou na própria página: o estado lido de novo do Windows, só desse ajuste, e o
+    resumo do alto refeito com ele. O leitor de tela ouve como o recurso ficou. Sem a linha na tela (outra página aberta),
+    nada a fazer: a página lê tudo quando abre. Refocus: o foco do teclado volta para a chave.
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Id,
+        [bool]$Refocus = $false
+    )
+
+    $parts = $script:TweakRows[$Id]
+    if ($null -eq $parts) { return }
+
+    $tweak = $parts.Tweak
+    $catalogTweak = Get-WinForgeTweakById -Id $Id
+    if ($null -ne $catalogTweak) { $tweak.Status = [string](Get-WinForgeTweakStatus -Tweak $catalogTweak) }
+
+    $state = Get-WinForgeTweakSwitchState -Status ([string]$tweak.Status) -Inverted ([bool](Get-WinForgeTweakField -Entry $tweak -Name "Inverted" -Default $false))
+    $colors = @{ Normal = $script:Theme.Text; Warn = $script:Theme.Warn; Muted = $script:Theme.Muted }
+
+    $parts.Caption.Text = $state.Caption
+    $parts.Caption.Foreground = New-GuiBrush $colors[[string]$state.Level]
+    $parts.Toggle.IsChecked = $state.IsOn
+    $parts.Toggle.IsEnabled = (-not [bool](Get-WinForgeTweakField -Entry $tweak -Name "OtherAccount" -Default $false))
+
+    Send-GuiTweakRowNews -Id $Id -Refocus $Refocus
+    Set-GuiTweaksStatus
+}
+
+function Send-GuiTweakRowNews {
+    <#
+    Depois que uma linha mudou na própria página: o foco do teclado volta para ela (Refocus: a chave) e o leitor de tela
+    ouve como o recurso ficou. Serve também para a linha nova, quando a página foi refeita pelo tema (TweakRefocus).
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Id,
+        [bool]$Refocus = $false
+    )
+
+    $parts = $script:TweakRows[$Id]
+    if ($null -eq $parts) { return }
+
+    if ($Refocus -and $null -ne $parts.Toggle) { [void]$parts.Toggle.Focus() }
+
+    # "Modo escuro: Ativado".
+    $spoken = "$($parts.Tweak.Name): $($parts.Caption.Text)"
+
+    try {
+        Set-GuiAutomationName -Element $parts.Caption -Name $spoken
+        [System.Windows.Automation.AutomationProperties]::SetLiveSetting($parts.Caption, [System.Windows.Automation.AutomationLiveSetting]::Polite)
+    }
+    catch {
+        Write-Verbose "Leitor de tela: $($_.Exception.Message)"
+    }
+
+    Send-GuiAnnouncement -Element $parts.Caption
+}
+
+function Set-GuiTweaksStatus {
+    # O resumo no alto da página de ajustes aberta (Get-WinForgeTweaksPageStatus), logo abaixo dos botões, feito da lista
+    # lida (TweaksOverview). Refeito no lugar depois que uma chave muda; se a leitura falhar, a página segue sem ele.
+    $navPage = Get-WinForgeNavPage -Id $script:CurrentPage
+    if ($null -eq $navPage -or $navPage.Kind -ne "Tweaks") { return }
+
+    $status = $null
+
+    try {
+        $status = New-GuiPageStatus -Page $navPage -Rows @(Get-WinForgeTweaksPageStatus -Page ([string]$navPage.Id) -Overview @($script:TweaksOverview))
+    }
+    catch {
+        Write-Verbose "Resumo dos ajustes: $($_.Exception.Message)"
+        $status = $null
+    }
+
+    $old = $null
+    $index = 0
+    $position = 0
+
+    foreach ($child in @($contentPanel.Children)) {
+        $position++
+        if ([string]$child.Tag -eq "tweaks-status") { $old = $child }
+        elseif ([string]$child.Tag -eq "tweaks-bar") { $index = $position }
+    }
+
+    if ($null -ne $old) {
+        $index = $contentPanel.Children.IndexOf($old)
+        $contentPanel.Children.Remove($old)
+    }
+
+    if ($null -ne $status) {
+        $status.Tag = "tweaks-status"
+        $contentPanel.Children.Insert($index, $status)
+    }
+}
+
+function New-GuiTweaksSkeleton {
+    # Enquanto a página lê o Windows: um cartão com linhas-esqueleto do tamanho das linhas de ajuste (como os cartões do
+    # Início), no lugar de um texto (a UX16 da R38). O leitor de tela ouve que a página está lendo.
+    $holder = New-Object System.Windows.Controls.StackPanel
+    $holder.Tag = "loading"
+    Set-GuiAutomationName -Element $holder -Name (Get-WinForgeText 'Lendo o estado atual dos ajustes...')
+
+    [void]$holder.Children.Add((New-GuiHomeSkeleton -Width 140 -Height 16 -Margin (New-Object System.Windows.Thickness (0, 18, 0, 10))))
+
+    $rows = New-Object System.Windows.Controls.StackPanel
+
+    foreach ($width in @(240, 200, 280)) {
+        $row = New-Object System.Windows.Controls.DockPanel
+        $row.Margin = New-Object System.Windows.Thickness (0, 13, 0, 13)
+
+        $switch = New-GuiHomeSkeleton -Width 40 -Height 20
+        $switch.VerticalAlignment = "Center"
+        Set-GuiDock -Element $switch -Side "Right"
+        [void]$row.Children.Add($switch)
+
+        $text = New-Object System.Windows.Controls.StackPanel
+        [void]$text.Children.Add((New-GuiHomeSkeleton -Width $width -Height 14))
+        [void]$text.Children.Add((New-GuiHomeSkeleton -Width ($width + 140) -Height 10 -Margin (New-Object System.Windows.Thickness (0, 6, 0, 0))))
+        [void]$row.Children.Add($text)
+
+        [void]$rows.Children.Add($row)
+    }
+
+    $card = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness (18, 4, 18, 4)) -Content $rows
+    $card.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
+    [void]$holder.Children.Add($card)
+
+    return $holder
 }
 
 function New-GuiTweakGroup {
@@ -4251,6 +6303,172 @@ function Add-GuiTweakToGroup {
     [void]$Group.Rows.Children.Add($Row)
 }
 
+function New-GuiPageActionButton {
+    <#
+    Um botão do alto de uma página de ajustes, para um item da navegação: Primary no caminho recomendado. Pede
+    Administrador: o escudo antes do nome, como nos botões do Windows; abre uma tela do Windows: o ícone de "abre fora".
+    #>
+    param (
+        [Parameter(Mandatory)]$Item,
+        [ValidateSet("Secondary", "Primary")][string]$Kind = "Secondary"
+    )
+
+    $needsAdmin = ([bool]$Item.RequiresAdmin -and -not $script:IsAdmin)
+    $icon = $(if ($Item.Kind -eq "Shortcut") { "external" } elseif ($needsAdmin) { "admin" } elseif ($Kind -eq "Primary") { "sparkles" } else { "" })
+
+    $button = New-GuiButton -Text $Item.Label -Kind $Kind -Icon $icon -Tag $Item
+    $button.Margin = New-Object System.Windows.Thickness (0, 0, 8, 8)
+
+    $about = $(if ([string](Get-WinForgeJsonValue -Object $Item -Name "Detail" -Default "")) { [string]$Item.Detail } else { [string]$Item.Description })
+    $button.ToolTip = $(if ($needsAdmin) { (Get-WinForgeText "{0}`nPede Administrador ao executar." "$about") } else { $about })
+    if ($needsAdmin) { Set-GuiAutomationName -Element $button -Name "$($Item.Label)$(Get-WinForgeText '. Pede Administrador ao executar')" }
+
+    $button.Add_Click({
+        param ($sender, $eventArgs)
+        Invoke-GuiNavItem -Item $sender.Tag
+    })
+
+    return $button
+}
+
+function Show-GuiMoreMenu {
+    <#
+    O menu "Mais opções" de uma página de ajustes: uma lista que abre embaixo do botão, com as outras ações da página. As
+    setas andam entre elas, Enter abre, Esc ou um clique fora fecha, e o foco volta ao botão. O menu entra no mesmo painel
+    do botão (sem ocupar espaço): assim usa as cores e os estilos da janela. Enquanto o menu está aberto, o botão não
+    recebe o mouse: o clique nele só fecha o menu (o clique fora fecha o Popup e chegaria ao botão, que o abriria de novo).
+    #>
+    param (
+        [Parameter(Mandatory)]$Anchor,
+        [Parameter(Mandatory)][object[]]$Items
+    )
+
+    $list = New-Object System.Windows.Controls.StackPanel
+    [System.Windows.Input.KeyboardNavigation]::SetDirectionalNavigation($list, [System.Windows.Input.KeyboardNavigationMode]::Cycle)
+    [System.Windows.Input.KeyboardNavigation]::SetTabNavigation($list, [System.Windows.Input.KeyboardNavigationMode]::Cycle)
+
+    $frame = New-GuiPanelBorder -Padding (New-Object System.Windows.Thickness 4) -Content $list
+    $frame.Margin = New-Object System.Windows.Thickness (10, 2, 10, 14)
+
+    try {
+        $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+        $shadow.BlurRadius = 18
+        $shadow.ShadowDepth = 4
+        $shadow.Direction = 270
+        $shadow.Opacity = 0.18
+        $shadow.Color = [System.Windows.Media.Colors]::Black
+        $frame.Effect = $shadow
+    }
+    catch {
+        Write-Verbose "Sombra do menu: $($_.Exception.Message)"
+    }
+
+    $popup = New-Object System.Windows.Controls.Primitives.Popup
+    $popup.AllowsTransparency = $true
+    $popup.StaysOpen = $false
+    $popup.PlacementTarget = $Anchor
+    $popup.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Bottom
+    $popup.HorizontalOffset = -10
+    $popup.Child = $frame
+    $popup.Tag = $Anchor
+
+    foreach ($item in $Items) {
+        $needsAdmin = ([bool]$item.RequiresAdmin -and -not $script:IsAdmin)
+        $outside = ([string]$item.Kind -eq "Shortcut")
+
+        $entry = New-Object System.Windows.Controls.Button
+        $entry.Style = $window.FindResource("MenuItemButton")
+        $entry.Foreground = New-GuiBrush $script:Theme.Text
+        $entry.Tag = @{ Item = $item; Popup = $popup }
+
+        $row = New-Object System.Windows.Controls.DockPanel
+
+        if ($outside -or $needsAdmin) {
+            $mark = New-GuiIcon -Name $(if ($outside) { "external" } else { "admin" }) -Size 16 -Color $script:Theme.Muted
+            $mark.Margin = New-Object System.Windows.Thickness (16, 0, 0, 0)
+            Set-GuiDock -Element $mark -Side "Right"
+            [void]$row.Children.Add($mark)
+        }
+
+        $label = New-GuiText -Text ([string]$item.Label) -Size $script:Type.Body
+        $label.TextWrapping = "NoWrap"
+        $label.VerticalAlignment = "Center"
+        [void]$row.Children.Add($label)
+
+        $entry.Content = $row
+
+        $about = $(if ([string](Get-WinForgeJsonValue -Object $item -Name "Detail" -Default "")) { [string]$item.Detail } else { [string]$item.Description })
+        $note = $(if ($outside) { (Get-GuiOutsideNote -Item $item) } elseif ($needsAdmin) { (Get-WinForgeText 'Pede Administrador ao executar') } else { "" })
+        $entry.ToolTip = (@($about, $note) | Where-Object { -not [string]::IsNullOrEmpty($_) }) -join "`n"
+        Set-GuiAutomationName -Element $entry -Name "$($item.Label)$(if ($outside) { ". $(Get-GuiOutsideNote -Item $item)" } elseif ($needsAdmin) { (Get-WinForgeText '. Pede Administrador ao executar') })"
+
+        $entry.Add_Click({
+            param ($sender, $eventArgs)
+
+            $sender.Tag.Popup.IsOpen = $false
+            Invoke-GuiNavItem -Item $sender.Tag.Item
+        })
+
+        [void]$list.Children.Add($entry)
+    }
+
+    $frame.Add_PreviewKeyDown({
+        param ($sender, $eventArgs)
+
+        if ($eventArgs.Key -eq "Escape") {
+            $eventArgs.Handled = $true
+            $sender.Parent.IsOpen = $false
+        }
+    })
+
+    $popup.Add_Opened({
+        param ($sender, $eventArgs)
+
+        try {
+            $first = $sender.Child.Child.Child.Children[0]
+            if ($null -ne $first) { [void][System.Windows.Input.Keyboard]::Focus($first) }
+        }
+        catch {
+            Write-Verbose "Foco do menu: $($_.Exception.Message)"
+        }
+    })
+
+    $popup.Add_Closed({
+        param ($sender, $eventArgs)
+
+        try {
+            $anchor = $sender.Tag
+            if ($null -ne $anchor) { $anchor.IsHitTestVisible = $true }
+            $holder = $sender.Parent
+            if ($null -ne $holder -and $holder.Children.Contains($sender)) { $holder.Children.Remove($sender) }
+            if ($null -ne $anchor -and $anchor.IsVisible) { [void]$anchor.Focus() }
+        }
+        catch {
+            Write-Verbose "Menu fechado: $($_.Exception.Message)"
+        }
+    })
+
+    # No mesmo painel do botão: o menu fica na árvore da janela (cores e estilos) e não ocupa lugar na página.
+    $holder = $Anchor.Parent
+    if ($holder -is [System.Windows.Controls.Panel]) { [void]$holder.Children.Add($popup) }
+
+    $popup.IsOpen = $true
+    if ($popup.IsOpen) { $Anchor.IsHitTestVisible = $false }
+}
+
+function New-GuiTweakActionRow {
+    # Uma ação da página dentro do grupo de ajustes da categoria dela (ListCategory): a linha de lista, sem o ícone, com o
+    # texto alinhado ao das chaves do grupo.
+    param ([Parameter(Mandatory)]$Item)
+
+    $row = New-GuiActionRow -Item $Item -NoIcon
+    $row.Margin = New-Object System.Windows.Thickness (-14, 2, -14, 2)
+    $row.Padding = New-Object System.Windows.Thickness (14, 10, 12, 10)
+    $row.MinHeight = 56
+
+    return $row
+}
+
 function Show-GuiTweaksPage {
     param (
         [Parameter(Mandatory)]$Page,
@@ -4265,30 +6483,45 @@ function Show-GuiTweaksPage {
 
     $bar = New-Object System.Windows.Controls.WrapPanel
     $bar.Margin = New-Object System.Windows.Thickness (0, 0, 0, 10)
+    $bar.Tag = "tweaks-bar"
 
-    # As ações da página (aplicar recomendados, ponto de restauração, desfazer tudo) vêm da tabela de navegação. Um botão
-    # que abre uma tela das Configurações do Windows leva o ícone de "abre fora", como a nota "Abre no Windows" dos cartões.
+    # As ações da página vêm da tabela de navegação. No alto, só o caminho recomendado (Accent) e "Mais opções" com as
+    # outras; as que têm ListCategory viram linhas no grupo da categoria (Update-GuiTweaksList). Sem destaque, a primeira
+    # vira o botão; uma ação sozinha no menu também fica como botão.
+    $others = @()
+
     foreach ($item in $Page.Items) {
-        if ($item.Accent) {
-            $actionButton = New-GuiButton -Text $item.Label -Kind Primary -Icon "sparkles" -Tag $item
-        }
-        elseif ($item.Kind -eq "Shortcut") {
-            $actionButton = New-GuiButton -Text $item.Label -Icon "external" -Tag $item
+        if (-not [string]::IsNullOrEmpty([string](Get-WinForgeJsonValue -Object $item -Name "ListCategory" -Default ""))) { continue }
+
+        if ($item.Accent -and $bar.Children.Count -eq 0) {
+            [void]$bar.Children.Add((New-GuiPageActionButton -Item $item -Kind Primary))
         }
         else {
-            $actionButton = New-GuiButton -Text $item.Label -Tag $item
+            $others += $item
         }
-
-        $actionButton.Margin = New-Object System.Windows.Thickness (0, 0, 8, 8)
-        $actionButton.ToolTip = $(if ($item.RequiresAdmin -and -not $script:IsAdmin) { "$($item.Description)`nPede Administrador ao executar." } else { $item.Description })
-        $actionButton.Add_Click({
-            param ($sender, $eventArgs)
-            Invoke-GuiNavItem -Item $sender.Tag
-        })
-        [void]$bar.Children.Add($actionButton)
     }
 
-    $refresh = New-GuiButton -Text "Atualizar estado" -Kind Ghost -Icon "refresh"
+    if ($bar.Children.Count -eq 0 -and $others.Count -gt 0) {
+        [void]$bar.Children.Add((New-GuiPageActionButton -Item $others[0]))
+        $others = @($others | Select-Object -Skip 1)
+    }
+
+    if ($others.Count -eq 1) {
+        [void]$bar.Children.Add((New-GuiPageActionButton -Item $others[0]))
+    }
+    elseif ($others.Count -gt 1) {
+        $more = New-GuiButton -Text (Get-WinForgeText 'Mais opções') -Icon "dots" -Tag @($others)
+        $more.Margin = New-Object System.Windows.Thickness (0, 0, 8, 8)
+        $more.ToolTip = (@($others | ForEach-Object { [string]$_.Label }) -join "`n")
+        try { [System.Windows.Automation.AutomationProperties]::SetHelpText($more, (Join-WinForgeList -Items @($others | ForEach-Object { [string]$_.Label }))) } catch { Write-Verbose "Leitor de tela: $($_.Exception.Message)" }
+        $more.Add_Click({
+            param ($sender, $eventArgs)
+            Show-GuiMoreMenu -Anchor $sender -Items @($sender.Tag)
+        })
+        [void]$bar.Children.Add($more)
+    }
+
+    $refresh = New-GuiButton -Text (Get-WinForgeText 'Atualizar estado') -Kind Ghost -Icon "refresh"
     $refresh.Margin = New-Object System.Windows.Thickness (0, 0, 0, 8)
     # Atualizar estado relê os ajustes sem voltar a lista para o topo: a lista é refeita depois (Update-GuiTweaksList), e
     # a rolagem volta ao ponto de antes quando ela fica pronta. A página é a aberta (Ajustes do Windows ou Personalização).
@@ -4300,29 +6533,11 @@ function Show-GuiTweaksPage {
 
     [void]$contentPanel.Children.Add($bar)
 
-    $hint = New-GuiText -Text (Get-GuiTweaksHintText) -Size 13 -Color $script:Theme.Muted
-    $hint.Tag = "tweaks-hint"
-    $hint.Margin = New-Object System.Windows.Thickness (0, 0, 0, 4)
-    [void]$contentPanel.Children.Add($hint)
-
-    $loading = New-GuiText -Text "Lendo o estado atual dos ajustes..." -Color $script:Theme.Muted
-    $loading.Tag = "loading"
-    $loading.Margin = New-Object System.Windows.Thickness (0, 14, 0, 0)
-    [void]$contentPanel.Children.Add($loading)
+    # O que a chave faz fica na dica dela; o resumo do alto (os recomendados em uso e o que o WinForge mudou) entra logo
+    # abaixo dos botões depois da leitura (a UX14 da R38).
+    [void]$contentPanel.Children.Add((New-GuiTweaksSkeleton))
 
     Invoke-GuiDeferred -Action { Update-GuiTweaksList }
-}
-
-function Get-GuiTweaksHintText {
-    # A frase do alto da página; depois da leitura, com quantos itens da página o WinForge mudou e continuam como ele
-    # deixou (os que Desfazer ajustes do WinForge devolveria; os avançados entram na conta).
-    param ([int]$Changed = -1)
-
-    $text = "Cada chave mostra como o Windows está agora: ligue para ativar e desligue para desativar. O WinForge guarda o valor de antes."
-
-    if ($Changed -lt 0) { return $text }
-
-    return "$text Mudados pelo WinForge nesta página: $Changed."
 }
 
 function Set-GuiTweakFocus {
@@ -4351,33 +6566,32 @@ function Update-GuiTweaksList {
         return
     }
 
-    # Remove o aviso de carregamento e desenha a lista agrupada por categoria.
+    # Tira o esqueleto do carregamento e desenha a lista agrupada por categoria.
     foreach ($child in @($contentPanel.Children)) {
-        if ($child -is [System.Windows.Controls.TextBlock] -and $child.Tag -eq "loading") {
+        if ([string]$child.Tag -eq "loading") {
             $contentPanel.Children.Remove($child)
         }
     }
 
+    $script:TweakRows = @{}
+
     try {
         $overview = @(Get-WinForgeTweakOverview -Page $navPage.Id)
+        $script:TweaksOverview = $overview
         $group = $null
         $rows = @{}
 
-        # Quantos o WinForge mudou e ainda estão como ele deixou, na frase do alto: o que Desfazer ajustes do WinForge
-        # devolveria. As chaves mostram o estado do Windows, e não o que o WinForge fez.
-        $saved = @(Get-WinForgeTweakBackupIds)
-        $changedCount = @($overview | Where-Object { $_.Status -eq "Aplicado" -and $saved -contains [string]$_.Id }).Count
+        # O resumo do alto: os recomendados em uso e quantos ajustes da página o WinForge mudou. As chaves mostram o estado
+        # do Windows, e não o que o WinForge fez.
+        Set-GuiTweaksStatus
 
-        foreach ($child in @($contentPanel.Children)) {
-            if ($child -is [System.Windows.Controls.TextBlock] -and $child.Tag -eq "tweaks-hint") {
-                $child.Text = Get-GuiTweaksHintText -Changed $changedCount
-            }
-        }
+        $groups = @{}
 
         # Os ajustes de energia e desempenho ficam recolhidos em "Avançados": mudam o comportamento do PC.
         foreach ($tweak in @($overview | Where-Object { -not $_.Advanced })) {
             if ($null -eq $group -or $tweak.Category -ne $group.Category) {
                 $group = New-GuiTweakGroup -Category $tweak.Category
+                $groups[[string]$tweak.Category] = $group
                 [void]$contentPanel.Children.Add($group.Heading)
                 [void]$contentPanel.Children.Add($group.Card)
             }
@@ -4386,13 +6600,39 @@ function Update-GuiTweaksList {
             Add-GuiTweakToGroup -Group $group -Row $rows[[string]$tweak.Id]
         }
 
+        # As ações e os atalhos da página que pertencem a uma categoria (as teclas do teclado, a cor de destaque) entram no
+        # fim do grupo dela, como uma linha com a seta; sem o grupo na tela (nenhum ajuste dele neste Windows), num grupo
+        # só delas.
+        foreach ($item in @($navPage.Items | Where-Object { -not [string]::IsNullOrEmpty([string](Get-WinForgeJsonValue -Object $_ -Name "ListCategory" -Default "")) })) {
+            $category = [string]$item.ListCategory
+
+            if (-not $groups.ContainsKey($category)) {
+                $groups[$category] = New-GuiTweakGroup -Category $category
+                [void]$contentPanel.Children.Add($groups[$category].Heading)
+                [void]$contentPanel.Children.Add($groups[$category].Card)
+            }
+
+            # Como as chaves, a linha mostra o estado de agora embaixo do nome ("Agora: Alt + Shift e Ctrl + Shift"), no
+            # lugar da frase curta; a frase inteira continua na dica. A cópia não muda o item da tabela de navegação.
+            $shown = $item
+            $state = ""
+            try { $state = [string](Get-WinForgeTweakActionState -Id ([string]$item.Id)) } catch { Write-Verbose "Estado da linha: $($_.Exception.Message)" }
+
+            if (-not [string]::IsNullOrEmpty($state)) {
+                $shown = $item.PSObject.Copy()
+                $shown.Description = $state
+            }
+
+            Add-GuiTweakToGroup -Group $groups[$category] -Row (New-GuiTweakActionRow -Item $shown)
+        }
+
         $advancedTweaks = @($overview | Where-Object { $_.Advanced })
 
         if ($advancedTweaks.Count -gt 0) {
             $advancedPanel = New-Object System.Windows.Controls.StackPanel
             $advancedPanel.Visibility = $(if ($script:TweaksAdvancedOpen) { "Visible" } else { "Collapsed" })
 
-            $note = New-GuiText -Text "Mudam energia e desempenho do PC; em notebook podem gastar bateria. Cada um pode ser desfeito." -Size 13 -Color $script:Theme.Muted
+            $note = New-GuiText -Text (Get-WinForgeText 'Mudam energia e desempenho do PC; em notebook podem gastar bateria. Cada um pode ser desfeito.') -Size $script:Type.Caption -Color $script:Theme.Muted
             $note.Margin = New-Object System.Windows.Thickness (4, 4, 0, 0)
             [void]$advancedPanel.Children.Add($note)
 
@@ -4409,7 +6649,7 @@ function Update-GuiTweaksList {
                 Add-GuiTweakToGroup -Group $group -Row $rows[[string]$tweak.Id]
             }
 
-            $toggle = New-GuiButton -Text $(if ($script:TweaksAdvancedOpen) { "Ocultar ajustes avançados" } else { "Mostrar ajustes avançados ($($advancedTweaks.Count))" }) `
+            $toggle = New-GuiButton -Text $(if ($script:TweaksAdvancedOpen) { (Get-WinForgeText 'Ocultar ajustes avançados') } else { (Get-WinForgeText 'Mostrar ajustes avançados ({0})' "$($advancedTweaks.Count)") }) `
                 -Tag @{ Panel = $advancedPanel; Count = $advancedTweaks.Count }
             $toggle.Margin = New-Object System.Windows.Thickness (0, 18, 0, 4)
             $toggle.HorizontalAlignment = "Left"
@@ -4419,7 +6659,7 @@ function Update-GuiTweaksList {
                 $panel = $sender.Tag.Panel
                 $script:TweaksAdvancedOpen = ($panel.Visibility -ne "Visible")
                 $panel.Visibility = $(if ($script:TweaksAdvancedOpen) { "Visible" } else { "Collapsed" })
-                $sender.Content = $(if ($script:TweaksAdvancedOpen) { "Ocultar ajustes avançados" } else { "Mostrar ajustes avançados ($($sender.Tag.Count))" })
+                $sender.Content = $(if ($script:TweaksAdvancedOpen) { (Get-WinForgeText 'Ocultar ajustes avançados') } else { (Get-WinForgeText 'Mostrar ajustes avançados ({0})' "$($sender.Tag.Count)") })
             })
 
             [void]$contentPanel.Children.Add($toggle)
@@ -4432,12 +6672,20 @@ function Update-GuiTweaksList {
         }
     }
     catch {
-        $failure = New-GuiText -Text "Não foi possível ler o estado dos ajustes. Use Atualizar estado, logo acima, para tentar de novo." -Color $script:Theme.Bad
-        $failure.ToolTip = "Detalhe técnico: $($_.Exception.Message)"
+        $failure = New-GuiText -Text (Get-WinForgeText 'Não foi possível ler o estado dos ajustes. Use Atualizar estado, logo acima, para tentar de novo.') -Color $script:Theme.Bad
+        $failure.ToolTip = (Get-WinForgeText 'Detalhe técnico: {0}' "$($_.Exception.Message)")
         [void]$contentPanel.Children.Add($failure)
     }
     finally {
         $script:FocusTweakId = ""
+
+        # A linha que mudou quando a página foi refeita pelo tema: o foco e o aviso vão para a linha nova.
+        $pending = $script:TweakRefocus
+        $script:TweakRefocus = $null
+
+        if ($null -ne $pending -and [string]$pending.Page -eq [string]$script:CurrentPage) {
+            try { Send-GuiTweakRowNews -Id ([string]$pending.Id) -Refocus ([bool]$pending.Refocus) } catch { Write-Verbose "Linha do ajuste: $($_.Exception.Message)" }
+        }
 
         if ($null -ne $script:TweaksScrollBack) {
             try {
@@ -4479,7 +6727,7 @@ function Set-GuiSelectedNav {
         $part.Label.FontWeight = $(if ($selected) { "SemiBold" } else { "Normal" })
 
         try {
-            [System.Windows.Automation.AutomationProperties]::SetItemStatus($part.Button, $(if ($selected) { "página aberta" } else { "" }))
+            [System.Windows.Automation.AutomationProperties]::SetItemStatus($part.Button, $(if ($selected) { (Get-WinForgeText 'página aberta') } else { "" }))
         }
         catch {
             Write-Verbose "Leitor de tela: $($_.Exception.Message)"
@@ -4514,6 +6762,53 @@ function Hide-GuiRunView {
     Update-GuiRunStrip
 }
 
+function Test-GuiAnimations {
+    # Os "Efeitos de animação" do Windows (Acessibilidade > Efeitos visuais): desligados, nada na janela se move.
+    try { return [bool][System.Windows.SystemParameters]::ClientAreaAnimation } catch { return $false }
+}
+
+function Start-GuiEntrance {
+    # A entrada de uma página ou da faixa de resultado, como no Windows 11: aparece e sobe 8 pixels em 170 ms, rápido no
+    # começo e devagar no fim. Sem as animações do Windows, ou se algo falhar, o elemento só aparece, parado.
+    param (
+        [Parameter(Mandatory)]$Element,
+        [double]$Offset = 8,
+        [int]$Milliseconds = 170
+    )
+
+    if (-not (Test-GuiAnimations)) { return }
+
+    try {
+        $duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds($Milliseconds))
+        $ease = New-Object System.Windows.Media.Animation.CubicEase
+        $ease.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+
+        $fade = New-Object System.Windows.Media.Animation.DoubleAnimation (0.0, 1.0, $duration)
+        $fade.EasingFunction = $ease
+
+        $move = New-Object System.Windows.Media.TranslateTransform (0.0, $Offset)
+        $slide = New-Object System.Windows.Media.Animation.DoubleAnimation ($Offset, 0.0, $duration)
+        $slide.EasingFunction = $ease
+
+        $Element.RenderTransform = $move
+        $Element.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
+        $move.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $slide)
+    }
+    catch {
+        # Sem a animação, o conteúdo fica no lugar e visível.
+        try {
+            $Element.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+            $Element.Opacity = 1.0
+            $Element.RenderTransform = [System.Windows.Media.Transform]::Identity
+        }
+        catch {
+            Write-Verbose "Animação desfeita: $($_.Exception.Message)"
+        }
+
+        Write-Verbose "Animação: $($_.Exception.Message)"
+    }
+}
+
 function Show-GuiPage {
     param (
         [Parameter(Mandatory)][string]$Id,
@@ -4526,6 +6821,9 @@ function Show-GuiPage {
     )
 
     $offset = $pageScroll.VerticalOffset
+
+    # Outra página: o foco pendente de uma linha refeita não vale mais.
+    if (-not $Rerender) { $script:TweakRefocus = $null }
 
     Clear-GuiSearch
     $script:CurrentPage = $Id
@@ -4546,6 +6844,9 @@ function Show-GuiPage {
         Show-GuiHomePage -Rerender:$Rerender
     }
     elseif ($page.Kind -eq "Tweaks") {
+        # Refeita no lugar (o tema mudou), a lista é lida de novo e chega depois: a rolagem volta quando ela fica pronta, como
+        # no Atualizar estado; com o esqueleto, mais curto, voltaria ao alto.
+        if ($Rerender) { $script:TweaksScrollBack = $offset }
         Show-GuiTweaksPage -Page $page -FocusTweak $FocusTweak
     }
     else {
@@ -4557,9 +6858,22 @@ function Show-GuiPage {
         $pageScroll.UpdateLayout()
         $pageScroll.ScrollToVerticalOffset($offset)
     }
+    else {
+        # Uma página nova entra; a mesma refeita no lugar (tema, idioma do texto) não se mexe.
+        Start-GuiEntrance -Element $contentPanel
+    }
 }
 
 # --- Busca ---------------------------------------------------------------------------------------------------
+function Get-GuiHiddenItemState {
+    # O que o Início leu e decide os itens que saem das páginas e da busca (Test-WinForgeNavItemHidden): quem protege o PC
+    # e se ele tem bateria. Antes da leitura, "" e $null: nada sai.
+    return @{
+        AntivirusMode = [string](Get-Variable -Name AntivirusMode -Scope Script -ValueOnly -ErrorAction SilentlyContinue)
+        HasBattery    = (Get-Variable -Name HasBattery -Scope Script -ValueOnly -ErrorAction SilentlyContinue)
+    }
+}
+
 function Show-GuiSearchResults {
     param (
         [string]$Query,
@@ -4582,14 +6896,17 @@ function Show-GuiSearchResults {
     $script:CurrentPage = "search"
     Hide-GuiRunView
 
-    $hits = @(Search-WinForgeNavigation -Query $Query)
+    # O que a página tira neste PC (as ações do Defender com outro antivírus, a bateria num PC sem ela) também não aparece
+    # aqui, e o resumo conta só o que aparece.
+    $hidden = Get-GuiHiddenItemState
+    $hits = @(Search-WinForgeNavigation -Query $Query | Where-Object { -not ($_.Kind -eq "Item" -and (Test-WinForgeNavItemHidden -Id ([string]$_.Item.Id) @hidden)) })
     $shown = @($hits | Select-Object -First $script:SearchMaxCards)
     $partial = ($hits.Count -gt 0 -and [bool]$hits[0].Partial)
     $corrected = $(if ($hits.Count -gt 0) { [string]$hits[0].Corrected } else { "" })
     $script:SearchFirst = $(if ($hits.Count -gt 0) { $hits[0] } else { $null })
     $script:SearchEnterOpens = Test-WinForgeSearchEnterOpens -Hit $script:SearchFirst
 
-    $pageTitle.Text = "Busca"
+    $pageTitle.Text = (Get-WinForgeText 'Busca')
     $pageSubtitle.Text = Get-WinForgeSearchSummary -Query $Query -Total $hits.Count -Shown $shown.Count -Partial:$partial -Corrected $corrected `
         -EnterSelects:(-not $script:SearchEnterOpens)
     Send-GuiAnnouncement -Element $pageSubtitle
@@ -4615,24 +6932,26 @@ function Show-GuiSearchResults {
         return
     }
 
-    $panel = New-Object System.Windows.Controls.WrapPanel
+    # Os resultados numa lista só, como as páginas: de onde vem cada um em cima do nome.
+    $results = New-GuiRowGroup
 
     foreach ($hit in $shown) {
         $first = ($null -eq $script:SearchFirstCard)
-        $card = New-GuiActionCard -Item (Get-WinForgeSearchCardItem -Hit $hit) -Context (Get-WinForgeSearchContext -Hit $hit) -EnterHint:($first -and $script:SearchEnterOpens)
+        $card = New-GuiActionRow -Item (Get-WinForgeSearchCardItem -Hit $hit) -Context (Get-WinForgeSearchContext -Hit $hit) -EnterHint:($first -and $script:SearchEnterOpens)
 
         if ($first) {
-            # O primeiro é o que o Enter abre (ou seleciona): ganha a moldura de destaque e, quando abre, a tecla "Enter".
+            # O primeiro é o que o Enter abre (ou seleciona): ganha o fundo de destaque e, quando abre, a tecla "Enter".
             $script:SearchFirstCard = $card
-            $card.BorderBrush = New-GuiBrush $script:Theme.Accent
+            $card.Background = New-GuiBrush $script:Theme.AccentCard
         }
 
-        [void]$panel.Children.Add($card)
+        Add-GuiRowToGroup -Group $results -Row $card
     }
 
-    $panel.Add_PreviewKeyDown($script:SearchCardsKeyDown)
-    [void]$contentPanel.Children.Add($panel)
-    $script:SearchPanel = $panel
+    # A seta para cima na primeira linha volta para a caixa de busca (SearchCardsKeyDown olha as linhas da lista).
+    $results.Rows.Add_PreviewKeyDown($script:SearchCardsKeyDown)
+    [void]$contentPanel.Children.Add($results.Element)
+    $script:SearchPanel = $results.Element
     $script:SearchShownKey = $key
 
     if ($Rerender) {
@@ -4643,7 +6962,7 @@ function Show-GuiSearchResults {
 
 function Add-GuiSearchSuggestions {
     # Nada encontrado: buscas que funcionam, do jeito que a pessoa diria, como botões que buscam na hora.
-    [void]$contentPanel.Children.Add((New-GuiText -Text "Busque pelo que está acontecendo com o PC ou pelo nome do que procura. Por exemplo:" -Color $script:Theme.Muted))
+    [void]$contentPanel.Children.Add((New-GuiText -Text (Get-WinForgeText 'Busque pelo que está acontecendo com o PC ou pelo nome do que procura. Por exemplo:') -Color $script:Theme.Muted))
 
     $row = New-Object System.Windows.Controls.WrapPanel
     $row.Margin = New-Object System.Windows.Thickness (0, 12, 0, 0)
@@ -4699,7 +7018,7 @@ function Exit-GuiSearch {
 
 function Show-GuiRunBack {
     # Sai da tela de execução. Uma ação aberta a partir da busca volta para os resultados dela; as demais, para a página.
-    $copyButton.Content = "Copiar"
+    $copyButton.Content = (Get-WinForgeText 'Copiar')
 
     if ($script:SearchActive -and -not [string]::IsNullOrWhiteSpace($searchBox.Text)) {
         Show-GuiSearchResults -Query $searchBox.Text
@@ -4721,8 +7040,9 @@ function Show-GuiRunBack {
 
 # --- Barra lateral: Início + páginas da tabela de navegação (as de rodapé ficam embaixo) -----------------------
 function Add-GuiNavButton {
-    # Shortcut: a tecla que abre a página ("Ctrl+3"), mostrada ao passar o mouse e dita pelo leitor de tela.
-    param ([string]$Id, [string]$Title, [bool]$Footer = $false, [string]$Shortcut = "")
+    # Shortcut: a tecla que abre a página ("Ctrl+3"), mostrada ao passar o mouse e dita pelo leitor de tela. Note: uma
+    # linha menor embaixo do nome (a versão, no Sobre o WinForge), que o leitor de tela também ouve.
+    param ([string]$Id, [string]$Title, [bool]$Footer = $false, [string]$Shortcut = "", [string]$Note = "")
 
     $button = New-Object System.Windows.Controls.Button
     $button.Style = $window.FindResource("NavButton")
@@ -4741,10 +7061,31 @@ function Add-GuiNavButton {
     $icon.Margin = New-Object System.Windows.Thickness (0, 0, 12, 0)
     [void]$row.Children.Add($icon)
 
-    $label = New-GuiText -Text $Title -Size 13.5
+    $label = New-GuiText -Text $Title -Size $script:Type.Body
     $label.TextWrapping = "NoWrap"
     $label.VerticalAlignment = "Center"
-    [void]$row.Children.Add($label)
+    # A barra lateral é montada uma vez: o tamanho acompanha o do texto do Windows pelo recurso, sem refazer o botão.
+    $label.SetResourceReference([System.Windows.Controls.TextBlock]::FontSizeProperty, "BodySize")
+
+    if ($Note) {
+        # O nome e, embaixo, a linha menor, na cor discreta (pelo recurso, como o tamanho: acompanha o tema).
+        $texts = New-Object System.Windows.Controls.StackPanel
+        $texts.VerticalAlignment = "Center"
+        $texts.Margin = New-Object System.Windows.Thickness (0, 4, 0, 4)
+        [void]$texts.Children.Add($label)
+
+        $small = New-Object System.Windows.Controls.TextBlock
+        $small.Text = $Note
+        $small.TextWrapping = "NoWrap"
+        $small.SetResourceReference([System.Windows.Controls.TextBlock]::FontSizeProperty, "CaptionSize")
+        $small.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, "DimBrush")
+        [void]$texts.Children.Add($small)
+        [void]$row.Children.Add($texts)
+        Set-GuiAutomationName -Element $button -Name "$Title. $Note"
+    }
+    else {
+        [void]$row.Children.Add($label)
+    }
 
     $button.Content = $row
     $script:NavParts[$Id] = @{ Button = $button; Icon = $icon; Label = $label }
@@ -4762,14 +7103,41 @@ function Add-GuiNavButton {
     }
 }
 
-# Ctrl+1 a Ctrl+9 (e Ctrl+0 para a décima): Início e as páginas da lista principal, na ordem da barra lateral.
-$script:PageShortcuts = @("home") + @(Get-WinForgeNavigation | Where-Object { $_.Placement -ne "Footer" } | ForEach-Object { $_.Id })
+function Add-GuiNavHeading {
+    # O título de um grupo da barra lateral (Cuidar, Consertar...): discreto, só organiza a lista. As cores e o tamanho vêm
+    # dos recursos da janela, e acompanham o tema e o tamanho do texto sem refazer a barra.
+    param ([Parameter(Mandatory)][string]$Text)
 
-Add-GuiNavButton -Id "home" -Title "Início" -Shortcut (Get-WinForgePageShortcutKey -Index 0)
+    $heading = New-Object System.Windows.Controls.TextBlock
+    $heading.Text = $Text
+    $heading.FontWeight = [System.Windows.FontWeights]::SemiBold
+    $heading.SetResourceReference([System.Windows.Controls.TextBlock]::FontSizeProperty, "CaptionSize")
+    $heading.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, "MutedBrush")
+    $heading.Margin = New-Object System.Windows.Thickness (12, 14, 0, 4)
+    Set-GuiAutomationName -Element $heading -Name (Get-WinForgeText 'Seção: {0}' "$Text")
+    [void]$navPanel.Children.Add($heading)
+}
 
-foreach ($navPage in @(Get-WinForgeNavigation)) {
-    Add-GuiNavButton -Id $navPage.Id -Title $navPage.Title -Footer ($navPage.Placement -eq "Footer") `
+# A lista principal em grupos (Get-WinForgeNavOrder); Ctrl+1 a Ctrl+9 (e Ctrl+0 para a décima) seguem a ordem da barra:
+# Início e as páginas, de cima para baixo.
+$mainNavPages = @(Get-WinForgeNavigation | Where-Object { $_.Placement -ne "Footer" })
+$mainNavOrder = @(Get-WinForgeNavOrder -Pages @($mainNavPages | ForEach-Object { [string]$_.Id }))
+$script:PageShortcuts = @("home") + @($mainNavOrder | ForEach-Object { [string]$_.Id })
+
+Add-GuiNavButton -Id "home" -Title (Get-WinForgeText 'Início') -Shortcut (Get-WinForgePageShortcutKey -Index 0)
+
+foreach ($entry in $mainNavOrder) {
+    $navPage = @($mainNavPages | Where-Object { [string]$_.Id -eq [string]$entry.Id }) | Select-Object -First 1
+
+    if ($entry.Heading) { Add-GuiNavHeading -Text ([string]$entry.Heading) }
+
+    Add-GuiNavButton -Id $navPage.Id -Title $navPage.Title `
         -Shortcut (Get-WinForgePageShortcutKey -Index ([array]::IndexOf($script:PageShortcuts, [string]$navPage.Id)))
+}
+
+# No rodapé, o Sobre o WinForge com a versão embaixo do nome.
+foreach ($navPage in @(Get-WinForgeNavigation | Where-Object { $_.Placement -eq "Footer" })) {
+    Add-GuiNavButton -Id $navPage.Id -Title $navPage.Title -Footer $true -Note $(if ([string]$navPage.Id -eq "app") { (Get-WinForgeText 'Versão {0}' "$(Get-WinForgeBuild)") } else { "" })
 }
 
 # --- Temporizadores, botões do painel de execução e encerramento -----------------------------------------------
@@ -4785,7 +7153,7 @@ $script:DeferredTimer.Add_Tick({
     $script:DeferredAction = $null
 
     if ($null -ne $action) {
-        try { & $action } catch { }
+        try { & $action } catch { Write-Verbose "Ação adiada da janela: $($_.Exception.Message)" }
     }
 })
 
@@ -4803,10 +7171,11 @@ $script:SearchTimer.Interval = [TimeSpan]::FromMilliseconds(140)
 $script:SearchTimer.Add_Tick({ Update-GuiSearch })
 
 $script:StopRequested = {
-    $answer = Show-GuiMessage -Buttons YesNo -Icon Warning -Title "Parar a ação" -Text "Parar ""$($runTitle.Text)"" agora?`n`nO que já foi feito continua feito, mas a etapa atual fica incompleta. Reparos e instalações em andamento são interrompidos no meio."
+    $answer = Show-GuiMessage -Buttons YesNo -Icon Warning -Title (Get-WinForgeText "Parar `"{0}`"?" "$($runTitle.Text)") -Text (Get-WinForgeText 'O que já foi feito continua feito, mas a etapa atual fica incompleta. Reparos e instalações em andamento são interrompidos no meio.') `
+        -YesText (Get-WinForgeText 'Parar') -NoText (Get-WinForgeText 'Continuar') -Danger
 
     if ($answer -eq "Yes" -and $script:Running -and $null -ne $script:GuiSession) {
-        Set-GuiRunStatus -Text "Interrompendo..." -DotColor $script:Theme.Warn
+        Set-GuiRunStatus -Text (Get-WinForgeText 'Interrompendo...') -DotColor $script:Theme.Warn
         Stop-WinForgeGuiCommand -Session $script:GuiSession
     }
 }
@@ -4829,29 +7198,29 @@ function Get-GuiOutputText {
 $copyButton.Add_Click({
     try {
         [System.Windows.Clipboard]::SetText((Get-GuiOutputText))
-        $copyButton.Content = "Copiado"
+        $copyButton.Content = (Get-WinForgeText 'Copiado')
     }
     catch {
-        [void](Show-GuiMessage -Icon Warning -Text "Não foi possível copiar: $($_.Exception.Message)")
+        [void](Show-GuiMessage -Icon Warning -Title (Get-WinForgeText 'Não foi possível copiar') -Text "$($_.Exception.Message)")
     }
 })
 
 $saveButton.Add_Click({
     try {
         $dialog = New-Object Microsoft.Win32.SaveFileDialog
-        $dialog.Title = "Salvar a saída"
-        $dialog.Filter = "Texto (*.txt)|*.txt|Todos os arquivos (*.*)|*.*"
+        $dialog.Title = (Get-WinForgeText 'Salvar a saída')
+        $dialog.Filter = (Get-WinForgeText 'Texto (*.txt)|*.txt|Todos os arquivos (*.*)|*.*')
         $dialog.FileName = Get-WinForgeOutputFileName -Title $runTitle.Text
         $dialog.InitialDirectory = [Environment]::GetFolderPath("MyDocuments")
 
         if ($dialog.ShowDialog($window)) {
             # UTF-8 com BOM: o Bloco de Notas do Windows 10 antigo só reconhece os acentos assim.
             [System.IO.File]::WriteAllText($dialog.FileName, (Get-GuiOutputText), (New-Object System.Text.UTF8Encoding($true)))
-            $saveButton.Content = "Salvo"
+            $saveButton.Content = (Get-WinForgeText 'Salvo')
         }
     }
     catch {
-        [void](Show-GuiMessage -Icon Warning -Text "Não foi possível salvar: $($_.Exception.Message)")
+        [void](Show-GuiMessage -Icon Warning -Title (Get-WinForgeText 'Não foi possível salvar') -Text "$($_.Exception.Message)")
     }
 })
 
@@ -4872,7 +7241,7 @@ $logButton.Add_Click({
         $opened = $false
     }
 
-    if (-not $opened) { Open-GuiShortcut -Name "LogFolder" -Title "Pasta de logs e relatórios" }
+    if (-not $opened) { Open-GuiShortcut -Name "LogFolder" -Title (Get-WinForgeText 'Pasta de logs e relatórios') }
 })
 
 $rerunButton.Add_Click({
@@ -4902,10 +7271,7 @@ function Get-GuiCardGrid {
     $width = [Math]::Max($script:CardMinWidth, [Math]::Min($script:CardMaxWidth, $width))
     $content = $columns * ($width + $script:CardGap)
 
-    # Meia linha para os atalhos do Início; com uma coluna só, a largura de um cartão.
-    $wide = $(if ($columns -ge 2) { [Math]::Floor($content / 2) - $script:CardGap } else { $width })
-
-    return [PSCustomObject]@{ Columns = [int]$columns; Width = [double]$width; Wide = [double]$wide; Content = [double]$content }
+    return [PSCustomObject]@{ Columns = [int]$columns; Width = [double]$width; Content = [double]$content }
 }
 
 function Update-GuiContentWidth {
@@ -4915,11 +7281,9 @@ function Update-GuiContentWidth {
 
         $grid = Get-GuiCardGrid -Available $available
 
-        if ($grid.Width -ne $script:CardWidth -or $grid.Wide -ne $script:WideCardWidth) {
+        if ($grid.Width -ne $script:CardWidth) {
             $script:CardWidth = $grid.Width
-            $script:WideCardWidth = $grid.Wide
-            $window.Resources["CardWidth"] = [double]$grid.Width
-            $window.Resources["WideCardWidth"] = [double]$grid.Wide
+            Set-GuiResource -Dictionary $window.Resources -Key "CardWidth" -Value ([double]$grid.Width)
         }
 
         $contentPanel.Width = $grid.Content
@@ -5148,7 +7512,8 @@ $window.Add_Activated({
 
     if (-not $script:Running) { Set-GuiTaskbarProgress -State None }
 
-    # Quem troca o tema do Windows nas Configurações volta para cá: no modo automático, a janela acompanha.
+    # Quem troca o tema, o contraste alto ou o tamanho do texto do Windows nas Configurações volta para cá: a janela
+    # acompanha (o tema, só no modo automático).
     try { [void](Update-GuiTheme) } catch { Write-Verbose "Tema: $($_.Exception.Message)" }
 })
 
@@ -5226,7 +7591,9 @@ $window.Add_Closing({
     param ($sender, $eventArgs)
 
     if ($script:Running -and -not $script:ForceClose) {
-        $answer = Show-GuiMessage -Buttons YesNo -Icon Warning -Title "Fechar o WinForge" -Text """$($runTitle.Text)"" ainda está em andamento.`n`nSe você fechar o WinForge agora, a ação é interrompida: o que já foi feito continua feito, mas a etapa atual fica incompleta.`n`nFechar mesmo assim?"
+        $answer = Show-GuiMessage -Buttons YesNo -Icon Warning -Title (Get-WinForgeText "`"{0}`" ainda está em andamento" "$($runTitle.Text)") `
+            -Text (Get-WinForgeText 'Se você fechar o WinForge agora, a ação é interrompida: o que já foi feito continua feito, mas a etapa atual fica incompleta.') `
+            -YesText (Get-WinForgeText 'Fechar mesmo assim') -NoText (Get-WinForgeText 'Continuar') -Danger
 
         if ($answer -ne "Yes") {
             $eventArgs.Cancel = $true
@@ -5239,6 +7606,7 @@ $window.Add_Closing({
     Save-GuiWindowBounds
     $script:Timer.Stop()
     $script:DeferredTimer.Stop()
+    $script:PromptFitTimer.Stop()
     $script:SearchTimer.Stop()
     $script:WarmupTimer.Stop()
     $script:SearchWarmTimer.Stop()
@@ -5246,6 +7614,8 @@ $window.Add_Closing({
     $script:RequestTimer.Stop()
     $script:HomeReaderTimer.Stop()
     $script:HomeStampTimer.Stop()
+    $script:UpdateExitTimer.Stop()
+    $script:UpdateResultTimer.Stop()
     Set-GuiTaskbarProgress -State None
 
     foreach ($reader in @($script:HomeReader, $script:WarmupReader)) {
@@ -5260,7 +7630,8 @@ $window.Add_Closing({
 $window.Dispatcher.Add_UnhandledException({
     param ($sender, $eventArgs)
     $eventArgs.Handled = $true
-    [void](Show-GuiMessage -Icon Error -Text "Algo deu errado na janela do WinForge.`n`nSe uma ação estava rodando, confira o resultado dela antes de continuar. Se o problema se repetir, feche e abra o WinForge; o log fica em Sobre o WinForge > Pasta de logs e relatórios.`n`nDetalhe técnico: $($eventArgs.Exception.Message)")
+    # A caixa do Windows (-System): a mensagem da própria janela pode ter sido a falha.
+    [void](Show-GuiMessage -System -Icon Error -Title (Get-WinForgeText 'Algo deu errado na janela do WinForge') -Text (Get-WinForgeText "Se uma ação estava rodando, confira o resultado dela antes de continuar. Se o problema se repetir, feche e abra o WinForge; o log fica em Sobre o WinForge > Pasta de logs e relatórios.`n`nDetalhe técnico: {0}" "$($eventArgs.Exception.Message)"))
 })
 
 # O executor das ações (e a compilação do host) é preparado logo depois de a janela aparecer, e não no primeiro
@@ -5335,6 +7706,23 @@ $script:SearchWarmTimer.Add_Tick({
     }
 })
 
+# A atualização com um clique (Complete-GuiRun): fecha a janela sem perguntar, para o instalador trocar os arquivos.
+$script:UpdateExitTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:UpdateExitTimer.Interval = [TimeSpan]::FromMilliseconds(1500)
+$script:UpdateExitTimer.Add_Tick({
+    $script:UpdateExitTimer.Stop()
+    $script:ForceClose = $true
+    $window.Close()
+})
+
+# Depois de uma atualização, a mensagem de como ela terminou aparece com a janela já desenhada.
+$script:UpdateResultTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:UpdateResultTimer.Interval = [TimeSpan]::FromMilliseconds(400)
+$script:UpdateResultTimer.Add_Tick({
+    $script:UpdateResultTimer.Stop()
+    Show-GuiUpdateResult
+})
+
 # Aberta pelo monitor na bandeja com uma ação (-Action): ela roda logo depois que o executor fica pronto.
 $script:StartActionTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:StartActionTimer.Interval = [TimeSpan]::FromMilliseconds(900)
@@ -5347,27 +7735,81 @@ $script:StartActionTimer.Add_Tick({
     if ($null -ne $item) { Invoke-GuiNavItem -Item $item }
 })
 
+function Test-GuiRequestFromOtherFolder {
+    # O pedido veio de uma abertura de outra pasta do WinForge (outra identidade, Get-WinForgeAppId, que compara as pastas
+    # do mesmo jeito em qualquer caminho)? Um pedido sem ela (de uma versão anterior à R40) conta como desta pasta.
+    param ([Parameter(Mandatory)]$Request)
+
+    $app = [string]$Request.App
+    if (-not $app) { return $false }
+
+    try { return ($app -ne [string](Get-WinForgeAppId)) } catch { return $false }
+}
+
+function Show-GuiOtherFolderMessage {
+    <#
+    Outra pasta do WinForge foi aberta (outra versão, extraída de outro zip) com esta janela aberta. Só uma janela do
+    WinForge abre por conta, e a abertura nova só traria esta para a frente: a pessoa veria esta versão achando que é a
+    outra. A mensagem diz de que pasta é cada uma e oferece fechar esta, para abrir a outra de novo. O WinForge não abre
+    a outra sozinho: o pedido vem de um arquivo que qualquer programa da conta grava, e esta janela roda como Administrador.
+    #>
+    param ([Parameter(Mandatory)]$Request)
+
+    $here = ""
+    try { $here = [string](Get-WinForgeAppRoot) } catch { $here = "" }
+    $there = $(if ([string]$Request.Root) { [string]$Request.Root } else { (Get-WinForgeText 'outra pasta') })
+
+    $answer = Show-GuiMessage -Buttons YesNo -Icon Warning -Default No -Title (Get-WinForgeText 'Esta janela é de outra pasta do WinForge') `
+        -Text (Get-WinForgeText "Você abriu o WinForge de:`n{0}`n`nEsta janela é de:`n{1}`n`nPara usar o que você abriu, feche esta janela e abra o WinForge de novo." "$there" "$here") `
+        -YesText (Get-WinForgeText 'Fechar esta janela') -NoText (Get-WinForgeText 'Continuar aqui')
+
+    if ($answer -eq "Yes") { $window.Close() }
+}
+
+function Receive-GuiWindowRequest {
+    <#
+    Um pedido de outra abertura do WinForge (Enter-WinForgeWindowLock), lido a cada meio segundo: a janela vem para a
+    frente e, se o pedido trouxe uma ação do monitor na bandeja, ela roda. Um pedido de outra pasta do WinForge (outra
+    versão) não roda nada: a janela diz de que pasta é cada uma (Show-GuiOtherFolderMessage).
+    #>
+    $request = Receive-WinForgeWindowRequest
+    if ($null -eq $request) { return }
+
+    if ($window.WindowState -eq "Minimized") { $window.WindowState = "Normal" }
+    [void]$window.Activate()
+    $window.Topmost = $true
+    $window.Topmost = $false
+    if (-not $window.IsActive) { Set-GuiTaskbarFlash -On $true }
+
+    if (Test-GuiRequestFromOtherFolder -Request $request) {
+        # Sem outro pedido no meio da mensagem: o relógio volta quando ela fecha (e não volta se a janela fechou).
+        $script:RequestTimer.Stop()
+
+        try {
+            Show-GuiOtherFolderMessage -Request $request
+        }
+        finally {
+            if ($window.IsVisible) { $script:RequestTimer.Start() }
+        }
+
+        return
+    }
+
+    # Só as ações que o monitor na bandeja oferece: o pedido vem de um arquivo que qualquer programa desta conta grava
+    # sem elevação, e a janela roda como Administrador.
+    if ($request.Action -and $request.Action -in @(Get-WinForgeAgentActionIds)) {
+        $item = Get-WinForgeNavItem -Id $request.Action
+        if ($null -ne $item) { Invoke-GuiNavItem -Item $item }
+    }
+}
+
 # Pedidos de outra abertura do WinForge (Enter-WinForgeWindowLock): a janela vem para a frente e, se o pedido trouxe
-# uma ação, ela roda (ou, com outra ação em andamento, a pessoa é avisada).
+# uma ação, ela roda (ou, com outra ação em andamento, a pessoa é avisada). De outra pasta, a janela diz isso.
 $script:RequestTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:RequestTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $script:RequestTimer.Add_Tick({
     try {
-        $request = Receive-WinForgeWindowRequest
-        if ($null -eq $request) { return }
-
-        if ($window.WindowState -eq "Minimized") { $window.WindowState = "Normal" }
-        [void]$window.Activate()
-        $window.Topmost = $true
-        $window.Topmost = $false
-        if (-not $window.IsActive) { Set-GuiTaskbarFlash -On $true }
-
-        # Só as ações que o monitor na bandeja oferece: o pedido vem de um arquivo que qualquer programa desta conta grava
-        # sem elevação, e a janela roda como Administrador.
-        if ($request.Action -and $request.Action -in @(Get-WinForgeAgentActionIds)) {
-            $item = Get-WinForgeNavItem -Id $request.Action
-            if ($null -ne $item) { Invoke-GuiNavItem -Item $item }
-        }
+        Receive-GuiWindowRequest
     }
     catch {
         Write-Verbose "Pedido de outra abertura: $($_.Exception.Message)"
@@ -5379,15 +7821,19 @@ $window.Add_ContentRendered({
     $script:SearchWarmTimer.Start()
     $script:RequestTimer.Start()
     $script:HomeStampTimer.Start()
+    $script:UpdateResultTimer.Start()
 
     if ($script:StartAction) { $script:StartActionTimer.Start() }
+
+    # Quanto a janela levou para aparecer desde o começo deste processo (logs\abertura.log).
+    try { Add-WinForgeOpenTime -Kind "Gui" -Seconds ((Get-Date) - (Get-Process -Id $PID).StartTime).TotalSeconds } catch { Write-Verbose "Tempo de abertura: $($_.Exception.Message)" }
 })
 
 if ($isAdmin) {
-    $window.FindName("AdminText").Text = "Administrador"
+    $window.FindName("AdminText").Text = (Get-WinForgeText 'Administrador')
 }
 else {
-    $window.FindName("AdminText").Text = "Sem Administrador · o WinForge pede de novo quando uma ação precisar"
+    $window.FindName("AdminText").Text = (Get-WinForgeText 'Sem Administrador · o WinForge pede de novo quando uma ação precisar')
 }
 
 Restore-GuiWindowBounds
