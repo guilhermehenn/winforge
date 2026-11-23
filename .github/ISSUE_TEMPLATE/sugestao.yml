@@ -1,0 +1,16 @@
+name: Sugestão / Feature request
+description: Uma ideia para o WinForge. / An idea for WinForge.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema a sugestão resolve? / What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: ideia
+    attributes:
+      label: Como você imagina? / How do you picture it?
+    validations:
+      required: true
