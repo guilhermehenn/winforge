@@ -73,7 +73,7 @@ function Undo-WinForgeChange {
     # Recursos do Windows e o DNS dos adaptadores só voltam com Administrador: sem ele, o motivo é dito com as palavras do
     # WinForge (e não com o texto cru do Windows), e a mudança continua na lista para depois.
     if ($kind -in @("feature", "dns") -and -not (Test-WinForgeAdministrator)) {
-        return (New-WinForgeResult -Kind Failed -Detail "pede Administrador: abra o WinForge como Administrador e desfaça de novo")
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pede Administrador: abra o WinForge como Administrador e desfaça de novo'))
     }
 
     switch ($kind) {
@@ -82,7 +82,7 @@ function Undo-WinForgeChange {
             $values = [string](Get-WinForgeJsonValue -Object $undo -Name "Values" -Default "")
 
             if ([string]::IsNullOrWhiteSpace($file) -and [string]::IsNullOrWhiteSpace($values)) {
-                return (New-WinForgeResult -Kind Failed -Detail "o backup do registro não foi encontrado")
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o backup do registro não foi encontrado'))
             }
 
             foreach ($backup in @(@{ Path = $file; Extension = ".reg" }, @{ Path = $values; Extension = ".json" })) {
@@ -91,12 +91,12 @@ function Undo-WinForgeChange {
 
                 # Um caminho fora da pasta de backups do WinForge recusa o desfazer inteiro: o diário pode ter sido mexido.
                 if (-not (Test-WinForgeRegistryBackupFile -Path $backup.Path -Extension $backup.Extension)) {
-                    return (New-WinForgeResult -Kind Failed -Detail "o backup do registro não está na pasta de backups do WinForge e não foi usado")
+                    return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o backup do registro não está na pasta de backups do WinForge e não foi usado'))
                 }
             }
 
             if ($file -and (Test-Path -LiteralPath $file -PathType Leaf) -and -not (Test-WinForgeRegistryBackupKeys -Path $file)) {
-                return (New-WinForgeResult -Kind Failed -Detail "o backup do registro mexe em chaves que a limpeza não toca e não foi usado")
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o backup do registro mexe em chaves que a limpeza não toca e não foi usado'))
             }
 
             # As duas partes rodam sempre, cada uma por si: um arquivo que sumiu ou estragou (um corte de energia no meio
@@ -110,7 +110,7 @@ function Undo-WinForgeChange {
 
             if ($values) {
                 if (-not (Test-Path -LiteralPath $values -PathType Leaf)) {
-                    $gone += "os valores"
+                    $gone += "values"
                 }
                 else {
                     try {
@@ -120,24 +120,24 @@ function Undo-WinForgeChange {
 
                         if (@($restore.Failed).Count -gt 0) {
                             $total = @($restore.Failed).Count + [int]$restore.Restored + $kept
-                            $problems += "$(@($restore.Failed).Count) de $total valores não voltaram ($(Join-WinForgeList -Items @($restore.Failed)))"
+                            $problems += (Get-WinForgeText '{0} de {1} valores não voltaram ({2})' "$(@($restore.Failed).Count)" "$total" "$(Join-WinForgeList -Items @($restore.Failed))")
                         }
                     }
                     catch {
-                        $problems += "o backup dos valores não pôde ser lido ($(([string]$_.Exception.Message).TrimEnd('.')))"
+                        $problems += (Get-WinForgeText 'o backup dos valores não pôde ser lido ({0})' "$(([string]$_.Exception.Message).TrimEnd('.'))")
                     }
                 }
             }
 
             if ($file) {
                 if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-                    $gone += "as chaves"
+                    $gone += "keys"
                 }
                 else {
                     $run = Invoke-WinForgeCapture -FilePath "reg" -Arguments @("import", $file)
 
                     if ($run.ExitCode -ne 0) {
-                        $problems += $(if ($admin) { "o reg import terminou com o código $($run.ExitCode)" } else { "as chaves do backup não voltaram" })
+                        $problems += $(if ($admin) { (Get-WinForgeText 'o reg import terminou com o código {0}' "$($run.ExitCode)") } else { (Get-WinForgeText 'as chaves do backup não voltaram') })
                     }
                     else {
                         $done++
@@ -147,17 +147,22 @@ function Undo-WinForgeChange {
 
             # Um backup que não existe mais não volta tentando de novo: sem nenhuma parte restaurada, é falha; com a outra
             # parte de volta, a mudança é dada como desfeita, com o aviso do que não tinha como voltar.
-            $goneText = $(if ($gone.Count -gt 0) { "o backup d$(if ($gone.Count -eq 2) { 'o registro' } elseif ($gone[0] -eq 'os valores') { 'os valores' } else { 'as chaves' }) não existe mais" } else { "" })
+            $goneText = $(
+                if ($gone.Count -eq 0) { "" }
+                elseif ($gone.Count -eq 2) { (Get-WinForgeText 'o backup do registro não existe mais') }
+                elseif ($gone[0] -eq "values") { (Get-WinForgeText 'o backup dos valores não existe mais') }
+                else { (Get-WinForgeText 'o backup das chaves não existe mais') }
+            )
 
             if ($problems.Count -gt 0 -or $done -eq 0) {
                 $all = @($problems) + @($(if ($goneText) { $goneText }))
-                $detail = (Join-WinForgeList -Items $all) + $(if ($problems.Count -gt 0 -and -not $admin) { "; abra o WinForge como Administrador e tente de novo" } else { "" })
+                $detail = (Join-WinForgeList -Items $all) + $(if ($problems.Count -gt 0 -and -not $admin) { (Get-WinForgeText '; abra o WinForge como Administrador e tente de novo') } else { "" })
                 return (New-WinForgeResult -Kind $(if ($done -gt 0) { "Warning" } else { "Failed" }) -Detail $detail)
             }
 
             # Um valor que já existe de novo (o programa voltou a gravá-lo) fica como está, com o dado de hoje.
-            $detail = $(if ($kept -gt 0) { "entradas do registro devolvidas; $(Format-WinForgeCount -Count $kept -One 'valor já existia de novo e ficou' -Many 'valores já existiam de novo e ficaram') como está" } else { "entradas do registro devolvidas" })
-            if ($goneText) { $detail += "; $goneText, então $($gone[0]) não têm como voltar" }
+            $detail = $(if ($kept -gt 0) { (Get-WinForgeText 'entradas do registro devolvidas; {0} como está' "$(Format-WinForgeCount -Count $kept -One (Get-WinForgeText 'valor já existia de novo e ficou') -Many (Get-WinForgeText 'valores já existiam de novo e ficaram'))") } else { (Get-WinForgeText 'entradas do registro devolvidas') })
+            if ($goneText) { $detail += $(if ($gone[0] -eq "values") { (Get-WinForgeText '; {0}, então os valores não têm como voltar' "$goneText") } else { (Get-WinForgeText '; {0}, então as chaves não têm como voltar' "$goneText") }) }
 
             return (New-WinForgeResult -Kind Ok -Detail $detail)
         }
@@ -166,15 +171,21 @@ function Undo-WinForgeChange {
             $reason = ""
             $items = @(Get-WinForgeJsonValue -Object $undo -Name "Items" -Default @())
             $tasks = $null
+            $tasksProblem = ""
 
             foreach ($item in $items) {
                 try {
-                    if ($null -eq $tasks -and [string](Get-WinForgeJsonValue -Object $item -Name "Source" -Default "") -eq "Tarefa agendada") {
+                    $isTask = ([string](Get-WinForgeJsonValue -Object $item -Name "Source" -Default "") -eq "Tarefa agendada")
+
+                    if ($null -eq $tasks -and $isTask) {
                         $tasks = @(Get-WinForgeStartupTasks)
+                        $tasksProblem = Get-WinForgeStartupTasksProblem
                     }
 
                     if (-not (Test-WinForgeStartupUndoItem -Item $item -Tasks $tasks)) {
-                        throw "item de inicialização desconhecido"
+                        # Sem a leitura do Agendador, a tarefa não é "desconhecida": o motivo é o Agendador.
+                        if ($isTask -and $tasksProblem) { throw (Get-WinForgeText 'as tarefas agendadas não puderam ser lidas: {0}' "$tasksProblem") }
+                        throw (Get-WinForgeText 'item de inicialização desconhecido')
                     }
 
                     Set-WinForgeStartupItemEnabled -Item $item -Enabled ([bool](Get-WinForgeJsonValue -Object $item -Name "Enabled" -Default $true))
@@ -189,17 +200,17 @@ function Undo-WinForgeChange {
             }
 
             if ($failed -gt 0) {
-                $what = $(if ($items.Count -eq 1) { "o item não voltou ao estado anterior" } elseif ($failed -eq 1) { "1 de $($items.Count) itens não voltou ao estado anterior" } else { "$failed de $($items.Count) itens não voltaram ao estado anterior" })
+                $what = $(if ($items.Count -eq 1) { (Get-WinForgeText 'o item não voltou ao estado anterior') } elseif ($failed -eq 1) { (Get-WinForgeText '1 de {0} itens não voltou ao estado anterior' "$($items.Count)") } else { (Get-WinForgeText '{0} de {1} itens não voltaram ao estado anterior' "$failed" "$($items.Count)") })
                 return (New-WinForgeResult -Kind $(if ($failed -lt $items.Count) { "Warning" } else { "Failed" }) -Detail $(if ($reason) { "${what}: $reason" } else { $what }))
             }
 
-            return (New-WinForgeResult -Kind Ok -Detail "inicialização como estava antes")
+            return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'inicialização como estava antes'))
         }
         "tweak" {
             $tweak = Get-WinForgeTweakById -Id ([string](Get-WinForgeJsonValue -Object $undo -Name "Id" -Default ""))
 
             if ($null -eq $tweak) {
-                return (New-WinForgeResult -Kind Failed -Detail "ajuste desconhecido")
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'ajuste desconhecido'))
             }
 
             # Com os valores originais guardados, o desfazer sempre os devolve: "não aplicado" pode ser parcial (uma atualização
@@ -208,11 +219,11 @@ function Undo-WinForgeChange {
             $saved = ($backup.Status -ne "Unreadable" -and $backup.Backup.Contains([string]$tweak.Id))
 
             if (-not $saved -and (Get-WinForgeTweakStatus -Tweak $tweak) -ne "Aplicado") {
-                return (New-WinForgeResult -Kind Ok -Detail "o ajuste já estava desfeito")
+                return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'o ajuste já estava desfeito'))
             }
 
             try {
-                $original = [bool](Invoke-WinForgeTweakRevert -Tweak $tweak)
+                $report = Invoke-WinForgeTweakRevert -Tweak $tweak -Detailed
             }
             catch {
                 # Uma configuração que o Windows protege (UCPD): a mesma explicação de Ajustes do Windows, com onde desfazer.
@@ -220,33 +231,41 @@ function Undo-WinForgeChange {
 
                 if ($null -ne $help -and (Test-WinForgeAccessDenied -Exception $_.Exception)) {
                     Write-WinForgeStatus -Type Warning -Message (Get-WinForgeTweakProtectedText -Help $help)
-                    return (New-WinForgeResult -Kind Failed -Detail "o Windows protege esta configuração e não deixa o WinForge desfazê-la")
+                    return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Windows protege esta configuração e não deixa o WinForge desfazê-la'))
                 }
 
                 throw
             }
 
-            return (New-WinForgeResult -Kind Ok -Detail $(if ($original) { "ajuste desfeito" } else { "ajuste desfeito com os padrões do Windows (os valores de antes não estavam guardados)" }))
+            # Como em Ajustes do Windows: o que só aparece com o Explorador reiniciado pede o reinício dele (a tela do
+            # histórico oferece, uma vez, no fim), e o que só vale depois de reiniciar o PC põe o pedido na faixa.
+            $changed = ([int]$report.Restored -gt 0)
+            $data = @{
+                RestartExplorer = ([bool]$tweak.RestartExplorer -and $changed)
+                RebootRequired  = ([bool](Get-WinForgeTweakField -Entry $tweak -Name "NeedsReboot" -Default $false) -and $changed)
+            }
+
+            return (New-WinForgeResult -Kind Ok -Detail $(if ($report.HadBackup) { (Get-WinForgeText 'ajuste desfeito') } else { (Get-WinForgeText 'ajuste desfeito com os padrões do Windows (os valores de antes não estavam guardados)') }) -Data $data)
         }
         "dns" {
             $read = Read-WinForgeDnsBackup -Status
 
             # Um backup que existe, mas não abriu agora (em uso, sem permissão), não é "nada a desfazer": fica para depois.
             if ($read.Status -eq "Unreadable") {
-                return (New-WinForgeResult -Kind Failed -Detail "o backup do DNS de antes não pôde ser lido agora; tente de novo em instantes")
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o backup do DNS de antes não pôde ser lido agora; tente de novo em instantes'))
             }
 
             $backup = @($read.Entries)
 
             if ($backup.Count -eq 0) {
-                return (New-WinForgeResult -Kind Ok -Detail "o DNS já estava como antes")
+                return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'o DNS já estava como antes'))
             }
 
             $undo = Restore-WinForgeDnsFromBackup -Backup $backup -Adapters @(Get-WinForgeDnsAdapters)
             $unknown = @(Get-WinForgeJsonValue -Object $undo -Name "Unknown" -Default @())
 
             if ($undo.Failed.Count -gt 0 -or $undo.Missing.Count -gt 0 -or $unknown.Count -gt 0) {
-                return (New-WinForgeResult -Kind $(if ($undo.Restored -gt 0) { "Warning" } else { "Failed" }) -Detail "nem todos os adaptadores voltaram ao DNS de antes; use Rede > Desfazer a troca de DNS")
+                return (New-WinForgeResult -Kind $(if ($undo.Restored -gt 0) { "Warning" } else { "Failed" }) -Detail (Get-WinForgeText 'nem todos os adaptadores voltaram ao DNS de antes; use Rede > Desfazer a troca de DNS'))
             }
 
             Remove-WinForgeDnsBackup
@@ -256,28 +275,81 @@ function Undo-WinForgeChange {
             # em Rede > Desfazer a troca de DNS), e nenhuma fica na lista prometendo voltar a um DNS intermediário.
             Set-WinForgeChangesUndone -Kind "dns" -Key "Kind" -Value "dns"
 
-            return (New-WinForgeResult -Kind Ok -Detail "DNS de antes da primeira troca restaurado")
+            return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'DNS de antes da primeira troca restaurado'))
         }
         "feature" {
             $name = [string](Get-WinForgeJsonValue -Object $undo -Name "Name" -Default "")
             $action = [string](Get-WinForgeJsonValue -Object $undo -Name "Action" -Default "")
 
             if ($action -notin @("Enable", "Disable")) {
-                return (New-WinForgeResult -Kind Failed -Detail "mudança de recurso desconhecida")
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'mudança de recurso desconhecida'))
             }
 
             # Só os recursos que a tela Recursos do Windows oferece: o nome vem do diário e não pode ligar qualquer recurso.
             if (@(Get-WinForgeFeatureCatalog | Where-Object { [string]$_.Name -eq $name }).Count -eq 0) {
-                return (New-WinForgeResult -Kind Failed -Detail "recurso desconhecido")
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'recurso desconhecido'))
             }
 
             $applied = Set-WinForgeOptionalFeature -Name $name -Action $action
 
-            return (New-WinForgeResult -Kind Ok -Detail $(if ($action -eq "Enable") { "recurso ligado de novo" } else { "recurso desligado de novo" }) -Data @{ RebootRequired = [bool]$applied.RestartNeeded })
+            return (New-WinForgeResult -Kind Ok -Detail $(if ($action -eq "Enable") { (Get-WinForgeText 'recurso ligado de novo') } else { (Get-WinForgeText 'recurso desligado de novo') }) -Data @{ RebootRequired = [bool]$applied.RestartNeeded })
+        }
+        "keyboard-hotkeys" {
+            # As teclas do idioma (Ajustes do Windows): os valores de antes voltam, se a escolha de agora ainda é a que o
+            # WinForge gravou.
+            return (Undo-WinForgeChoiceChange -Kind $kind -Undo $undo)
+        }
+        "winget-pin" {
+            # Os marcadores do winget ficam no perfil da conta: elevado com outra conta, o desfazer mexeria nos dela.
+            if (-not (Test-WinForgeWinget)) {
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeWingetMissingDetail))
+            }
+
+            if (Test-WinForgeUserContextMismatch) {
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o WinForge está elevado com outra conta; desfaça com a conta de quem usa o PC'))
+            }
+
+            $items = @(Get-WinForgeJsonValue -Object $undo -Name "Items" -Default @() | Where-Object { $null -ne $_ })
+
+            if ($items.Count -eq 0) {
+                return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'esta mudança não tem como ser desfeita'))
+            }
+
+            $failed = 0
+            $reason = ""
+
+            foreach ($item in $items) {
+                # O que vem do diário é conferido antes de ir para o winget: um ID que não é de pacote, um tipo de
+                # marcador desconhecido ou uma faixa de versões estranha não viram uma linha de comando.
+                $id = [string](Get-WinForgeJsonValue -Object $item -Name "Id" -Default "")
+                $pin = [string](Get-WinForgeJsonValue -Object $item -Name "Pin" -Default "")
+                $source = [string](Get-WinForgeJsonValue -Object $item -Name "Source" -Default "")
+                $gated = [string](Get-WinForgeJsonValue -Object $item -Name "Gated" -Default "")
+
+                if (-not (Test-WinForgeWingetPinId -Id $id) -or $pin -notin @("None", "Pinning", "Blocking", "Gating")) {
+                    $failed++
+                    if (-not $reason) { $reason = (Get-WinForgeText 'programa desconhecido') }
+                    continue
+                }
+
+                $run = $(if ($pin -eq "None") { Invoke-WinForgeWingetPin -Operation Remove -Id $id } else { Invoke-WinForgeWingetPin -Operation Add -Id $id -Source $source -Pin $pin -Gated $gated })
+
+                if ($run.Kind -ne "Ok") {
+                    $failed++
+                    if (-not $reason) { $reason = ([string]$run.Detail).TrimEnd('.') }
+                }
+            }
+
+            if ($failed -gt 0) {
+                $what = $(if ($items.Count -eq 1) { (Get-WinForgeText 'o programa não voltou ao estado anterior') } elseif ($failed -eq 1) { (Get-WinForgeText '1 de {0} programas não voltou ao estado anterior' "$($items.Count)") } else { (Get-WinForgeText '{0} de {1} programas não voltaram ao estado anterior' "$failed" "$($items.Count)") })
+                return (New-WinForgeResult -Kind $(if ($failed -lt $items.Count) { "Warning" } else { "Failed" }) -Detail $(if ($reason) { "${what}: $reason" } else { $what }))
+            }
+
+            return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'programas marcados como estavam antes'))
         }
     }
 
-    return (New-WinForgeResult -Kind Failed -Detail "esta mudança não tem como ser desfeita")
+    return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'esta mudança não tem como ser desfeita'))
 }
 
 
@@ -286,7 +358,7 @@ function Undo-WinForgeChange {
 # ---------------------------------------------------------------------------
 
 function Show-WinForgeChangeHistory {
-    $title = "Histórico de mudanças"
+    $title = (Get-WinForgeText 'Histórico de mudanças')
 
     Enter-WinForgeAction -Title $title
 
@@ -299,15 +371,15 @@ function Show-WinForgeChangeHistory {
         # Um diário que existe, mas não abriu agora (preso por outro programa, sem permissão), não é "nada mudou": a
         # pessoa perderia de vista o que tem desfazer.
         if ($read.Status -eq "Unreadable") {
-            Write-WinForgeStatus -Type Error -Message "Não foi possível ler o Histórico de mudanças agora (arquivo em uso ou sem permissão): tente de novo em instantes."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "não foi possível ler o histórico agora; tente de novo em instantes" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler o Histórico de mudanças agora (arquivo em uso ou sem permissão): tente de novo em instantes.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível ler o histórico agora; tente de novo em instantes') -Title $title)
             return
         }
 
         # Só olhar o histórico não tem veredito: a tela termina sem a faixa de resultado (sem "Tudo certo" nem "Nada a
         # fazer"); a faixa fica para o que foi desfeito.
         if ($changes.Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "O WinForge ainda não mudou nada neste PC (ou o histórico foi apagado)."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O WinForge ainda não mudou nada neste PC (ou o histórico foi apagado).')
             Exit-WinForgeAction
             return
         }
@@ -320,15 +392,15 @@ function Show-WinForgeChangeHistory {
         $shown = @($others | Select-Object -First 30)
 
         if ($shown.Count -gt 0) {
-            Write-WinForgeSection -Title $(if ($undoable.Count -gt 0) { "Mudanças sem desfazer por aqui" } else { "Últimas mudanças" })
+            Write-WinForgeSection -Title $(if ($undoable.Count -gt 0) { (Get-WinForgeText 'Mudanças sem desfazer por aqui') } else { (Get-WinForgeText 'Últimas mudanças') })
 
             foreach ($change in $shown) {
-                $suffix = $(if ($change.Undone) { " (desfeita)" } else { "" })
-                Write-WinForgeKeyValue -Label (Format-WinForgeDateTime -When $change.At -Pattern "dd/MM HH:mm") -Value "$($change.Action): $($change.Text)$suffix" -LabelWidth 12
+                $suffix = $(if ($change.Undone) { (Get-WinForgeText ' (desfeita)') } else { "" })
+                Write-WinForgeKeyValue -Label (Format-WinForgeDateTime -When $change.At -Pattern 'dd/MM HH:mm') -Value "$(Get-WinForgeText ([string]$change.Action)): $($change.Text)$suffix" -LabelWidth 12
             }
 
             if ($others.Count -gt $shown.Count) {
-                Write-WinForgeStatus -Type Info -Message "E mais $(Format-WinForgeCount -Count ($others.Count - $shown.Count) -One 'mudança mais antiga' -Many 'mudanças mais antigas')."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'E mais {0}.' "$(Format-WinForgeCount -Count ($others.Count - $shown.Count) -One (Get-WinForgeText 'mudança mais antiga') -Many (Get-WinForgeText 'mudanças mais antigas'))")
             }
 
             Write-Host ""
@@ -336,24 +408,24 @@ function Show-WinForgeChangeHistory {
 
         if ($undoable.Count -eq 0) {
             # Limpezas e desinstalações não têm volta.
-            Write-WinForgeStatus -Type Info -Message "Nenhuma das mudanças anotadas pode ser desfeita por aqui; os ajustes saem em Ajustes do Windows > Desfazer ajustes do WinForge."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhuma das mudanças anotadas pode ser desfeita por aqui; os ajustes saem em Ajustes do Windows > Desfazer ajustes do WinForge.')
             Exit-WinForgeAction
             return
         }
 
         $options = @(
             foreach ($change in $undoable) {
-                @{ Key = $change.Id; Label = "$($change.Action): $($change.Text)"; Description = (Format-WinForgeDateTime -When $change.At); Selected = $false }
+                @{ Key = $change.Id; Label = "$(Get-WinForgeText ([string]$change.Action)): $($change.Text)"; Description = (Format-WinForgeDateTime -When $change.At); Selected = $false }
             }
         )
 
         # Direto na lista: desfazer não apaga nada (volta ao que era), então marcar e confirmar basta, sem um Sim/Não a
         # mais. Cancelar (ou não marcar nada) é só ter olhado: a tela termina sem faixa de resultado.
         # Sem "marcar todos": desfazer tudo de uma vez, sem outra pergunta, inclui recursos do Windows e programas.
-        $picked = Read-WinForgeMultiSelect -Message "O que desfazer?" -Options $options -NoSelectAll -ConfirmLabel "Desfazer"
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'O que desfazer?') -Options $options -NoSelectAll -ConfirmLabel (Get-WinForgeText 'Desfazer')
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Nada foi desfeito."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada foi desfeito.')
             Exit-WinForgeAction
             return
         }
@@ -364,6 +436,10 @@ function Show-WinForgeChangeHistory {
         $reboot = $false
 
         foreach ($change in $chosen) {
+            # Um desfazer anterior desta mesma lista pode já ter coberto esta mudança: o DNS volta ao de antes da primeira
+            # troca, e todas as trocas saem da lista juntas. Ela não é desfeita de novo, nem contada, nem anotada outra vez.
+            if (@(Get-WinForgeChanges | Where-Object { $null -ne $_ -and [string]$_.Id -eq [string]$change.Id -and $_.Undone }).Count -gt 0) { continue }
+
             try {
                 $result = Undo-WinForgeChange -Change $change
             }
@@ -371,7 +447,8 @@ function Show-WinForgeChangeHistory {
                 $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.')
             }
 
-            $result.Etapa = "$($change.Action) de $(Format-WinForgeDateTime -When $change.At -Pattern 'dd/MM HH:mm')"
+            # O nome da ação foi gravado no idioma da época: em português, a tabela de agora o traduz.
+            $result.Etapa = (Get-WinForgeContextText 'mudança' '{0} de {1}' "$(Get-WinForgeText ([string]$change.Action))" "$(Format-WinForgeDateTime -When $change.At -Pattern 'dd/MM HH:mm')")
 
             if ($result.Kind -eq "Failed") {
                 Write-WinForgeStatus -Type Error -Message "$($result.Etapa): $($result.Detail)."
@@ -379,11 +456,11 @@ function Show-WinForgeChangeHistory {
             elseif ($result.Kind -eq "Warning") {
                 # Deu certo só em parte (um item da inicialização, um adaptador): a mudança continua na lista para tentar
                 # de novo, o que é seguro (o que já voltou fica como está).
-                Write-WinForgeStatus -Type Warning -Message "$($result.Etapa): $($result.Detail); a mudança continua na lista para tentar de novo."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: {1}; a mudança continua na lista para tentar de novo.' "$($result.Etapa)" "$($result.Detail)")
             }
             else {
                 Set-WinForgeChangeUndone -Id $change.Id
-                [void](Add-WinForgeChange -Action "Desfeito" -Text "$($change.Action): $($change.Text)")
+                [void](Add-WinForgeChange -Action (Get-WinForgeText 'Desfeito') -Text "$($change.Action): $($change.Text)")
                 Write-WinForgeStatus -Type Success -Message "$($result.Etapa): $($result.Detail)."
             }
 
@@ -398,20 +475,34 @@ function Show-WinForgeChangeHistory {
         $data = @{ RebootRequired = $reboot }
 
         if ($failed.Count -eq 0 -and $partial.Count -eq 0) {
-            $final = New-WinForgeResult -Kind Ok -Detail (Format-WinForgeCount -Count $results.Count -One "mudança desfeita" -Many "mudanças desfeitas") -Title $title -Data $data
+            $final = New-WinForgeResult -Kind Ok -Detail (Format-WinForgeCount -Count $results.Count -One (Get-WinForgeText 'mudança desfeita') -Many (Get-WinForgeText 'mudanças desfeitas')) -Title $title -Data $data
         }
         elseif ($failed.Count -eq $results.Count) {
-            $final = New-WinForgeResult -Kind Failed -Detail $(if ($results.Count -eq 1) { $failed[0].Detail } else { "nenhuma mudança foi desfeita" }) -Title $title
+            $final = New-WinForgeResult -Kind Failed -Detail $(if ($results.Count -eq 1) { $failed[0].Detail } else { (Get-WinForgeText 'nenhuma mudança foi desfeita') }) -Title $title
         }
         elseif ($results.Count -eq 1) {
-            $final = New-WinForgeResult -Kind Warning -Detail "$($partial[0].Detail); a mudança continua na lista para tentar de novo" -Title $title -Data $data
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0}; a mudança continua na lista para tentar de novo' "$($partial[0].Detail)") -Title $title -Data $data
         }
         else {
-            $final = New-WinForgeResult -Kind Warning -Detail "$($failed.Count + $partial.Count) de $($results.Count) não foram desfeitas por completo" -Title $title -Data $data
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} não foram desfeitas por completo' "$($failed.Count + $partial.Count)" "$($results.Count)") -Title $title -Data $data
+        }
+
+        # Um ajuste desfeito que só aparece com o Explorador reiniciado (a barra de tarefas, o menu do clique direito): uma
+        # pergunta só, no fim, como em Ajustes do Windows. Um Explorador que não reinicia é uma ressalva: o ajuste já voltou.
+        $explorer = @($results | Where-Object { Test-WinForgeResultFlag -Result $_ -Name "RestartExplorer" })
+
+        if ($explorer.Count -gt 0) {
+            Write-Host ""
+            $question = $(if ($explorer.Count -eq 1) { (Get-WinForgeText 'Reiniciar o Explorador de Arquivos agora para ver a mudança?') } else { (Get-WinForgeText 'Reiniciar o Explorador de Arquivos agora para ver as mudanças?') })
+            $restart = Request-WinForgeExplorerRestart -Question $question -Many:($explorer.Count -gt 1)
+
+            if ($restart -eq "Failed" -and $final.Kind -eq "Ok") {
+                $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Explorador não reiniciou') -Title $title -Data $data
+            }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível ler o histórico: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler o histórico: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
     }
 

@@ -1,6 +1,6 @@
-﻿# Reparo e otimização: DISM, SFC, CHKDSK e otimização da unidade do sistema.
-# Todas as ações aceitam -Embedded (sem cabeçalho, pergunta nem pausa, para uso dentro do Otimizar)
-# e -PassThru (devolve um WinForge.Result em vez de não devolver nada).
+﻿# Reparo: DISM, SFC, CHKDSK, a otimização da unidade do sistema, a busca de dispositivos e a fila de impressão.
+# As que entram no Otimizar (DISM, SFC, CHKDSK, otimização e dispositivos) aceitam -Embedded (sem cabeçalho, pergunta nem
+# pausa) e -PassThru (devolvem um WinForge.Result em vez de não devolver nada).
 
 $script:WinForgeChkdskRepairPending = $false
 
@@ -17,11 +17,12 @@ function Test-WinForgeDismRepairNeeded {
 
     # /CheckHealth só lê marcações já registradas pelo Windows; é rápido e evita um RestoreHealth desnecessário.
     # Os trechos aceitam letras trocadas ("corrup" basta): a saída do DISM depende do idioma e da página de código.
-    if ($OutputText -match "(?i)no component store corruption|nenhuma corrup") {
+    # Em espanhol: "No se detectaron daños en el almacén de componentes." / "El almacén de componentes se puede reparar."
+    if ($OutputText -match "(?i)no component store corruption|nenhuma corrup|no se detectaron da.{1,3}os") {
         return $false
     }
 
-    if ($OutputText -match "(?i)repairable|repar.{1,3}vel|corrupt|corromp") {
+    if ($OutputText -match "(?i)repairable|repar.{1,3}vel|corrupt|corromp|se puede reparar|da.{1,3}os en el almac") {
         return $true
     }
 
@@ -60,12 +61,12 @@ function Get-WinForgeDismHealthState {
 
     # Um DISM que falhou sem dizer nada sobre o repositório (reinício pendente, 0x800F082F; serviço sem resposta) não
     # consultou nada: isso não é "dano marcado", é "não sei".
-    $saysHealthy = ($text -match "(?i)no component store corruption|nenhuma corrup")
+    $saysHealthy = ($text -match "(?i)no component store corruption|nenhuma corrup|no se detectaron da.{1,3}os")
     $saysDamaged = Test-WinForgeDismRepairNeeded -ExitCode 0 -OutputText $text
 
     # "The component store cannot be repaired." não tem "corrupt" nem "repairable": sem esta frase, com o código 0, o
     # repositório que nem o DISM conserta passava por saudável e o /RestoreHealth não rodava antes do SFC.
-    if (-not $saysHealthy -and $text -match "(?i)cannot be repaired|n.{1,3}o pode ser reparad") {
+    if (-not $saysHealthy -and $text -match "(?i)cannot be repaired|n.{1,3}o pode ser reparad|no se puede reparar") {
         return [PSCustomObject]@{ State = "NonRepairable"; Text = $text; Source = "dism.exe"; Code = "" }
     }
 
@@ -97,7 +98,8 @@ function Test-WinForgeChkdskRepairRequired {
         $OutputText -match "(?i)offline repair" -or
         $OutputText -match "(?i)reparo offline" -or
         $OutputText -match "(?i)next restart" -or
-        $OutputText -match "(?i)pr.{1,3}xima reinicializa"
+        $OutputText -match "(?i)pr.{1,3}xima reinicializa" -or
+        $OutputText -match "(?i)reparaci.{1,3}n sin conexi.{1,3}n|pr.{1,3}ximo reinicio|siguiente reinicio"
     )
 }
 
@@ -248,21 +250,21 @@ function Get-WinForgeSfcUnrepairedResult {
     }
 
     $count = $names.Count
-    $detail = "há arquivos corrompidos que o SFC não conseguiu reparar"
+    $detail = (Get-WinForgeText 'há arquivos corrompidos que o SFC não conseguiu reparar')
 
-    if ($count -eq 1) { $detail = "1 arquivo corrompido não pôde ser reparado" }
-    elseif ($count -gt 1) { $detail = "$count arquivos corrompidos não puderam ser reparados" }
+    if ($count -eq 1) { $detail = (Get-WinForgeText '1 arquivo corrompido não pôde ser reparado') }
+    elseif ($count -gt 1) { $detail = (Get-WinForgeText '{0} arquivos corrompidos não puderam ser reparados' "$count") }
 
     $notes = @()
 
     if ($count -gt 0) {
         $shown = @($names | Select-Object -First 5)
         $text = Join-WinForgeList -Items $shown
-        if ($count -gt $shown.Count) { $text = ($shown -join ", ") + " e mais $($count - $shown.Count)" }
-        $notes += "Arquivos que o SFC não reparou: $text."
+        if ($count -gt $shown.Count) { $text = ($shown -join ", ") + (Get-WinForgeText ' e mais {0}' "$($count - $shown.Count)") }
+        $notes += (Get-WinForgeText 'Arquivos que o SFC não reparou: {0}.' "$text")
     }
 
-    $notes += "O registro completo fica em $(Get-WinForgeCbsLogPath)."
+    $notes += (Get-WinForgeText 'O registro completo fica em {0}.' "$(Get-WinForgeCbsLogPath)")
 
     return (New-WinForgeResult -Kind Warning -Detail $detail -Data @{ Unrepaired = $true; Notes = $notes })
 }
@@ -277,24 +279,25 @@ function Get-WinForgeSfcResult {
         $LogSummary = $null
     )
 
-    if ($OutputText -match "(?i)repair pending|reparo.{0,40}pendente|requires reboot|requer.{0,20}rein|exige.{0,20}reinicializa") {
-        return (New-WinForgeResult -Kind Warning -Detail "há um reparo do Windows pendente; depois de reiniciar, rode o SFC de novo" -Data @{ RebootRequired = $true })
+    # Em espanhol, as frases do SFC são "Protección de recursos de Windows ..." (e a da reparação pendente pede reiniciar).
+    if ($OutputText -match "(?i)repair pending|reparo.{0,40}pendente|requires reboot|requer.{0,20}rein|exige.{0,20}reinicializa|reparaci.{1,3}n del sistema pendiente|requiere reiniciar") {
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'há um reparo do Windows pendente; depois de reiniciar, rode o SFC de novo') -Data @{ RebootRequired = $true })
     }
 
-    if ($OutputText -match "(?i)unable to fix|n.{1,3}o p.{1,3}de (corrigir|reparar)|n.{1,3}o foi poss.{1,3}vel (corrigir|reparar)|n.{1,3}o conseguiu (corrigir|reparar)") {
+    if ($OutputText -match "(?i)unable to fix|n.{1,3}o p.{1,3}de (corrigir|reparar)|n.{1,3}o foi poss.{1,3}vel (corrigir|reparar)|n.{1,3}o conseguiu (corrigir|reparar)|no (pudo|consigui.{1,3}) (corregir|reparar)") {
         # Unrepaired: quem chama (DISM + SFC) usa o fato para decidir se vale reparar a imagem e repetir o SFC.
         return (Get-WinForgeSfcUnrepairedResult -LogSummary $LogSummary)
     }
 
     # O SFC pode avisar que não conseguiu rodar e ainda assim sair com código 0; isso não é "tudo certo".
-    if ($OutputText -match "(?i)could not (perform|start)|n.{1,3}o p.{1,3}de (executar|iniciar)") {
+    if ($OutputText -match "(?i)could not (perform|start)|n.{1,3}o p.{1,3}de (executar|iniciar)|no pudo (realizar|iniciar)") {
         # O SFC depende do serviço Instalador de Módulos do Windows (TrustedInstaller); desativado por algum "otimizador",
         # o SFC nem começa.
-        return (New-WinForgeResult -Kind Failed -Detail "o SFC não conseguiu executar a verificação" -Data @{ Notes = @("Se o serviço Instalador de Módulos do Windows estiver desativado, volte-o para Manual, reinicie e tente de novo.") })
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o SFC não conseguiu executar a verificação') -Data @{ Notes = @((Get-WinForgeText 'Se o serviço Instalador de Módulos do Windows estiver desativado, volte-o para Manual, reinicie e tente de novo.')) })
     }
 
-    $saysRepaired = ($OutputText -match "(?i)successfully repaired|reparou com .{1,3}xito|reparad[oa]s? com .{1,3}xito")
-    $saysClean = ($OutputText -match "(?i)did not find any integrity violations|n.{1,3}o encontrou nenhuma viola")
+    $saysRepaired = ($OutputText -match "(?i)successfully repaired|reparou com .{1,3}xito|reparad[oa]s? com .{1,3}xito|los repar.{1,3}\s+correctamente")
+    $saysClean = ($OutputText -match "(?i)did not find any integrity violations|n.{1,3}o encontrou nenhuma viola|no encontr.{1,3}\s+ninguna\s+infracci")
 
     # O CBS.log só decide quando o SFC não disse com clareza como terminou. A Microsoft documenta linhas "Cannot repair
     # member file" de arquivos que o SFC não protege, enquanto ele mesmo diz que deu tudo certo: com elas valendo mais que
@@ -304,16 +307,16 @@ function Get-WinForgeSfcResult {
     }
 
     if ($ExitCode -ne 0) {
-        return (New-WinForgeResult -Kind Failed -Detail "código de saída $(Format-WinForgeExitCode -ExitCode $ExitCode)")
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'código de saída {0}' "$(Format-WinForgeExitCode -ExitCode $ExitCode)"))
     }
 
     # Sfc: o que o SFC concluiu, para a faixa (Repaired ou Clean).
     if ($saysRepaired -or ($null -ne $LogSummary -and [int]$LogSummary.Repaired -gt 0)) {
-        return (New-WinForgeResult -Kind Ok -Detail "arquivos corrompidos foram encontrados e reparados" -Data @{ Sfc = "Repaired" })
+        return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'arquivos corrompidos foram encontrados e reparados') -Data @{ Sfc = "Repaired" })
     }
 
     if ($saysClean) {
-        return (New-WinForgeResult -Kind Ok -Detail "nenhum arquivo corrompido foi encontrado" -Data @{ Sfc = "Clean" })
+        return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum arquivo corrompido foi encontrado') -Data @{ Sfc = "Clean" })
     }
 
     return (New-WinForgeResult -Kind Ok)
@@ -321,12 +324,9 @@ function Get-WinForgeSfcResult {
 
 
 function Get-WinForgeExitCodeResult {
-    # Resultado padrão de ferramentas do sistema: 0 = OK; 3010 = OK, mas exige reinício; outros = falha.
-    # OutputText existe só para ter a mesma assinatura dos demais analisadores de resultado (SFC): este não lê o texto.
-    param (
-        [int]$ExitCode,
-        [string]$OutputText
-    )
+    # Resultado padrão de ferramentas do sistema: 0 = OK; 3010 = OK, mas exige reinício; outros = falha. Só o código:
+    # quem precisa ler o texto da saída (o SFC, o DISM) tem o seu analisador.
+    param ([int]$ExitCode)
 
     if ($ExitCode -eq 0) {
         return (New-WinForgeResult -Kind Ok)
@@ -334,10 +334,10 @@ function Get-WinForgeExitCodeResult {
 
     if ($ExitCode -eq 3010) {
         # A faixa da janela já acrescenta "Reinicie o PC para concluir."; o detalhe só diz o que falta.
-        return (New-WinForgeResult -Kind Warning -Detail "o Windows termina a operação na próxima reinicialização" -Data @{ RebootRequired = $true })
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows termina a operação na próxima reinicialização') -Data @{ RebootRequired = $true })
     }
 
-    return (New-WinForgeResult -Kind Failed -Detail "código de saída $(Format-WinForgeExitCode -ExitCode $ExitCode)")
+    return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'código de saída {0}' "$(Format-WinForgeExitCode -ExitCode $ExitCode)"))
 }
 
 
@@ -355,36 +355,38 @@ function Get-WinForgeDismResult {
     # O DISM busca os arquivos do reparo no Windows Update; num PC de empresa, a política ou o WSUS é que decide.
     # 0x80070422: um "bloqueador de atualizações" costuma desativar o serviço; o Corrigir o Windows Update o volta ao padrão.
     $code = Format-WinForgeExitCode -ExitCode $ExitCode
-    $internet = "Confira a internet e o Windows Update (Atualizações > Instalar atualizações do Windows) e tente de novo."
-    $company = "Num PC de empresa, fale com o suporte de TI."
+    $internet = (Get-WinForgeText 'Confira a internet e o Windows Update (Atualizações > Instalar atualizações do Windows) e tente de novo.')
+    $company = (Get-WinForgeText 'Num PC de empresa, fale com o suporte de TI.')
 
     switch ($code) {
-        "0x800F081F" { return (New-WinForgeResult -Kind Failed -Detail "o DISM não encontrou os arquivos de que precisa para o reparo — erro $code" -Data @{ Notes = @($internet) }) }
-        "0x800F0906" { return (New-WinForgeResult -Kind Failed -Detail "o DISM não conseguiu baixar os arquivos de que precisa para o reparo — erro $code" -Data @{ Notes = @($internet) }) }
-        "0x800F0907" { return (New-WinForgeResult -Kind Failed -Detail "uma política de rede impediu o DISM de baixar os arquivos do reparo — erro $code" -Data @{ Notes = @($company) }) }
-        "0x800F0954" { return (New-WinForgeResult -Kind Failed -Detail "o PC busca atualizações num servidor da empresa (WSUS), sem os arquivos do reparo — erro $code" -Data @{ Notes = @($company, "Num PC de casa, um bloqueador de atualizações pode ter feito isso: desfaça por ele e tente de novo.") }) }
-        "0x80070422" { return (New-WinForgeResult -Kind Failed -Detail "um serviço de que o DISM precisa está desativado (em geral, o Windows Update) — erro $code" -Data @{ Notes = @("Use Atualizações > Corrigir o Windows Update para religar o serviço.") }) }
+        "0x800F081F" { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o DISM não encontrou os arquivos de que precisa para o reparo — erro {0}' "$code") -Data @{ Notes = @($internet) }) }
+        "0x800F0906" { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o DISM não conseguiu baixar os arquivos de que precisa para o reparo — erro {0}' "$code") -Data @{ Notes = @($internet) }) }
+        "0x800F0907" { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'uma política de rede impediu o DISM de baixar os arquivos do reparo — erro {0}' "$code") -Data @{ Notes = @($company) }) }
+        "0x800F0954" { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o PC busca atualizações num servidor da empresa (WSUS), sem os arquivos do reparo — erro {0}' "$code") -Data @{ Notes = @($company, (Get-WinForgeText 'Num PC de casa, um bloqueador de atualizações pode ter feito isso: desfaça por ele e tente de novo.')) }) }
+        "0x80070422" { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'um serviço de que o DISM precisa está desativado (em geral, o Windows Update) — erro {0}' "$code") -Data @{ Notes = @((Get-WinForgeText 'Use Atualizações > Corrigir o Windows Update para religar o serviço.')) }) }
     }
 
     # Operações do Windows esperando um reinício (0x800F0806 é o CBS_E_PENDING; 0x800F082F e o 3017 aparecem no mesmo
     # caso): o DISM não repara antes disso, e o que resolve é reiniciar.
+    # O conselho de reiniciar vai na faixa (Set-WinForgeDismFailureView): no resumo, a linha final já diz "Reinicie o PC e
+    # tente de novo", e uma observação repetiria isso.
     if ($code -in @("0x800F0806", "0x800F082F", "3017")) {
-        return (New-WinForgeResult -Kind Failed -Detail "o Windows espera um reinício para terminar outra instalação, e o DISM só repara depois disso — erro $code" -Data @{ RebootRequired = $true; Notes = @("Reinicie o PC e rode o reparo de novo.") })
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Windows espera um reinício para terminar outra instalação, e o DISM só repara depois disso — erro {0}' "$code") -Data @{ RebootRequired = $true })
     }
 
     if ($ExitCode -eq 0) {
-        if ($OutputText -match "(?i)corruption was repaired|corrup.{0,40}(foi|foram) reparad") {
-            return (New-WinForgeResult -Kind Ok -Detail "a imagem do Windows tinha danos e foi reparada" -Data @{ ImageRepaired = $true })
+        if ($OutputText -match "(?i)corruption was repaired|corrup.{0,40}(foi|foram) reparad|se repar.{1,6}\s+(los\s+)?da.{1,3}os") {
+            return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'a imagem do Windows tinha danos e foi reparada') -Data @{ ImageRepaired = $true })
         }
 
-        return (New-WinForgeResult -Kind Ok -Detail "a imagem do Windows está íntegra")
+        return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'a imagem do Windows está íntegra'))
     }
 
     if ($ExitCode -eq 3010) {
-        return (New-WinForgeResult -Kind Warning -Detail "o reparo da imagem termina na próxima reinicialização" -Data @{ RebootRequired = $true })
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o reparo da imagem termina na próxima reinicialização') -Data @{ RebootRequired = $true })
     }
 
-    return (Get-WinForgeExitCodeResult -ExitCode $ExitCode -OutputText $OutputText)
+    return (Get-WinForgeExitCodeResult -ExitCode $ExitCode)
 }
 
 
@@ -415,21 +417,21 @@ function Write-WinForgeToolOutcome {
 
     switch ($Result.Kind) {
         "Ok" {
-            $text = $(if ($detail) { $detail } else { "concluído" })
+            $text = $(if ($detail) { $detail } else { (Get-WinForgeText 'concluído') })
             Write-WinForgeStatus -Type Success -Message "${Title}: $text."
         }
         "Warning" {
-            $text = $(if ($detail) { $detail } else { "concluído com ressalvas" })
+            $text = $(if ($detail) { $detail } else { (Get-WinForgeText 'concluído com ressalvas') })
             Write-WinForgeStatus -Type Warning -Message "${Title}: $text."
         }
         "Skipped" {
-            $text = $(if ($detail) { $detail } else { "não executado" })
+            $text = $(if ($detail) { $detail } else { (Get-WinForgeText 'não executado') })
             Write-WinForgeStatus -Type Warning -Message "${Title}: $text."
         }
         default {
             # Um detalhe que é só o código ("código de saída 5") precisa do "falhou"; uma frase já diz o que houve.
-            $text = "falhou"
-            if ($detail -match "^código") { $text = "falhou ($detail)" }
+            $text = (Get-WinForgeText 'falhou')
+            if ($detail -match "^código" -or $detail -like (Get-WinForgeText 'código de saída {0}' '*')) { $text = (Get-WinForgeText 'falhou ({0})' "$detail") }
             elseif ($detail) { $text = $detail }
             Write-WinForgeStatus -Type Error -Message "${Title}: $text."
         }
@@ -471,8 +473,11 @@ function Invoke-WinForgeTool {
         # Recebe o WinForge.Result depois da mensagem final, só quando a ação roda sozinha: lugar de um "próximo passo".
         [scriptblock]$AfterResult,
 
-        # A pergunta antes de começar, quando a ação roda sozinha ("Iniciar a verificação agora?").
-        [string]$Question = "Deseja continuar?",
+        # A pergunta antes de começar, quando a ação roda sozinha ("Iniciar a verificação agora?"). YesLabel e NoLabel:
+        # na janela, os botões dizem o que fazem ("Limpar" e "Cancelar") no lugar de Sim e Não.
+        [string]$Question = (Get-WinForgeText 'Deseja continuar?'),
+        [string]$YesLabel = "",
+        [string]$NoLabel = "",
 
         # Recebe o WinForge.Result no fim, só quando a ação roda sozinha e a ferramenta rodou: monta a faixa da janela
         # (Set-WinForgeResultView).
@@ -481,6 +486,9 @@ function Invoke-WinForgeTool {
         # A ferramenta depende da manutenção dos componentes do Windows (DISM e SFC): com ela esperando um reinício, a
         # ação sozinha não roda e oferece reiniciar (Request-WinForgeRepairRestart).
         [switch]$NeedsServicing,
+
+        # Os textos desse aviso (os parâmetros de Request-WinForgeRepairRestart), quando a ferramenta não é um reparo.
+        [hashtable]$ServicingText = @{},
 
         # Enquanto a ferramenta roda depois do fim da saída (a espera que vem no analisador), o texto ao lado da barra.
         [string]$FinishingStatus = "",
@@ -494,22 +502,22 @@ function Invoke-WinForgeTool {
     $result = $null
 
     try {
-        if (-not (Test-WinForgeElevation -Reason "Esta ação exige privilégios de Administrador.")) {
-            $result = New-WinForgeResult -Kind Failed -Detail "requer Administrador"
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Esta ação exige privilégios de Administrador.'))) {
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador')
         }
         elseif (-not (Get-Command $FilePath -ErrorAction SilentlyContinue)) {
-            Write-WinForgeStatus -Type Error -Message "Comando não encontrado: $FilePath"
-            $result = New-WinForgeResult -Kind Failed -Detail "comando não encontrado"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Comando não encontrado: {0}' "$FilePath")
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'comando não encontrado')
         }
         elseif ($MinimumBuild -gt 0 -and (Test-WinForgeWindowsBuildBelow -Minimum $MinimumBuild)) {
             # Pedida sozinha, a ação não pôde ser feita (vermelho); num fluxo, a etapa fica de fora (ignorada).
-            $detail = "esta função exige o $MinimumVersion ou mais novo"
-            Write-WinForgeStatus -Type $(if ($Embedded) { "Warning" } else { "Error" }) -Message "Esta função exige o $MinimumVersion ou mais novo."
+            $detail = (Get-WinForgeText 'esta função exige o {0} ou mais novo' "$MinimumVersion")
+            Write-WinForgeStatus -Type $(if ($Embedded) { "Warning" } else { "Error" }) -Message (Get-WinForgeText 'Esta função exige o {0} ou mais novo.' "$MinimumVersion")
             if ($UnavailableHint) { Write-WinForgeStatus -Type Info -Message $UnavailableHint }
             $result = New-WinForgeResult -Kind $(if ($Embedded) { "Skipped" } else { "Failed" }) -Detail $detail
         }
         elseif ($NeedsServicing -and -not $Embedded -and (Test-WinForgeServicingRebootPending)) {
-            $result = Request-WinForgeRepairRestart
+            $result = Request-WinForgeRepairRestart @ServicingText
         }
         else {
             # Sozinha, a ação diz o que a ferramenta faz e quanto pode demorar como mensagens: na janela elas aparecem
@@ -525,14 +533,14 @@ function Invoke-WinForgeTool {
             Write-WinForgeCommand -Command "$FilePath $($Arguments -join ' ')"
             Write-Host ""
 
-            if (-not $Embedded -and -not (Confirm-WinForgeAction $Question -DefaultKey S)) {
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            if (-not $Embedded -and -not (Confirm-WinForgeAction $Question -DefaultKey S -YesLabel $YesLabel -NoLabel $NoLabel)) {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             else {
                 # O andamento vai para a barra de progresso (na janela, o texto ao lado da barra): uma linha
                 # "executando" ficaria no resumo depois do fim. DISM e SFC dizem o percentual, e a barra enche com ele.
-                Write-Progress -Activity $Title -Status "em andamento; não feche o WinForge até terminar"
+                Write-Progress -Activity $Title -Status (Get-WinForgeText 'em andamento; não feche o WinForge até terminar')
 
                 # DISM, SFC e a otimização do disco levam minutos: o PC não pode dormir no meio, nem quando a ação roda
                 # sozinha (dentro da Manutenção o pedido dela já vale; os pedidos se somam).
@@ -559,7 +567,7 @@ function Invoke-WinForgeTool {
                     }
                 }
                 else {
-                    $result = Get-WinForgeExitCodeResult -ExitCode $run.ExitCode -OutputText $run.Text
+                    $result = Get-WinForgeExitCodeResult -ExitCode $run.ExitCode
                 }
 
                 if ($result.Kind -eq "Ok" -and [string]::IsNullOrWhiteSpace($result.Detail) -and $SuccessDetail) {
@@ -580,7 +588,7 @@ function Invoke-WinForgeTool {
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao executar '$Title': $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro ao executar ''{0}'': {1}' "$Title" "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -602,25 +610,31 @@ function Request-WinForgeRepairRestart {
     O DISM e o SFC pedidos sozinhos, com a manutenção dos componentes do Windows esperando um reinício (uma atualização
     que termina de instalar ao reiniciar, Test-WinForgeServicingRebootPending): os dois recusariam o reparo depois de
     minutos (o DISM com 0x800F0806, o SFC com "reparo pendente"). Nada roda: a tela diz por quê e oferece reiniciar, com
-    Não como padrão. Devolve o WinForge.Result (ressalva, com o pedido de reinício).
+    Não como padrão. Devolve o WinForge.Result (ressalva, com o pedido de reinício). Os textos dizem "reparo"; a limpeza
+    dos componentes (o DISM /StartComponentCleanup, que recusa do mesmo jeito) passa os dela.
     #>
-    $note = "O Windows espera um reinício para terminar uma atualização: o DISM e o SFC só reparam depois de reiniciar."
+    param (
+        [string]$Note = (Get-WinForgeText 'O Windows espera um reinício para terminar uma atualização: o DISM e o SFC só reparam depois de reiniciar.'),
+        [string]$Detail = (Get-WinForgeText 'o Windows espera um reinício para terminar uma atualização; o reparo só roda depois de reiniciar'),
+        [string]$Headline = (Get-WinForgeText 'Reinicie antes de reparar'),
+        [string]$Reason = (Get-WinForgeText 'Reiniciar agora deixa o Windows pronto para o reparo.'),
+        [string]$Comment = (Get-WinForgeText 'Reinicialização solicitada pelo WinForge antes do reparo do Windows (DISM e SFC).'),
+        [string]$DeclinedMessage = (Get-WinForgeText 'Reinicialização não iniciada. Depois de reiniciar, rode o reparo de novo.')
+    )
 
-    Write-WinForgeStatus -Type Warning -Message $note
+    Write-WinForgeStatus -Type Warning -Message $Note
 
     # Um problema ao oferecer o reinício não muda o resultado: a tela já disse o que fazer.
     try {
-        [void](Request-WinForgeRestart -Reason "Reiniciar agora deixa o Windows pronto para o reparo." `
-                -Comment "Reinicialização solicitada pelo WinForge antes do reparo do Windows (DISM e SFC)." `
-                -DeclinedMessage "Reinicialização não iniciada. Depois de reiniciar, rode o reparo de novo.")
+        [void](Request-WinForgeRestart -Reason $Reason -Comment $Comment -DeclinedMessage $DeclinedMessage)
     }
     catch {
-        Write-Verbose "Oferta de reinício antes do reparo: $($_.Exception.Message)"
+        Write-Verbose "Oferta de reinício antes do DISM: $($_.Exception.Message)"
     }
 
-    $result = New-WinForgeResult -Kind Warning -Detail "o Windows espera um reinício para terminar uma atualização; o reparo só roda depois de reiniciar" -Data @{ RebootRequired = $true }
+    $result = New-WinForgeResult -Kind Warning -Detail $Detail -Data @{ RebootRequired = $true }
 
-    return (Set-WinForgeResultView -Result $result -Headline "Reinicie antes de reparar" -Note $note)
+    return (Set-WinForgeResultView -Result $result -Headline $Headline -Note $Note)
 }
 
 
@@ -642,25 +656,28 @@ function Invoke-WinForgeDism {
 
         if ($Result.Kind -eq "Ok") {
             if (Test-WinForgeResultFlag -Result $Result -Name "ImageRepaired") {
-                Set-WinForgeResultView -Result $Result -Headline "Imagem do Windows reparada" -Note "Agora, o SFC confere os arquivos do Windows usando a imagem reparada." `
-                    -Next "repair.sfc" -NextLabel "Verificar os arquivos (SFC)"
+                Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Imagem do Windows reparada') -Note (Get-WinForgeText 'Agora, o SFC confere os arquivos do Windows usando a imagem reparada.') `
+                    -Next "repair.sfc" -NextLabel (Get-WinForgeText 'Verificar os arquivos (SFC)')
             }
             else {
-                Set-WinForgeResultView -Result $Result -Headline "Imagem do Windows íntegra" -Note "O DISM não encontrou dano a reparar."
+                Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Imagem do Windows íntegra') -Note (Get-WinForgeText 'O DISM não encontrou dano a reparar.')
             }
         }
+        elseif ($Result.Kind -eq "Warning" -and (Test-WinForgeResultFlag -Result $Result -Name "RebootRequired")) {
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reinicie para concluir o reparo') -Note (Get-WinForgeText 'O reparo da imagem do Windows termina ao reiniciar.')
+        }
         else {
-            Set-WinForgeDismServiceView -Result $Result
+            Set-WinForgeDismFailureView -Result $Result
         }
     }
 
     Invoke-WinForgeTool `
-        -Title "Reparar imagem e componentes (DISM)" `
+        -Title (Get-WinForgeText 'Reparar imagem e componentes (DISM)') `
         -FilePath "dism.exe" `
         -Arguments @("/Online", "/Cleanup-Image", "/RestoreHealth") `
-        -Description @("Repara a imagem de componentes do Windows, pela internet, em 10 a 30 minutos.") `
-        -Warnings @("Parar um tempo em 20% ou 62% é normal.") `
-        -Question "Iniciar o reparo da imagem agora?" `
+        -Description @((Get-WinForgeText 'Repara a imagem de componentes do Windows, pela internet, em 10 a 30 minutos.')) `
+        -Warnings @((Get-WinForgeText 'Parar um tempo em 20% ou 62% é normal.')) `
+        -Question (Get-WinForgeText 'Iniciar o reparo da imagem agora?') -YesLabel (Get-WinForgeText 'Reparar') -NoLabel (Get-WinForgeText 'Cancelar') `
         -ResultParser $parser `
         -ResultView $view `
         -NeedsServicing `
@@ -693,7 +710,7 @@ function Invoke-WinForgeSfc {
 
         if (Test-WinForgeResultFlag -Result $Result -Name "Unrepaired") {
             # O reparo completo corrige a imagem do Windows (de onde o SFC tira os arquivos bons) e repete o SFC.
-            Write-WinForgeStatus -Type Info -Message "Próximo passo: use Reparo > Reparar o Windows (DISM + SFC)."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Próximo passo: use Reparo > Reparar o Windows (DISM + SFC).')
         }
     }
 
@@ -702,24 +719,30 @@ function Invoke-WinForgeSfc {
         param ($Result)
 
         if (Test-WinForgeResultFlag -Result $Result -Name "Unrepaired") {
-            Set-WinForgeResultView -Result $Result -Headline "Arquivos corrompidos sem reparo" -Note "O reparo completo (DISM + SFC) conserta a imagem de onde o SFC tira os arquivos bons." `
-                -Next "repair.dism-sfc" -NextLabel "Fazer o reparo completo"
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Arquivos corrompidos sem reparo') -Note (Get-WinForgeText 'O reparo completo (DISM + SFC) conserta a imagem de onde o SFC tira os arquivos bons.') `
+                -Next "repair.dism-sfc" -NextLabel (Get-WinForgeText 'Fazer o reparo completo')
+        }
+        elseif ($Result.Kind -eq "Warning" -and (Test-WinForgeResultFlag -Result $Result -Name "RebootRequired")) {
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reinicie e verifique de novo') -Note (Get-WinForgeText 'Há um reparo do Windows pendente: depois de reiniciar, rode o SFC de novo.')
+        }
+        elseif ($Result.Kind -eq "Failed") {
+            Set-WinForgeSfcFailureView -Result $Result
         }
         elseif ($Result.Kind -eq "Ok") {
             switch ([string](Get-WinForgeResultData -Result $Result -Name "Sfc")) {
-                "Repaired" { Set-WinForgeResultView -Result $Result -Headline "Arquivos reparados" -Note "O SFC encontrou arquivos corrompidos e os reparou." }
-                "Clean" { Set-WinForgeResultView -Result $Result -Headline "Nenhum arquivo corrompido" -Note "O SFC conferiu os arquivos protegidos do Windows." }
-                default { Set-WinForgeResultView -Result $Result -Headline "Verificação concluída" -Note "O SFC terminou sem erros." }
+                "Repaired" { Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Arquivos reparados') -Note (Get-WinForgeText 'O SFC encontrou arquivos corrompidos e os reparou.') }
+                "Clean" { Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Nenhum arquivo corrompido') -Note (Get-WinForgeText 'O SFC conferiu os arquivos protegidos do Windows.') }
+                default { Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Verificação concluída') -Note (Get-WinForgeText 'O SFC terminou sem erros.') }
             }
         }
     }
 
     Invoke-WinForgeTool `
-        -Title "Verificar arquivos do sistema (SFC)" `
+        -Title (Get-WinForgeText 'Verificar arquivos do sistema (SFC)') `
         -FilePath "sfc.exe" `
         -Arguments @("/scannow") `
-        -Description @("Verifica os arquivos protegidos do Windows e repara os corrompidos, em 5 a 20 minutos.") `
-        -Question "Iniciar a verificação agora?" `
+        -Description @((Get-WinForgeText 'Verifica os arquivos protegidos do Windows e repara os corrompidos, em 5 a 20 minutos.')) `
+        -Question (Get-WinForgeText 'Iniciar a verificação agora?') -YesLabel (Get-WinForgeText 'Verificar') -NoLabel (Get-WinForgeText 'Cancelar') `
         -ResultParser $parser `
         -AfterResult $nextStep `
         -ResultView $view `
@@ -728,16 +751,55 @@ function Invoke-WinForgeSfc {
 }
 
 
-function Set-WinForgeDismServiceView {
-    # O DISM que falhou porque o Windows Update está desativado (0x80070422, em geral por um bloqueador de atualizações):
-    # a faixa diz isso no título, e o botão abre Corrigir o Windows Update, que religa o serviço. Outro erro fica como
-    # está. Devolve o próprio resultado.
-    param ([Parameter(Mandatory)]$Result)
+function Set-WinForgeDismFailureView {
+    <#
+    A faixa do DISM que falhou ($Dism; no reparo completo, $Result é o do reparo inteiro): o Windows Update desativado
+    (0x80070422, em geral por um bloqueador de atualizações), com o botão que o religa; um reinício pendente (0x800F0806 e
+    os do mesmo caso), que pede reiniciar antes; ou um erro conhecido (os arquivos do reparo que não vieram, uma política),
+    com o que fazer na frase. Outra falha fica com a faixa de sempre. Devolve o próprio resultado.
+    #>
+    param (
+        [Parameter(Mandatory)]$Result,
+        $Dism = $null
+    )
 
-    if ($Result.Kind -ne "Failed" -or [string]$Result.Detail -notmatch '0x80070422') { return $Result }
+    if ($null -eq $Dism) { $Dism = $Result }
+    if ($Result.Kind -ne "Failed" -or $Dism.Kind -ne "Failed") { return $Result }
 
-    return (Set-WinForgeResultView -Result $Result -Headline "Windows Update desativado" -Note "O DISM precisa dele para baixar os arquivos do reparo (erro 0x80070422)." `
-            -Next "updates.repair" -NextLabel "Corrigir o Windows Update")
+    if ([string]$Dism.Detail -match '0x80070422') {
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Windows Update desativado') -Note (Get-WinForgeText 'O DISM precisa dele para baixar os arquivos do reparo (erro 0x80070422).') `
+                -Next "updates.repair" -NextLabel (Get-WinForgeText 'Corrigir o Windows Update'))
+    }
+
+    if (Test-WinForgeResultFlag -Result $Dism -Name "RebootRequired") {
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reinicie antes de reparar') -Note (Get-WinForgeText 'Reinicie o PC e rode o reparo de novo.'))
+    }
+
+    $note = [string](@(Get-WinForgeResultData -Result $Dism -Name "Notes") | Where-Object { $_ } | Select-Object -First 1)
+
+    if ($note) {
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'A imagem do Windows não foi reparada') -Note $note)
+    }
+
+    return $Result
+}
+
+
+function Set-WinForgeSfcFailureView {
+    # A faixa do SFC que não conseguiu rodar (o serviço Instalador de Módulos do Windows desativado, em geral): o título
+    # diz isso, e a frase, o que fazer. Outra falha fica com a faixa de sempre. Devolve o próprio resultado.
+    param (
+        [Parameter(Mandatory)]$Result,
+        $Sfc = $null
+    )
+
+    if ($null -eq $Sfc) { $Sfc = $Result }
+
+    $note = [string](@(Get-WinForgeResultData -Result $Sfc -Name "Notes") | Where-Object { $_ } | Select-Object -First 1)
+
+    if ($Result.Kind -ne "Failed" -or $Sfc.Kind -ne "Failed" -or -not $note) { return $Result }
+
+    return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'O SFC não conseguiu rodar') -Note $note)
 }
 
 
@@ -775,13 +837,14 @@ function Get-WinForgeRepairFailureText {
 
     $detail = ([string]$Result.Detail).Trim()
 
-    if ($detail -match "^o $([regex]::Escape($Name)) ") { return $detail }
+    # Com ou sem o artigo de cada idioma ("o DISM...", "DISM...", "el DISM...").
+    if ($detail -match "^(o |the |el )?$([regex]::Escape($Name)) ") { return $detail }
 
     # "o Windows espera um reinício..." não é o DISM falhando: ele nem chegou a reparar.
-    if ($detail -match "^o Windows ") { return "o $Name não rodou: $detail" }
-    if ($detail) { return "o $Name falhou ($detail)" }
+    if ($detail -match "^(o |el )?Windows ") { return (Get-WinForgeText 'o {0} não rodou: {1}' "$Name" "$detail") }
+    if ($detail) { return (Get-WinForgeText 'o {0} falhou ({1})' "$Name" "$detail") }
 
-    return "o $Name falhou"
+    return (Get-WinForgeText 'o {0} falhou' "$Name")
 }
 
 
@@ -803,7 +866,7 @@ function Set-WinForgeRepairView {
 
     if ($Result.Kind -eq "Ok") {
         if (-not [object]::ReferenceEquals($FinalSfc, $Sfc)) {
-            return (Set-WinForgeResultView -Result $Result -Headline "Windows reparado" -Note "O SFC não tinha reparado tudo; depois do DISM, terminou sem pendências.")
+            return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Windows reparado') -Note (Get-WinForgeText 'O SFC não tinha reparado tudo; depois do DISM, terminou sem pendências.'))
         }
 
         $sfcState = [string](Get-WinForgeResultData -Result $FinalSfc -Name "Sfc")
@@ -812,39 +875,37 @@ function Set-WinForgeRepairView {
         if ($imageRepaired -or $sfcState -eq "Repaired") {
             $note = ([string]$Result.Detail).Trim().TrimEnd(".")
             $note = $(if ($note) { $note.Substring(0, 1).ToUpperInvariant() + $note.Substring(1) + "." } else { "" })
-            return (Set-WinForgeResultView -Result $Result -Headline "Windows reparado" -Note $note)
+            return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Windows reparado') -Note $note)
         }
 
         if ($sfcState -eq "Clean") {
-            return (Set-WinForgeResultView -Result $Result -Headline "Nenhum problema encontrado" -Note "O DISM e o SFC conferiram o Windows: nenhum arquivo corrompido.")
+            return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Nenhum problema encontrado') -Note (Get-WinForgeText 'O DISM e o SFC conferiram o Windows: nenhum arquivo corrompido.'))
         }
 
-        return (Set-WinForgeResultView -Result $Result -Headline "Reparo concluído" -Note "O DISM e o SFC terminaram sem erros.")
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reparo concluído') -Note (Get-WinForgeText 'O DISM e o SFC terminaram sem erros.'))
     }
 
     if ($Result.Kind -eq "Warning") {
         if ((Test-WinForgeResultFlag -Result $FinalSfc -Name "Unrepaired") -and -not $Pending) {
-            return (Set-WinForgeResultView -Result $Result -Headline "Arquivos corrompidos sem reparo" -Note "Mesmo depois do DISM, o SFC encontra arquivos que não consegue reparar." `
-                    -Next "repair.recovery" -NextLabel "Abrir a Recuperação")
+            return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Arquivos corrompidos sem reparo') -Note (Get-WinForgeText 'Mesmo depois do DISM, o SFC encontra arquivos que não consegue reparar.') `
+                    -Next "repair.recovery" -NextLabel (Get-WinForgeText 'Abrir a Recuperação'))
         }
 
         if (Test-WinForgeResultFlag -Result $FinalSfc -Name "RebootRequired") {
-            return (Set-WinForgeResultView -Result $Result -Headline "Reinicie e repita o reparo" -Note "Há um reparo do Windows pendente: depois de reiniciar, repita o reparo.")
+            return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reinicie e repita o reparo') -Note (Get-WinForgeText 'Há um reparo do Windows pendente: depois de reiniciar, repita o reparo.'))
         }
 
         if (Test-WinForgeResultFlag -Result $Result -Name "RebootRequired") {
-            return (Set-WinForgeResultView -Result $Result -Headline "Reinicie para concluir o reparo" -Note "O reparo da imagem do Windows termina ao reiniciar.")
+            return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reinicie para concluir o reparo') -Note (Get-WinForgeText 'O reparo da imagem do Windows termina ao reiniciar.'))
         }
 
         return $Result
     }
 
-    if ($Result.Kind -eq "Failed" -and $null -ne $Dism) {
-        # O Windows Update desativado: a mesma faixa do DISM sozinho, com o detalhe do reparo completo.
-        if ($Dism.Kind -eq "Failed" -and [string]$Dism.Detail -match '0x80070422') {
-            return (Set-WinForgeResultView -Result $Result -Headline "Windows Update desativado" -Note "O DISM precisa dele para baixar os arquivos do reparo (erro 0x80070422)." `
-                    -Next "updates.repair" -NextLabel "Corrigir o Windows Update")
-        }
+    # A falha: a mesma faixa do DISM ou do SFC sozinhos, com o detalhe do reparo completo.
+    if ($Result.Kind -eq "Failed") {
+        if ($null -ne $Dism -and $Dism.Kind -eq "Failed") { return (Set-WinForgeDismFailureView -Result $Result -Dism $Dism) }
+        if ($FinalSfc.Kind -eq "Failed") { return (Set-WinForgeSfcFailureView -Result $Result -Sfc $FinalSfc) }
     }
 
     return $Result
@@ -864,7 +925,7 @@ function Invoke-WinForgeDismAndSfc {
         [switch]$PassThru
     )
 
-    $title = "Reparar o Windows (DISM + SFC)"
+    $title = (Get-WinForgeText 'Reparar o Windows (DISM + SFC)')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
@@ -874,9 +935,9 @@ function Invoke-WinForgeDismAndSfc {
     try {
         $proceed = $true
 
-        if (-not (Test-WinForgeElevation -Reason "O reparo do Windows exige privilégios de Administrador.")) {
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'O reparo do Windows exige privilégios de Administrador.'))) {
             $proceed = $false
-            $result = New-WinForgeResult -Kind Failed -Detail "requer Administrador"
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador')
         }
         elseif (-not $Embedded -and (Test-WinForgeServicingRebootPending)) {
             # Com uma atualização esperando o reinício, o DISM e o SFC recusariam o reparo depois de minutos. No Otimizar
@@ -888,13 +949,17 @@ function Invoke-WinForgeDismAndSfc {
             # Mensagem, e não texto solto: na janela ela fica no resumo, à vista durante a pergunta. Primeiro o DISM repara
             # a imagem do Windows (pela internet, no Windows Update); depois o SFC verifica os arquivos usando essa imagem.
             # Os arquivos pessoais não são tocados.
-            Write-WinForgeStatus -Type Info -Message "Leva de 20 a 60 minutos (mais num HD). Dá para usar o PC, mas não o desligue."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Leva de 20 a 60 minutos (mais num HD). Dá para usar o PC, mas não o desligue.')
+
+            # Na bateria, o mesmo cuidado do Otimizar: a carga pode acabar no meio do reparo, e a pergunta começa no Não.
+            $onBattery = Test-WinForgeOnBattery
+            if ($onBattery) { Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Ligue o carregador: o reparo pode levar até uma hora.') }
             Write-Host ""
 
-            if (-not (Confirm-WinForgeAction "Iniciar o reparo agora?" -DefaultKey S)) {
+            if (-not (Confirm-WinForgeAction (Get-WinForgeText 'Iniciar o reparo agora?') -DefaultKey $(if ($onBattery) { "N" } else { "S" }) -YesLabel (Get-WinForgeText 'Reparar') -NoLabel (Get-WinForgeText 'Cancelar'))) {
                 $proceed = $false
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
         }
 
@@ -905,7 +970,7 @@ function Invoke-WinForgeDismAndSfc {
             $runDism = $true
 
             if ($CheckFirst) {
-                Write-Progress -Activity $title -Status "DISM /CheckHealth: conferindo se o repositório de componentes foi marcado como danificado"
+                Write-Progress -Activity $title -Status (Get-WinForgeText 'DISM /CheckHealth: conferindo se o repositório de componentes foi marcado como danificado')
 
                 try {
                     $check = Get-WinForgeDismHealthState
@@ -922,18 +987,18 @@ function Invoke-WinForgeDismAndSfc {
                 # Saudável ou sem consulta, o /RestoreHealth (demorado) só roda se o SFC a seguir não reparar tudo.
                 switch ($check.State) {
                     "Healthy" {
-                        Write-WinForgeStatus -Type Success -Message "DISM /CheckHealth: nenhum dano marcado na imagem do Windows."
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'DISM /CheckHealth: nenhum dano marcado na imagem do Windows.')
                     }
                     "NonRepairable" {
-                        Write-WinForgeStatus -Type Warning -Message "DISM /CheckHealth: a imagem do Windows tem dano grave; o DISM vai tentar reparar."
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'DISM /CheckHealth: a imagem do Windows tem dano grave; o DISM vai tentar reparar.')
                     }
                     "Repairable" {
-                        Write-WinForgeStatus -Type Warning -Message "DISM /CheckHealth: a imagem do Windows tem dano; o DISM vai repará-la."
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'DISM /CheckHealth: a imagem do Windows tem dano; o DISM vai repará-la.')
                     }
                     default {
                         $code = [string](Get-WinForgeJsonValue -Object $check -Name "Code" -Default "")
-                        $codeText = $(if ($code) { " (código $code)" } else { "" })
-                        Write-WinForgeStatus -Type Warning -Message "DISM /CheckHealth: não foi possível consultar a imagem do Windows$codeText."
+                        $codeText = $(if ($code) { (Get-WinForgeText ' (código {0})' "$code") } else { "" })
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'DISM /CheckHealth: não foi possível consultar a imagem do Windows{0}.' "$codeText")
                     }
                 }
             }
@@ -957,26 +1022,26 @@ function Invoke-WinForgeDismAndSfc {
             $decisive += @{ Name = "SFC"; Result = $sfc }
 
             if ($null -eq $dism -and (Test-WinForgeResultFlag -Result $sfc -Name "Unrepaired")) {
-                Write-WinForgeStatus -Type Info -Message "O SFC não reparou tudo: o DISM repara a imagem e o SFC roda de novo."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O SFC não reparou tudo: o DISM repara a imagem e o SFC roda de novo.')
 
-                $sfc.Etapa = "$($sfc.Etapa) (antes do DISM)"
+                $sfc.Etapa = (Get-WinForgeText '{0} (antes do DISM)' "$($sfc.Etapa)")
                 $dism = Invoke-WinForgeTimedRepairStep -Tool Dism
                 $rows = @($sfc, $dism)
                 $decisive = @(@{ Name = "DISM"; Result = $dism })
 
                 if ($dism.Kind -eq "Failed") {
-                    Write-WinForgeStatus -Type Info -Message "Com o DISM sem sucesso, o SFC não será repetido."
+                    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Com o DISM sem sucesso, o SFC não será repetido.')
                     $decisive += @{ Name = "SFC"; Result = $sfc }
                 }
                 else {
                     $finalSfc = Invoke-WinForgeTimedRepairStep -Tool Sfc
-                    $finalSfc.Etapa = "$($finalSfc.Etapa) (depois do DISM)"
+                    $finalSfc.Etapa = (Get-WinForgeText '{0} (depois do DISM)' "$($finalSfc.Etapa)")
                     $rows += $finalSfc
                     $decisive += @{ Name = "SFC"; Result = $finalSfc }
                 }
             }
 
-            Write-WinForgeSection -Title "Resumo do reparo"
+            Write-WinForgeSection -Title (Get-WinForgeText 'Resumo do reparo')
             Write-WinForgeResultTable -Results $rows
 
             # Quando DISM e SFC rodaram e os arquivos continuam corrompidos, o próximo passo é voltar o Windows a um ponto
@@ -988,7 +1053,7 @@ function Invoke-WinForgeDismAndSfc {
             # reinstalar o Windows pelo Windows Update mantendo programas e arquivos ("Restaurar o PC" remove os programas).
             if (-not $Embedded -and -not $pending -and (Test-WinForgeResultFlag -Result $finalSfc -Name "Unrepaired")) {
                 Write-Host ""
-                Write-WinForgeStatus -Type Info -Message "Se o problema continuar: Reparo > Restauração do Sistema ou Reparo > Recuperação."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Se o problema continuar: Reparo > Restauração do Sistema ou Reparo > Recuperação.')
             }
 
             # O pedido de reinício de uma das ferramentas vale para o reparo inteiro.
@@ -1005,17 +1070,17 @@ function Invoke-WinForgeDismAndSfc {
                 $result = New-WinForgeResult -Kind Failed -Detail ($texts -join "; ") -Data $data
             }
             elseif ($warned.Count -gt 0) {
-                $detail = "uma das etapas terminou com ressalvas"
+                $detail = (Get-WinForgeText 'uma das etapas terminou com ressalvas')
 
                 if (Test-WinForgeResultFlag -Result $finalSfc -Name "Unrepaired") {
-                    $detail = "o SFC ainda encontra arquivos corrompidos que não conseguiu reparar"
+                    $detail = (Get-WinForgeText 'o SFC ainda encontra arquivos corrompidos que não conseguiu reparar')
                 }
                 elseif (Test-WinForgeResultFlag -Result $finalSfc -Name "RebootRequired") {
                     # O SFC não chegou a verificar: há um reparo pendente, e só depois do reinício ele roda de verdade.
-                    $detail = "há um reparo do Windows pendente; depois de reiniciar, repita o reparo"
+                    $detail = (Get-WinForgeText 'há um reparo do Windows pendente; depois de reiniciar, repita o reparo')
                 }
                 elseif ($data.ContainsKey("RebootRequired")) {
-                    $detail = "o reparo termina na próxima reinicialização"
+                    $detail = (Get-WinForgeText 'o reparo termina na próxima reinicialização')
                 }
 
                 $result = New-WinForgeResult -Kind Warning -Detail $detail -Data $data
@@ -1026,10 +1091,10 @@ function Invoke-WinForgeDismAndSfc {
                 $detail = [string]$finalSfc.Detail
 
                 if (-not [object]::ReferenceEquals($finalSfc, $sfc)) {
-                    $detail = "depois do DISM, o SFC terminou sem pendências"
+                    $detail = (Get-WinForgeText 'depois do DISM, o SFC terminou sem pendências')
                 }
                 elseif (Test-WinForgeResultFlag -Result $dism -Name "ImageRepaired") {
-                    $detail = (@("o DISM reparou a imagem do Windows", $detail) | Where-Object { $_ }) -join "; "
+                    $detail = (@((Get-WinForgeText 'o DISM reparou a imagem do Windows'), $detail) | Where-Object { $_ }) -join "; "
                 }
 
                 $result = New-WinForgeResult -Kind Ok -Detail $detail -Data $data
@@ -1041,7 +1106,7 @@ function Invoke-WinForgeDismAndSfc {
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro durante o reparo: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro durante o reparo: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
     finally {
@@ -1098,12 +1163,18 @@ function Get-WinForgeChkdskDrives {
                 Free     = [double](Get-WinForgeJsonValue -Object $disk -Name "FreeSpace" -Default 0)
                 Size     = $size
                 System   = ($letter -eq $system)
-                External = ($letter -ne $system -and (Test-WinForgeDriveExternal -Drive $letter))
+                External = $false
             }
         }
     }
     catch {
         $drives = @()
+    }
+
+    # O barramento só importa com outra unidade além da do Windows, e vem de uma leitura só, para todas.
+    if (@($drives | Where-Object { -not $_.System }).Count -gt 0) {
+        $external = @(Get-WinForgeExternalDriveLetters)
+        foreach ($drive in $drives) { if (-not $drive.System -and $external -contains $drive.Drive) { $drive.External = $true } }
     }
 
     if (@($drives | Where-Object { $_.System }).Count -eq 0) {
@@ -1114,16 +1185,30 @@ function Get-WinForgeChkdskDrives {
 }
 
 
-function Test-WinForgeDriveExternal {
-    # Se a unidade fica num disco ligado pela USB (ou outro barramento externo). Sem leitura do Windows, falso.
-    param ([Parameter(Mandatory)][string]$Drive)
-
+function Get-WinForgeExternalDriveLetters {
+    <#
+    As unidades ("E:") que ficam num disco ligado pela USB (ou outro barramento externo: FireWire, cartão SD ou MMC), de
+    uma leitura das partições e uma dos discos. Antes eram duas leituras por unidade: com três discos além do do
+    Windows, seis esperas pelo serviço de armazenamento, cada uma de até um minuto. Sem leitura do Windows, nenhuma.
+    Com prazo (Invoke-WinForgeCimCommand): um disco morrendo ou uma controladora travada deixavam a lista esperando sem
+    fim. As letras de cada disco vêm de Get-WinForgePartitionLetters, a mesma leitura de Discos e espaço livre e da Saúde
+    dos discos; sem nenhuma unidade com letra, os discos nem são lidos.
+    #>
     try {
-        $disk = Get-Partition -DriveLetter $Drive.Substring(0, 1) -ErrorAction Stop | Get-Disk -ErrorAction Stop
-        return ([string](Get-WinForgeJsonValue -Object $disk -Name "BusType" -Default "") -in @("USB", "1394", "SD", "MMC"))
+        $partitions = @(Get-WinForgePartitionLetters)
+        if ($partitions.Count -eq 0) { return @() }
+
+        $buses = @{}
+
+        foreach ($disk in @(Invoke-WinForgeCimCommand -Name "Get-Disk")) {
+            if ($null -eq $disk) { continue }
+            $buses[[string](Get-WinForgeJsonValue -Object $disk -Name "Number" -Default "")] = [string](Get-WinForgeJsonValue -Object $disk -Name "BusType" -Default "")
+        }
+
+        return @($partitions | Where-Object { $buses[$_.Disk] -in @("USB", "1394", "SD", "MMC") } | ForEach-Object { $_.Drive })
     }
     catch {
-        return $false
+        return @()
     }
 }
 
@@ -1138,14 +1223,14 @@ function Select-WinForgeChkdskDrive {
 
     $options = @(
         foreach ($drive in $Drives) {
-            $what = $(if ($drive.System) { "a do Windows" } elseif ($drive.External) { "disco externo (USB)$(if ($drive.Label) { ', ' + $drive.Label })" } elseif ($drive.Label) { $drive.Label } else { "disco do PC" })
-            $space = $(if ($drive.Size -gt 0) { " · $(Format-WinForgeBytes -Bytes $drive.Free) livres de $(Format-WinForgeBytes -Bytes $drive.Size)" } else { "" })
-            @{ Key = $drive.Drive.Substring(0, 1); Label = "Unidade $($drive.Drive)"; Description = "$what$space"; Accent = [bool]$drive.System }
+            $what = $(if ($drive.System) { (Get-WinForgeText 'a do Windows') } elseif ($drive.External) { (Get-WinForgeText 'disco externo (USB){0}' "$(if ($drive.Label) { ', ' + $drive.Label })") } elseif ($drive.Label) { $drive.Label } else { (Get-WinForgeText 'disco do PC') })
+            $space = $(if ($drive.Size -gt 0) { (Get-WinForgeText ' · {0} livres de {1}' "$(Format-WinForgeBytes -Bytes $drive.Free)" "$(Format-WinForgeBytes -Bytes $drive.Size)") } else { "" })
+            @{ Key = $drive.Drive.Substring(0, 1); Label = (Get-WinForgeText 'Unidade {0}' "$($drive.Drive)"); Description = "$what$space"; Accent = [bool]$drive.System }
         }
     )
-    $options += @{ Key = "0"; Label = "Cancelar"; Exit = $true }
+    $options += @{ Key = "0"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
 
-    $answer = [string](Read-WinForgeChoice -Message "Qual unidade verificar?" -Options $options -DefaultKey ($Drives[0].Drive.Substring(0, 1)) -ShowMenu)
+    $answer = [string](Read-WinForgeChoice -Message (Get-WinForgeText 'Qual unidade verificar?') -Options $options -DefaultKey ($Drives[0].Drive.Substring(0, 1)) -ShowMenu)
     $match = @($Drives | Where-Object { $_.Drive.Substring(0, 1) -ieq $answer }) | Select-Object -First 1
 
     return $(if ($null -ne $match) { [string]$match.Drive } else { "" })
@@ -1173,20 +1258,20 @@ function Set-WinForgeChkdskStartupRepair {
 
     foreach ($command in @("chkntfs.exe", "fsutil.exe")) {
         if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
-            throw "comando não encontrado: $command"
+            throw (Get-WinForgeText 'comando não encontrado: {0}' "$command")
         }
     }
 
     $schedule = Invoke-WinForgeCapture -FilePath "chkntfs.exe" -Arguments @("/C", $Drive)
 
     if ($schedule.ExitCode -ne 0) {
-        throw "o chkntfs não aceitou o agendamento (código $(Format-WinForgeExitCode -ExitCode $schedule.ExitCode))"
+        throw (Get-WinForgeText 'o chkntfs não aceitou o agendamento (código {0})' "$(Format-WinForgeExitCode -ExitCode $schedule.ExitCode)")
     }
 
     $mark = Invoke-WinForgeCapture -FilePath "fsutil.exe" -Arguments @("dirty", "set", $Drive)
 
     if ($mark.ExitCode -ne 0) {
-        throw "o fsutil não marcou a unidade $Drive para reparo (código $(Format-WinForgeExitCode -ExitCode $mark.ExitCode))"
+        throw (Get-WinForgeText 'o fsutil não marcou a unidade {0} para reparo (código {1})' "$Drive" "$(Format-WinForgeExitCode -ExitCode $mark.ExitCode)")
     }
 
     $script:WinForgeChkdskRepairPending = $false
@@ -1201,11 +1286,11 @@ function Invoke-WinForgeScheduleChkdskRepair {
     try {
         [void](Set-WinForgeChkdskStartupRepair -Drive $Drive)
         # Com a Inicialização Rápida, "Desligar" e ligar pode pular a verificação de inicialização; "Reiniciar", não.
-        Write-WinForgeStatus -Type Success -Message "Reparo da unidade $Drive agendado: use Reiniciar (não Desligar) e não desligue o PC até o Windows abrir."
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Reparo da unidade {0} agendado: use Reiniciar (não Desligar) e não desligue o PC até o Windows abrir.' "$Drive")
         return $true
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível agendar o reparo: $($_.Exception.Message)."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível agendar o reparo: {0}.' "$($_.Exception.Message)")
         return $false
     }
 }
@@ -1225,26 +1310,26 @@ function Start-WinForgeChkdsk {
     )
 
     $script:WinForgeChkdskRepairPending = $false
-    $title = "Verificar o sistema de arquivos (CHKDSK)"
+    $title = (Get-WinForgeText 'Verificar o sistema de arquivos (CHKDSK)')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
     $result = $null
 
     try {
-        if (-not (Test-WinForgeElevation -Reason "O CHKDSK exige privilégios de Administrador.")) {
-            $result = New-WinForgeResult -Kind Failed -Detail "requer Administrador"
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'O CHKDSK exige privilégios de Administrador.'))) {
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador')
         }
         elseif (-not (Get-Command "chkdsk.exe" -ErrorAction SilentlyContinue)) {
-            Write-WinForgeStatus -Type Error -Message "Comando não encontrado: chkdsk.exe"
-            $result = New-WinForgeResult -Kind Failed -Detail "comando não encontrado"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Comando não encontrado: chkdsk.exe')
+            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'comando não encontrado')
         }
         else {
             $drives = @()
             $drive = Get-WinForgeSystemDriveLetter
 
             if (-not $Embedded) {
-                Write-Progress -Activity $title -Status "lendo os discos do PC"
+                Write-Progress -Activity $title -Status (Get-WinForgeText 'lendo os discos do PC')
                 try { $drives = @(Get-WinForgeChkdskDrives) } finally { Write-Progress -Activity $title -Completed }
                 if ($drives.Count -gt 1) { $drive = Select-WinForgeChkdskDrive -Drives $drives }
             }
@@ -1252,20 +1337,20 @@ function Start-WinForgeChkdsk {
             $arguments = @($drive, "/scan")
 
             if ($drive) {
-                Write-WinForgeKeyValue -Label "Unidade" -Value $drive
-                Write-WinForgeKeyValue -Label "Modo" -Value "Verificação online (não exige reiniciar)"
-                if (-not $Embedded) { Write-WinForgeStatus -Type Info -Message "Leva poucos minutos num SSD, mais num HD." }
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Unidade') -Value $drive
+                Write-WinForgeKeyValue -Label (Get-WinForgeText 'Modo') -Value (Get-WinForgeText 'Verificação online (não exige reiniciar)')
+                if (-not $Embedded) { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Leva poucos minutos num SSD, mais num HD.') }
                 Write-WinForgeCommand -Command "chkdsk.exe $($arguments -join ' ')"
                 Write-Host ""
             }
 
             # Com a lista de unidades, a escolha já foi a confirmação; com uma unidade só, a pergunta de sempre.
-            if (-not $drive -or (-not $Embedded -and $drives.Count -le 1 -and -not (Confirm-WinForgeAction "Iniciar a verificação agora?" -DefaultKey S))) {
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            if (-not $drive -or (-not $Embedded -and $drives.Count -le 1 -and -not (Confirm-WinForgeAction (Get-WinForgeText 'Iniciar a verificação agora?') -DefaultKey S -YesLabel (Get-WinForgeText 'Verificar') -NoLabel (Get-WinForgeText 'Cancelar')))) {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             else {
-                Write-Progress -Activity $title -Status "verificando a unidade $drive; não feche o WinForge até terminar"
+                Write-Progress -Activity $title -Status (Get-WinForgeText 'verificando a unidade {0}; não feche o WinForge até terminar' "$drive")
 
                 # A verificação pode levar muitos minutos num HDD: o PC não pode dormir no meio.
                 $keepAwake = $false
@@ -1290,43 +1375,47 @@ function Start-WinForgeChkdsk {
                 $repairRequired = ($code -ge 0) -and (Test-WinForgeChkdskRepairRequired -ExitCode $code -OutputText $run.Text)
 
                 if ($code -lt 0) {
-                    Write-WinForgeStatus -Type Error -Message "O CHKDSK foi interrompido antes de terminar (código $codeText)."
-                    $result = New-WinForgeResult -Kind Failed -Detail "o CHKDSK foi interrompido (código $codeText)"
+                    Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'O CHKDSK foi interrompido antes de terminar (código {0}).' "$codeText")
+                    $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o CHKDSK foi interrompido (código {0})' "$codeText")
                 }
                 elseif (-not $repairRequired) {
                     if ($code -eq 0) {
-                        Write-WinForgeStatus -Type Success -Message "Nenhum erro foi encontrado na unidade $drive."
-                        $result = New-WinForgeResult -Kind Ok -Detail "nenhum erro foi encontrado na unidade $drive"
-                        if (-not $Embedded) { [void](Set-WinForgeResultView -Result $result -Headline "Nenhum erro na unidade $drive" -Note "A verificação online terminou sem encontrar problemas.") }
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhum erro foi encontrado na unidade {0}.' "$drive")
+                        $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum erro foi encontrado na unidade {0}' "$drive")
+                        if (-not $Embedded) { [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nenhum erro na unidade {0}' "$drive") -Note (Get-WinForgeText 'A verificação online terminou sem encontrar problemas.')) }
                     }
                     elseif ($code -eq 1) {
-                        Write-WinForgeStatus -Type Success -Message "Erros foram encontrados e corrigidos na unidade $drive."
-                        $result = New-WinForgeResult -Kind Ok -Detail "erros foram encontrados e corrigidos na unidade $drive"
-                        if (-not $Embedded) { [void](Set-WinForgeResultView -Result $result -Headline "Erros corrigidos na unidade $drive" -Note "O CHKDSK encontrou e corrigiu erros com o Windows aberto.") }
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Erros foram encontrados e corrigidos na unidade {0}.' "$drive")
+                        $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'erros foram encontrados e corrigidos na unidade {0}' "$drive")
+                        [void](Add-WinForgeChange -Action $title -Text $result.Detail)
+                        if (-not $Embedded) { [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Erros corrigidos na unidade {0}' "$drive") -Note (Get-WinForgeText 'O CHKDSK encontrou e corrigiu erros com o Windows aberto.')) }
                     }
                     else {
-                        Write-WinForgeStatus -Type Warning -Message "A verificação terminou com avisos menores (código $codeText), que não exigem reparo offline."
-                        $result = New-WinForgeResult -Kind Warning -Detail "avisos menores do CHKDSK (código $codeText), sem necessidade de reparo offline"
+                        # Código 2: uma limpeza interna do disco, feita ou deixada para um reparo com /f (a documentação da
+                        # Microsoft). Não é erro: ressalva aqui deixaria a etapa do Otimizar amarela todo mês por nada.
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhum erro foi encontrado na unidade {0}.' "$drive")
+                        $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum erro foi encontrado na unidade {0}' "$drive")
+                        if (-not $Embedded) { [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nenhum erro na unidade {0}' "$drive") -Note (Get-WinForgeText 'O CHKDSK só apontou uma limpeza interna do disco, que não pede reparo.')) }
                     }
                 }
                 else {
                     if ($code -eq 3) {
-                        Write-WinForgeStatus -Type Warning -Message "O CHKDSK não conseguiu verificar ou corrigir tudo com o Windows em uso (código 3)."
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O CHKDSK não conseguiu verificar ou corrigir tudo com o Windows em uso (código 3).')
                     }
                     elseif ($code -gt 3) {
                         # Fora da tabela da Microsoft (0 a 3): na dúvida, o reparo offline é oferecido como no código 3.
-                        Write-WinForgeStatus -Type Warning -Message "O CHKDSK terminou com um código desconhecido ($codeText); por segurança, o reparo offline é oferecido."
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O CHKDSK terminou com um código desconhecido ({0}); por segurança, o reparo offline é oferecido.' "$codeText")
                     }
                     else {
-                        Write-WinForgeStatus -Type Warning -Message "A verificação encontrou problemas que só o reparo offline corrige."
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A verificação encontrou problemas que só o reparo offline corrige.')
                     }
 
                     # Mensagens, e não texto solto: na janela elas ficam no resumo, à vista durante a pergunta. Erro no disco
                     # pode ser o disco falhando: antes de mexer nele, a cópia dos arquivos.
-                    Write-WinForgeStatus -Type Info -Message "O reparo roda ao reiniciar, antes de o Windows abrir, e pode levar horas: não desligue o PC até o Windows abrir."
+                    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O reparo roda ao reiniciar, antes de o Windows abrir, e pode levar horas: não desligue o PC até o Windows abrir.')
 
                     if (-not $DeferRepairPrompt) {
-                        Write-WinForgeStatus -Type Info -Message "Erros no disco podem ser sinal de que ele está falhando: antes de agendar, copie seus arquivos importantes e veja Diagnóstico > Saúde dos discos."
+                        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Erros no disco podem ser sinal de que ele está falhando: antes de agendar, copie seus arquivos importantes e veja Diagnóstico > Saúde dos discos.')
                     }
 
                     Write-Host ""
@@ -1334,48 +1423,52 @@ function Start-WinForgeChkdsk {
                     if ($DeferRepairPrompt) {
                         # No Otimizar a decisão é pedida ao final, sem interromper as etapas.
                         $script:WinForgeChkdskRepairPending = $true
-                        Write-WinForgeStatus -Type Info -Message "O agendamento do reparo vem no fim do Otimizar."
-                        $result = New-WinForgeResult -Kind Warning -Detail "reparo offline pendente"
+                        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O agendamento do reparo vem no fim do Otimizar.')
+                        $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'reparo offline pendente')
                     }
-                    elseif (Confirm-WinForgeAction "Agendar o reparo para a próxima reinicialização?" -DefaultKey N) {
+                    elseif (Confirm-WinForgeAction (Get-WinForgeText 'Agendar o reparo para a próxima reinicialização?') -DefaultKey N -YesLabel (Get-WinForgeText 'Agendar') -NoLabel (Get-WinForgeText 'Agora não')) {
                         if (Invoke-WinForgeScheduleChkdskRepair -Drive $drive) {
                             $external = (@($drives | Where-Object { $_.Drive -eq $drive -and $_.External }).Count -gt 0)
 
                             if ($external) {
-                                Write-WinForgeStatus -Type Info -Message "A unidade $drive é um disco externo: deixe-o conectado ao reiniciar, ou o reparo não roda."
+                                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'A unidade {0} é um disco externo: deixe-o conectado ao reiniciar, ou o reparo não roda.' "$drive")
                             }
 
-                            $result = New-WinForgeResult -Kind Warning -Detail "reparo da unidade $drive agendado para a próxima inicialização" -Data @{ RebootRequired = $true }
-                            [void](Set-WinForgeResultView -Result $result -Headline "Reparo da unidade $drive agendado" `
-                                    -Note "Ele roda ao reiniciar, antes de o Windows abrir: use Reiniciar, e não Desligar.$(if ($external) { ' Deixe o disco externo conectado.' })")
+                            $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'reparo da unidade {0} agendado para a próxima inicialização' "$drive") -Data @{ RebootRequired = $true }
+                            [void](Add-WinForgeChange -Action $title -Text $result.Detail)
+                            [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Reparo da unidade {0} agendado' "$drive") `
+                                    -Note (Get-WinForgeText 'Ele roda ao reiniciar, antes de o Windows abrir: use Reiniciar, e não Desligar.{0}' "$(if ($external) { (Get-WinForgeText ' Deixe o disco externo conectado.') })"))
 
                             # O reinício ali mesmo, com Não como padrão. Um problema ao pedir não muda o agendamento.
                             try {
-                                [void](Request-WinForgeRestart -Reason "Reiniciar agora já faz o reparo da unidade $drive." `
-                                        -Comment "Reinicialização solicitada pelo WinForge para o reparo do disco (CHKDSK)." `
-                                        -DeclinedMessage "Reinicialização não iniciada. O reparo roda quando você reiniciar o PC (use Reiniciar, não Desligar).")
+                                [void](Request-WinForgeRestart -Reason (Get-WinForgeText 'Reiniciar agora já faz o reparo da unidade {0}.' "$drive") `
+                                        -Comment (Get-WinForgeText 'Reinicialização solicitada pelo WinForge para o reparo do disco (CHKDSK).') `
+                                        -DeclinedMessage (Get-WinForgeText 'Reinicialização não iniciada. O reparo roda quando você reiniciar o PC (use Reiniciar, não Desligar).'))
                             }
                             catch {
                                 Write-Verbose "Oferta de reinício depois do CHKDSK: $($_.Exception.Message)"
                             }
                         }
                         else {
-                            $result = New-WinForgeResult -Kind Failed -Detail "não foi possível agendar o reparo"
+                            $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível agendar o reparo')
+                            [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'A unidade {0} precisa de reparo' "$drive") `
+                                    -Note (Get-WinForgeText 'O Windows não aceitou o agendamento do reparo. Antes de tentar de novo, copie seus arquivos importantes.') `
+                                    -Next "diagnostics.disk-health" -NextLabel (Get-WinForgeText 'Ver a saúde dos discos'))
                         }
                     }
                     else {
-                        Write-WinForgeStatus -Type Warning -Message "Reparo não agendado; para agendar depois, rode esta verificação de novo."
-                        $result = New-WinForgeResult -Kind Warning -Detail "reparo offline não agendado"
-                        [void](Set-WinForgeResultView -Result $result -Headline "A unidade $drive precisa de reparo" `
-                                -Note "O reparo não foi agendado; para agendar, rode a verificação de novo. Antes, copie seus arquivos importantes." `
-                                -Next "diagnostics.disk-health" -NextLabel "Ver a saúde dos discos")
+                        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Reparo não agendado; para agendar depois, rode esta verificação de novo.')
+                        $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'reparo offline não agendado')
+                        [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'A unidade {0} precisa de reparo' "$drive") `
+                                -Note (Get-WinForgeText 'O reparo não foi agendado; para agendar, rode a verificação de novo. Antes, copie seus arquivos importantes.') `
+                                -Next "diagnostics.disk-health" -NextLabel (Get-WinForgeText 'Ver a saúde dos discos'))
                     }
                 }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Erro ao executar o CHKDSK: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Erro ao executar o CHKDSK: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -1398,7 +1491,7 @@ function Get-WinForgeDriveMediaText {
 
     try {
         $disk = @(Get-WinForgeDiskSummary | Where-Object { [string]$_.Unidade -ieq $Drive }) | Select-Object -First 1
-        if ($null -ne $disk -and [string]$disk.Tipo -ne "Não disponível") { return [string]$disk.Tipo }
+        if ($null -ne $disk -and [string]$disk.Tipo -ne (Get-WinForgeText 'Não disponível')) { return [string]$disk.Tipo }
     }
     catch {
         Write-Verbose "Tipo do disco de ${Drive}: $($_.Exception.Message)"
@@ -1421,38 +1514,42 @@ function Start-WinForgeDriveOptimization {
     $media = ""
 
     if (-not $Embedded) {
-        Write-Progress -Activity "Otimizar a unidade do sistema" -Status "lendo o tipo do disco"
-        try { $media = Get-WinForgeDriveMediaText -Drive $drive } finally { Write-Progress -Activity "Otimizar a unidade do sistema" -Completed }
+        Write-Progress -Activity (Get-WinForgeText 'Otimizar a unidade do sistema') -Status (Get-WinForgeText 'lendo o tipo do disco')
+        try { $media = Get-WinForgeDriveMediaText -Drive $drive } finally { Write-Progress -Activity (Get-WinForgeText 'Otimizar a unidade do sistema') -Completed }
     }
 
     # /O delega ao Windows a escolha correta: retrim/otimização para SSD e desfragmentação para HDD (num SSD, o Windows
     # só desfragmenta raramente, quando vê necessidade). Sabendo o tipo do disco, a tela diz o que vai acontecer e quanto
     # demora, numa linha; sem saber, as duas possibilidades.
     $description = $(
-        if ($media -in @("SSD", "NVMe")) { "Na unidade $drive (um SSD), o Windows manda o TRIM, que mantém o SSD rápido. Costuma levar segundos." }
-        elseif ($media -eq "HDD") { "Na unidade $drive (um HD), o Windows desfragmenta o disco. Pode levar de minutos a horas." }
-        else { "Na unidade $drive, o Windows faz o TRIM num SSD (segundos) ou desfragmenta num HD (pode demorar)." }
+        if ($media -in @("SSD", "NVMe")) { (Get-WinForgeText 'Na unidade {0} (um SSD), o Windows manda o TRIM, que mantém o SSD rápido. Costuma levar segundos.' "$drive") }
+        elseif ($media -eq "HDD") { (Get-WinForgeText 'Na unidade {0} (um HD), o Windows desfragmenta o disco. Pode levar de minutos a horas.' "$drive") }
+        else { (Get-WinForgeText 'Na unidade {0}, o Windows faz o TRIM num SSD (segundos) ou desfragmenta num HD (pode demorar).' "$drive") }
     )
 
     # A faixa: o que o Windows fez, conforme o tipo do disco.
-    $optimizedTitle = "Unidade $drive otimizada"
+    $optimizedTitle = (Get-WinForgeText 'Unidade {0} otimizada' "$drive")
     $optimizedNote = $(
-        if ($media -in @("SSD", "NVMe")) { "O Windows fez o TRIM, que mantém o SSD rápido." }
-        elseif ($media -eq "HDD") { "O Windows desfragmentou o disco." }
-        else { "O Windows fez a otimização certa para o tipo do disco." }
+        if ($media -in @("SSD", "NVMe")) { (Get-WinForgeText 'O Windows fez o TRIM, que mantém o SSD rápido.') }
+        elseif ($media -eq "HDD") { (Get-WinForgeText 'O Windows desfragmentou o disco.') }
+        else { (Get-WinForgeText 'O Windows fez a otimização certa para o tipo do disco.') }
     )
+    $failedTitle = (Get-WinForgeText 'A unidade {0} não foi otimizada' "$drive")
     $view = {
         param ($Result)
         if ($Result.Kind -eq "Ok") { Set-WinForgeResultView -Result $Result -Headline $optimizedTitle -Note $optimizedNote }
+        elseif ($Result.Kind -eq "Failed" -and [string]$Result.Detail -match '(0x[0-9A-F]{8}|-?\d+)\s*$') {
+            Set-WinForgeResultView -Result $Result -Headline $failedTitle -Note (Get-WinForgeText 'O Windows terminou a otimização com o código {0}.' "$($Matches[1])")
+        }
     }
 
     Invoke-WinForgeTool `
-        -Title "Otimizar a unidade do sistema" `
+        -Title (Get-WinForgeText 'Otimizar a unidade do sistema') `
         -FilePath "defrag.exe" `
         -Arguments @($drive, "/O", "/U", "/V") `
         -Description @($description) `
-        -Question "Otimizar a unidade $drive agora?" `
-        -SuccessDetail "a unidade $drive foi otimizada" `
+        -Question (Get-WinForgeText 'Otimizar a unidade {0} agora?' "$drive") -YesLabel (Get-WinForgeText 'Otimizar') -NoLabel (Get-WinForgeText 'Cancelar') `
+        -SuccessDetail (Get-WinForgeText 'a unidade {0} foi otimizada' "$drive") `
         -ResultView $view `
         -Embedded:$Embedded -PassThru:$PassThru
 }
@@ -1470,10 +1567,11 @@ function Invoke-WinForgeDeviceScan {
 
     # Depois da busca, o que ainda está com problema: a busca terminar bem não quer dizer que o dispositivo que levou a
     # pessoa até aqui (a câmera, o som) voltou a funcionar.
+    # Os valores chegam pela posição (o código, o texto, a hora do começo e o -Embedded): este só usa o primeiro e o último.
     $parser = {
         param ($ExitCode, $Text, $StartedAt, $Embedded)
 
-        $result = Get-WinForgeExitCodeResult -ExitCode $ExitCode -OutputText $Text
+        $result = Get-WinForgeExitCodeResult -ExitCode $ExitCode
 
         if ($result.Kind -eq "Ok") {
             $remaining = Get-WinForgeDeviceScanRemaining -NotesOnly:([bool]$Embedded)
@@ -1489,33 +1587,36 @@ function Invoke-WinForgeDeviceScan {
         param ($Result)
 
         $remaining = Get-WinForgeResultData -Result $Result -Name "Remaining"
-        $searched = "O Windows procurou dispositivos novos e alterações de hardware."
+        $searched = (Get-WinForgeText 'O Windows procurou dispositivos novos e alterações de hardware.')
 
         if ($Result.Kind -eq "Warning" -and $null -ne $remaining -and [int]$remaining -gt 0) {
-            Set-WinForgeResultView -Result $Result -Headline (Format-WinForgeCount -Count ([int]$remaining) -One "dispositivo ainda com problema" -Many "dispositivos ainda com problema") `
-                -Note "$([string](Get-WinForgeResultData -Result $Result -Name 'Problems'))." -Next "diagnostics.devices" -NextLabel "Ver os dispositivos com problema"
+            Set-WinForgeResultView -Result $Result -Headline (Format-WinForgeCount -Count ([int]$remaining) -One (Get-WinForgeText 'dispositivo ainda com problema') -Many (Get-WinForgeText 'dispositivos ainda com problema')) `
+                -Note "$([string](Get-WinForgeResultData -Result $Result -Name 'Problems'))." -Next "diagnostics.devices" -NextLabel (Get-WinForgeText 'Ver os dispositivos com problema')
         }
         elseif ($Result.Kind -eq "Ok" -and $null -ne $remaining -and [int]$remaining -eq 0) {
-            Set-WinForgeResultView -Result $Result -Headline "Nenhum dispositivo com problema" -Note $searched
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Nenhum dispositivo com problema') -Note $searched
         }
         elseif ($Result.Kind -eq "Ok") {
-            Set-WinForgeResultView -Result $Result -Headline "Busca concluída" -Note $searched
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Busca concluída') -Note $searched
+        }
+        elseif ($Result.Kind -eq "Warning" -and (Test-WinForgeResultFlag -Result $Result -Name "RebootRequired")) {
+            Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText 'Reinicie para terminar a instalação') -Note (Get-WinForgeText 'O Windows termina de instalar os drivers encontrados ao reiniciar.')
         }
     }
 
     # O pnputil só tem /scan-devices a partir do Windows 10 versão 2004 (build 19041); antes, ele só mostraria a ajuda.
     Invoke-WinForgeTool `
-        -Title "Detectar dispositivos e drivers" `
+        -Title (Get-WinForgeText 'Detectar dispositivos e drivers') `
         -FilePath "pnputil.exe" `
         -Arguments @("/scan-devices") `
-        -Description @("Pede ao Windows que procure dispositivos novos e instale os drivers que já tiver.") `
-        -SuccessDetail "o Windows procurou dispositivos novos e alterações de hardware" `
+        -Description @((Get-WinForgeText 'Pede ao Windows que procure dispositivos novos e instale os drivers que já tiver.')) `
+        -SuccessDetail (Get-WinForgeText 'o Windows procurou dispositivos novos e alterações de hardware') `
         -ResultParser $parser `
         -ResultView $view `
-        -Question "Procurar dispositivos agora?" `
-        -FinishingStatus "esperando o Windows terminar de instalar os drivers encontrados (até 20 segundos)" `
-        -MinimumBuild 19041 -MinimumVersion "Windows 10 versão 2004" `
-        -UnavailableHint "Em Diagnóstico > Gerenciador de Dispositivos, menu Ação, use 'Verificar se há alterações de hardware': faz o mesmo." `
+        -Question (Get-WinForgeText 'Procurar dispositivos agora?') -YesLabel (Get-WinForgeText 'Procurar') -NoLabel (Get-WinForgeText 'Cancelar') `
+        -FinishingStatus (Get-WinForgeText 'esperando o Windows terminar de instalar os drivers encontrados (até 20 segundos)') `
+        -MinimumBuild 19041 -MinimumVersion (Get-WinForgeText 'Windows 10 versão 2004') `
+        -UnavailableHint (Get-WinForgeText 'Em Diagnóstico > Gerenciador de Dispositivos, menu Ação, use ''Verificar se há alterações de hardware'': faz o mesmo.') `
         -Embedded:$Embedded -PassThru:$PassThru
 }
 
@@ -1546,8 +1647,10 @@ function Get-WinForgeDeviceScanRemaining {
         Write-Verbose "Serviço de instalação de dispositivos: $($_.Exception.Message)"
     }
 
+    # Com prazo (Invoke-WinForgeCimCommand), como em Diagnóstico > Dispositivos com problema: sem resposta, a tela termina
+    # sem afirmar nada.
     try {
-        $devices = @(Get-PnpDevice -PresentOnly -ErrorAction Stop | Where-Object { Test-WinForgePnpDeviceHasProblem -Device $_ })
+        $devices = @(Invoke-WinForgeCimCommand -Name "Get-PnpDevice" -Parameters @{ PresentOnly = $true } | Where-Object { Test-WinForgePnpDeviceHasProblem -Device $_ })
     }
     catch {
         Write-Verbose "Dispositivos com problema: $($_.Exception.Message)"
@@ -1557,30 +1660,215 @@ function Get-WinForgeDeviceScanRemaining {
     $real = @($devices | Where-Object { (Get-WinForgeDeviceProblemCode -Device $_) -notin @(22, 29) })
 
     # Remaining e Problems: quantos e quais, para a faixa da janela.
-    if ($real.Count -eq 0) { return (New-WinForgeResult -Kind Ok -Detail "o Windows procurou dispositivos novos e alterações de hardware; nenhum dispositivo com problema" -Data @{ Remaining = 0 }) }
+    if ($real.Count -eq 0) { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'o Windows procurou dispositivos novos e alterações de hardware; nenhum dispositivo com problema') -Data @{ Remaining = 0 }) }
 
     # "Câmera integrada (Câmera): o driver não está instalado (código 28); ...", como no Diagnóstico.
     $shown = @($real | Select-Object -First 3 | ForEach-Object { "$(Get-WinForgeDeviceName -Device $_): $(Get-WinForgeDeviceProblemText -Device $_)" })
     $list = ($shown -join "; ")
-    if ($real.Count -gt $shown.Count) { $list += "; e mais $($real.Count - $shown.Count)" }
+    if ($real.Count -gt $shown.Count) { $list += (Get-WinForgeText '; e mais {0}' "$($real.Count - $shown.Count)") }
 
-    $lead = if ($real.Count -eq 1) { "Ainda aparece com problema" } else { "Ainda aparecem com problema" }
+    $lead = if ($real.Count -eq 1) { (Get-WinForgeText 'Ainda aparece com problema') } else { (Get-WinForgeText 'Ainda aparecem com problema') }
     # O Windows pode ainda estar instalando um driver; o Diagnóstico diz o que fazer com cada dispositivo.
-    $notes = @("${lead}: $list.", "Confira de novo em alguns minutos em Diagnóstico > Dispositivos com problema.")
+    $notes = @("${lead}: $list.", (Get-WinForgeText 'Confira de novo em alguns minutos em Diagnóstico > Dispositivos com problema.'))
     $data = @{ Notes = $notes; Remaining = $real.Count; Problems = $list }
 
     if (@($real | Where-Object { (Get-WinForgeDeviceProblemCode -Device $_) -eq 14 }).Count -gt 0) {
-        $notes += "Reinicie o PC para o Windows terminar de preparar um dispositivo."
+        $notes += (Get-WinForgeText 'Reinicie o PC para o Windows terminar de preparar um dispositivo.')
         $data = @{ Notes = $notes; RebootRequired = $true; Remaining = $real.Count; Problems = $list }
     }
 
-    $countText = Format-WinForgeCount -Count $real.Count -One "dispositivo ainda aparece" -Many "dispositivos ainda aparecem"
+    $countText = Format-WinForgeCount -Count $real.Count -One (Get-WinForgeText 'dispositivo ainda aparece') -Many (Get-WinForgeText 'dispositivos ainda aparecem')
 
     if ($NotesOnly) {
-        return (New-WinForgeResult -Kind Ok -Detail "o Windows procurou dispositivos novos e alterações de hardware; $countText com problema" -Data $data)
+        return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'o Windows procurou dispositivos novos e alterações de hardware; {0} com problema' "$countText") -Data $data)
     }
 
-    return (New-WinForgeResult -Kind Warning -Detail "a busca terminou, mas $countText com problema" -Data $data)
+    return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a busca terminou, mas {0} com problema' "$countText") -Data $data)
+}
+
+
+# ---------------------------------------------------------------------------
+# Destravar a impressão
+# ---------------------------------------------------------------------------
+
+function Get-WinForgeSpoolFiles {
+    <#
+    Os arquivos da fila de impressão: os .SPL (o documento) e .SHD (os dados do trabalho) da pasta que a Microsoft manda
+    esvaziar quando a fila trava (C:\Windows\System32\spool\PRINTERS). Só esses dois tipos, e só no primeiro nível: o que
+    mais estiver na pasta fica. Uma pasta que é atalho para outro lugar não é lida.
+    #>
+    $windows = [string]$env:SystemRoot
+    if ([string]::IsNullOrWhiteSpace($windows)) { $windows = [string]$env:windir }
+    if ([string]::IsNullOrWhiteSpace($windows)) { $windows = "C:\Windows" }
+
+    $folder = Join-Path $windows "System32\spool\PRINTERS"
+
+    try {
+        $item = Get-Item -LiteralPath $folder -Force -ErrorAction Stop
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { return @() }
+
+        return @(Get-ChildItem -LiteralPath $folder -File -Force -ErrorAction Stop | Where-Object { $_.Extension -in @(".spl", ".shd") })
+    }
+    catch {
+        return @()
+    }
+}
+
+
+function Reset-WinForgePrintQueue {
+    <#
+    Destravar a impressão: o que a Microsoft indica quando um documento fica preso na fila. Reinicia o serviço Spooler de
+    Impressão e, se a pessoa escolher, apaga antes os documentos que esperam para imprimir (com o serviço parado, como a
+    Microsoft manda). Os serviços que dependem do Spooler e estavam ligados voltam a ligar. Um Spooler desativado fica como
+    está: alguém o desativou, e ligá-lo é decisão de quem o desativou.
+    #>
+    $title = (Get-WinForgeText 'Destravar a impressão')
+
+    Enter-WinForgeAction -Title $title
+
+    $final = New-WinForgeResult -Kind Ok -Title $title
+
+    try {
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Destravar a impressão exige privilégios de Administrador.'))) {
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title)
+            return
+        }
+
+        $state = Get-WinForgeServiceState -Name "Spooler"
+
+        if ($null -eq $state -or [bool]$state.Missing) {
+            $text = $(if ($null -eq $state) { (Get-WinForgeText 'o Windows não respondeu sobre o serviço Spooler de Impressão') } else { (Get-WinForgeText 'o serviço Spooler de Impressão não existe neste Windows') })
+            Write-WinForgeStatus -Type Error -Message "$(ConvertTo-WinForgeHeadline -Text $text)."
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail $text -Title $title)
+            return
+        }
+
+        if ($state.StartType -eq "Disabled") {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O serviço Spooler de Impressão está desativado: sem ele, o Windows não imprime.')
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O WinForge não liga um serviço desativado. Se você não o desativou, veja qual programa fez isso.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'o Spooler de Impressão está desativado') -Title $title
+            Exit-WinForgeAction -Result (Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O Spooler de Impressão está desativado') -Note (Get-WinForgeText 'Sem ele, o Windows não imprime. O WinForge não liga um serviço desativado.'))
+            return
+        }
+
+        $files = @(Get-WinForgeSpoolFiles)
+        $documents = @($files | ForEach-Object { $_.BaseName } | Select-Object -Unique).Count
+
+        # Parado (ele cai sozinho, quando um driver de impressora falha), o que destrava é ligá-lo: as frases dizem "ligar", e
+        # não "reiniciar", do começo à faixa.
+        $wasRunning = ($state.Status -eq "Running")
+
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Spooler de Impressão') -Value $(if ($wasRunning) { (Get-WinForgeText 'Ligado') } else { (Get-WinForgeText 'Parado') }) -Level $(if ($wasRunning) { "Normal" } else { "Warn" })
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Documentos na fila') -Value $documents
+        Write-Host ""
+
+        # Primeiro o que a Microsoft indica antes de apagar: reiniciar o serviço, com os documentos ficando na fila.
+        $clear = $false
+
+        if ($documents -gt 0) {
+            # O padrão (ENTER e o botão em destaque) é o que não apaga nada. Sem resposta, nada é feito.
+            try {
+                $choice = Read-WinForgeChoice -Message (Get-WinForgeText 'Como destravar?') -DefaultKey "R" -ShowMenu -TextPrompt $(if ($wasRunning) { (Get-WinForgeText 'Opção (ENTER = só reiniciar)') } else { (Get-WinForgeText 'Opção (ENTER = só ligar)') }) -Options @(
+                    @{ Key = "R"; Label = $(if ($wasRunning) { (Get-WinForgeText 'Reiniciar o Spooler') } else { (Get-WinForgeText 'Ligar o Spooler') }); Description = (Get-WinForgeText 'os documentos continuam na fila'); Accent = $true },
+                    @{ Key = "A"; Label = $(if ($wasRunning) { (Get-WinForgeText 'Apagar a fila e reiniciar') } else { (Get-WinForgeText 'Apagar a fila e ligar') }); Description = (Format-WinForgeCount -Count $documents -One (Get-WinForgeText 'documento não será impresso') -Many (Get-WinForgeText 'documentos não serão impressos')); Danger = $true },
+                    @{ Key = "N"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
+                )
+            }
+            catch {
+                $choice = "N"
+            }
+
+            if ($choice -eq "N") {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
+                return
+            }
+
+            $clear = ($choice -eq "A")
+        }
+        elseif (-not (Confirm-WinForgeAction -Message $(if ($wasRunning) { (Get-WinForgeText 'Reiniciar o Spooler de Impressão agora?') } else { (Get-WinForgeText 'Ligar o Spooler de Impressão agora?') }) -DefaultKey "S" -YesLabel $(if ($wasRunning) { (Get-WinForgeText 'Reiniciar') } else { (Get-WinForgeText 'Ligar') }) -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
+            return
+        }
+
+        $stopped = $false
+        $removed = @()
+        $kept = 0
+        $startProblem = ""
+
+        try {
+            Write-Progress -Activity $title -Status (Get-WinForgeText 'parando o Spooler de Impressão')
+            $stopped = Stop-WinForgeService -Name "Spooler"
+
+            # Os arquivos só saem com o serviço parado: com ele ligado, estão em uso e o Windows os recria.
+            if ($stopped -and $clear) {
+                Write-Progress -Activity $title -Status (Get-WinForgeText 'esvaziando a fila de impressão')
+
+                foreach ($file in @(Get-WinForgeSpoolFiles)) {
+                    try { Remove-WinForgeItem -Path $file.FullName; $removed += $file.BaseName } catch { $kept++ }
+                }
+            }
+        }
+        finally {
+            Write-Progress -Activity $title -Status (Get-WinForgeText 'ligando o Spooler de Impressão')
+
+            try { Start-WinForgeService -Name "Spooler" } catch { $startProblem = ([string]$_.Exception.Message).Trim().TrimEnd('.') }
+
+            # Quem depende do Spooler parou junto (Stop-Service -Force): o que estava ligado volta a ligar.
+            foreach ($dependent in @($state.Dependents)) {
+                try { Start-WinForgeService -Name $dependent } catch { Write-Verbose "Ligar ${dependent}: $($_.Exception.Message)" }
+            }
+
+            Write-Progress -Activity $title -Completed
+        }
+
+        $running = $false
+        try { $running = ([string](Get-Service -Name "Spooler" -ErrorAction Stop).Status -eq "Running") } catch { $running = $false }
+
+        if (-not $stopped) {
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'O Spooler de Impressão não parou em 30 segundos; a fila ficou como estava.')
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Reinicie o PC e tente imprimir de novo.')
+            $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Spooler de Impressão não parou em 30 segundos') -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A impressão não foi destravada') -Note (Get-WinForgeText 'O Spooler de Impressão não parou. Reinicie o PC e tente imprimir de novo.'))
+        }
+        elseif (-not $running) {
+            Write-WinForgeStatus -Type Error -Message $(if ($startProblem) { (Get-WinForgeText 'O Spooler de Impressão não ligou de novo: {0}.' "$startProblem") } else { (Get-WinForgeText 'O Spooler de Impressão não ligou de novo.') })
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Reinicie o PC para o Windows ligá-lo.')
+            $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o Spooler de Impressão não ligou de novo; reinicie o PC') -Title $title -Data @{ RebootRequired = $true }
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O Spooler de Impressão não ligou') -Note (Get-WinForgeText 'Reinicie o PC para o Windows ligá-lo.'))
+        }
+        else {
+            $gone = @($removed | Select-Object -Unique).Count
+            $goneText = Format-WinForgeCount -Count $gone -One (Get-WinForgeText 'documento') -Many (Get-WinForgeText 'documentos')
+            $done = $(
+                if ($wasRunning) { $(if ($gone -gt 0) { (Get-WinForgeText 'fila esvaziada ({0}) e Spooler de Impressão reiniciado' "$goneText") } else { (Get-WinForgeText 'Spooler de Impressão reiniciado') }) }
+                else { $(if ($gone -gt 0) { (Get-WinForgeText 'fila esvaziada ({0}) e Spooler de Impressão ligado' "$goneText") } else { (Get-WinForgeText 'Spooler de Impressão ligado') }) }
+            )
+            [void](Add-WinForgeChange -Action $title -Text $done)
+
+            if ($kept -gt 0) {
+                $keptText = Format-WinForgeCount -Count $kept -One (Get-WinForgeText 'arquivo da fila não saiu') -Many (Get-WinForgeText 'arquivos da fila não saíram')
+                Write-WinForgeStatus -Type Warning -Message $(if ($wasRunning) { (Get-WinForgeText 'O Spooler de Impressão foi reiniciado, mas {0}.' "$keptText") } else { (Get-WinForgeText 'O Spooler de Impressão foi ligado, mas {0}.' "$keptText") })
+                $final = New-WinForgeResult -Kind Warning -Detail "$done; $keptText" -Title $title
+                [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A fila foi esvaziada só em parte') -Note (Get-WinForgeText 'Reinicie o PC e use esta ação de novo.'))
+            }
+            else {
+                Write-WinForgeStatus -Type Success -Message "$(ConvertTo-WinForgeHeadline -Text $done)."
+
+                # Reiniciar sem apagar: se o documento continuar preso, o passo seguinte da Microsoft é esvaziar a fila.
+                $note = $(if ($documents -gt 0 -and -not $clear) { (Get-WinForgeText 'Tente imprimir de novo. Se continuar travada, use esta ação de novo e apague a fila.') } else { (Get-WinForgeText 'Tente imprimir de novo.') })
+                $final = New-WinForgeResult -Kind Ok -Detail $done -Title $title
+                [void](Set-WinForgeResultView -Result $final -Headline $(if ($gone -gt 0) { (Get-WinForgeText 'Fila de impressão esvaziada') } elseif ($wasRunning) { (Get-WinForgeText 'Spooler de Impressão reiniciado') } else { (Get-WinForgeText 'Spooler de Impressão ligado') }) -Note $note)
+            }
+        }
+    }
+    catch {
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível destravar a impressão: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
+        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
+    }
+
+    Exit-WinForgeAction -Result $final
 }
 
 

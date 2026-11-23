@@ -19,6 +19,7 @@ namespace WinForge
         private const uint RelaunchIconResourceId = 3;
         private const uint RelaunchDisplayNameId = 4;
         private const uint AppIdId = 5;
+        private const int StgmRead = 0;
         private const int StgmReadWrite = 2;
 
         [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -187,6 +188,65 @@ namespace WinForge
 
             return failure;
         }
+
+        private static string GetShortcutAppIdCore(string shortcutPath)
+        {
+            object link = new ShellLinkObject();
+
+            try
+            {
+                ((IPersistFile)link).Load(shortcutPath, StgmRead);
+
+                PropertyKey key = new PropertyKey();
+                key.FormatId = AppUserModelFormat;
+                key.PropertyId = AppIdId;
+
+                PropVariant value;
+                Marshal.ThrowExceptionForHR(((IPropertyStore)link).GetValue(ref key, out value));
+
+                try
+                {
+                    // Sem o identificador, o valor vem vazio (VT_EMPTY). Gravado, é texto (VT_LPWSTR; VT_BSTR por garantia).
+                    if (value.Pointer == IntPtr.Zero) { return ""; }
+                    if (value.ValueType == 31) { return Marshal.PtrToStringUni(value.Pointer); }
+                    if (value.ValueType == 8) { return Marshal.PtrToStringBSTR(value.Pointer); }
+                    return "";
+                }
+                finally
+                {
+                    PropVariantClear(ref value);
+                }
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(link);
+            }
+        }
+
+        // Lê o AppUserModelID gravado no .lnk: "" se o atalho não tem um, null se não foi possível ler.
+        // Roda em uma thread própria em modo STA, como a gravação.
+        public static string GetShortcutAppId(string shortcutPath)
+        {
+            string found = null;
+
+            Thread worker = new Thread(delegate ()
+            {
+                try
+                {
+                    found = GetShortcutAppIdCore(shortcutPath);
+                }
+                catch (Exception)
+                {
+                    found = null;
+                }
+            });
+
+            worker.SetApartmentState(ApartmentState.STA);
+            worker.Start();
+            worker.Join();
+
+            return found;
+        }
     }
 }
 '@
@@ -341,6 +401,26 @@ function Save-WinForgeShortcutFile {
     return [PSCustomObject]@{
         Path     = $Path
         AppIdSet = $appIdSet
+    }
+}
+
+
+function Get-WinForgeShortcutAppId {
+    # O identificador da barra de tarefas (AppUserModelID) gravado num atalho (.lnk): "" se ele não tem um, $null se não
+    # foi possível ler (o arquivo não é um atalho, o Windows recusou).
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    if (-not (Initialize-WinForgeShellInterop)) { return $null }
+
+    try {
+        return [WinForge.ShellIdentity]::GetShortcutAppId($Path)
+    }
+    catch {
+        return $null
     }
 }
 

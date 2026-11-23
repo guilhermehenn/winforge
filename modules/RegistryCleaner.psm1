@@ -108,7 +108,7 @@ function Test-WinForgeRegistryViewMismatch {
 
 
 function Get-WinForgeRegistryViewMismatchText {
-    return "o WinForge está aberto num PowerShell de 32 bits, que enxerga outra parte do registro e das pastas do sistema; feche e abra de novo pelo atalho do WinForge"
+    return (Get-WinForgeText 'o WinForge está aberto num PowerShell de 32 bits, que enxerga outra parte do registro e das pastas do sistema; feche e abra de novo pelo atalho do WinForge')
 }
 
 
@@ -246,13 +246,13 @@ function Get-WinForgeRegistryRoots {
 function Get-WinForgeRegistryCategories {
     # As categorias, na ordem da tela. Admin: precisa de Administrador para remover (fica fora da busca sem ele).
     return @(
-        [PSCustomObject]@{ Id = "uninstall"; Label = "Desinstaladores que não existem mais"; Description = "Programas que sumiram, mas continuam em Aplicativos instalados"; Admin = $false },
-        [PSCustomObject]@{ Id = "run"; Label = "Inicialização apontando para arquivos apagados"; Description = "Ao entrar no Windows, ele tenta abrir algo que não existe mais"; Admin = $false },
-        [PSCustomObject]@{ Id = "app-paths"; Label = "Atalhos de nome de programas apagados"; Description = "Nomes de programas que o Executar e o Iniciar não conseguem mais abrir"; Admin = $false },
-        [PSCustomObject]@{ Id = "mui-cache"; Label = "Nomes guardados de programas apagados"; Description = "Cache que o Explorador guarda de cada programa já aberto"; Admin = $false },
-        [PSCustomObject]@{ Id = "shared-dlls"; Label = "Bibliotecas compartilhadas que não existem mais"; Description = "Contagem de uso de bibliotecas já removidas"; Admin = $true },
-        [PSCustomObject]@{ Id = "help-files"; Label = "Arquivos de ajuda que não existem mais"; Description = "Ajudas (.chm, .hlp) de programas desinstalados"; Admin = $true },
-        [PSCustomObject]@{ Id = "fonts"; Label = "Fontes que não existem mais"; Description = "Fontes registradas cujo arquivo foi apagado"; Admin = $true }
+        [PSCustomObject]@{ Id = "uninstall"; Label = (Get-WinForgeText 'Desinstaladores que não existem mais'); Description = (Get-WinForgeText 'Programas que sumiram, mas continuam em Aplicativos instalados'); Admin = $false },
+        [PSCustomObject]@{ Id = "run"; Label = (Get-WinForgeText 'Inicialização apontando para arquivos apagados'); Description = (Get-WinForgeText 'Ao entrar no Windows, ele tenta abrir algo que não existe mais'); Admin = $false },
+        [PSCustomObject]@{ Id = "app-paths"; Label = (Get-WinForgeText 'Atalhos de nome de programas apagados'); Description = (Get-WinForgeText 'Nomes de programas que o Executar e o Iniciar não conseguem mais abrir'); Admin = $false },
+        [PSCustomObject]@{ Id = "mui-cache"; Label = (Get-WinForgeText 'Nomes guardados de programas apagados'); Description = (Get-WinForgeText 'Cache que o Explorador guarda de cada programa já aberto'); Admin = $false },
+        [PSCustomObject]@{ Id = "shared-dlls"; Label = (Get-WinForgeText 'Bibliotecas compartilhadas que não existem mais'); Description = (Get-WinForgeText 'Contagem de uso de bibliotecas já removidas'); Admin = $true },
+        [PSCustomObject]@{ Id = "help-files"; Label = (Get-WinForgeText 'Arquivos de ajuda que não existem mais'); Description = (Get-WinForgeText 'Ajudas (.chm, .hlp) de programas desinstalados'); Admin = $true },
+        [PSCustomObject]@{ Id = "fonts"; Label = (Get-WinForgeText 'Fontes que não existem mais'); Description = (Get-WinForgeText 'Fontes registradas cujo arquivo foi apagado'); Admin = $true }
     )
 }
 
@@ -671,7 +671,7 @@ function Set-WinForgeRegistryValueRecord {
         "QWord" { [int64]::Parse([string]$Data, $invariant) }
         "Binary" { , [Convert]::FromBase64String([string]$Data) }
         "MultiString" { , [string[]]@($Data) }
-        default { throw "tipo de valor desconhecido: $Kind" }
+        default { throw (Get-WinForgeText 'tipo de valor desconhecido: {0}' "$Kind") }
     }
 
     if (-not (Test-Path -LiteralPath $Key)) {
@@ -696,7 +696,7 @@ function Restore-WinForgeRegistryValues {
     $document = ConvertFrom-WinForgeStateText -Path $Path
 
     if ($null -eq $document) {
-        throw "não foi possível ler o backup dos valores do registro"
+        throw (Get-WinForgeText 'não foi possível ler o backup dos valores do registro')
     }
 
     $restored = 0
@@ -769,7 +769,7 @@ function Export-WinForgeRegistryBackup {
             $record = Get-WinForgeRegistryValueRecord -Key $issue.Key -Name $issue.Value
         }
         catch {
-            throw "não foi possível salvar o backup de $(ConvertTo-WinForgeRegExePath -Path $issue.Key)"
+            throw (Get-WinForgeText 'não foi possível salvar o backup de {0}' "$(ConvertTo-WinForgeRegExePath -Path $issue.Key)")
         }
 
         # Valor que já não existe: não há o que salvar (e a remoção dele vai falhar e ser contada).
@@ -794,7 +794,7 @@ function Export-WinForgeRegistryBackup {
 
         if ($run.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $partFile -PathType Leaf)) {
             foreach ($part in $parts) { Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue }
-            throw "não foi possível salvar o backup de $(ConvertTo-WinForgeRegExePath -Path $key)"
+            throw (Get-WinForgeText 'não foi possível salvar o backup de {0}' "$(ConvertTo-WinForgeRegExePath -Path $key)")
         }
 
         $parts.Add($partFile)
@@ -829,7 +829,7 @@ function Export-WinForgeRegistryBackup {
         }
         catch {
             if ($regFile) { Remove-Item -LiteralPath $regFile -Force -ErrorAction SilentlyContinue }
-            throw "não foi possível salvar o backup dos valores do registro: $($_.Exception.Message.TrimEnd('.'))"
+            throw (Get-WinForgeText 'não foi possível salvar o backup dos valores do registro: {0}' "$($_.Exception.Message.TrimEnd('.'))")
         }
 
         $jsonFile = $valuesFile
@@ -863,7 +863,7 @@ function Remove-WinForgeRegistryValueExact {
 
     $match = [regex]::Match($Key, '^(HKCU|HKLM):\\(.+)$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
-    if (-not $match.Success) { throw "chave do registro não reconhecida: $Key" }
+    if (-not $match.Success) { throw (Get-WinForgeText 'chave do registro não reconhecida: {0}' "$Key") }
 
     $hive = $(if ($match.Groups[1].Value -ieq "HKLM") { [Microsoft.Win32.Registry]::LocalMachine } else { [Microsoft.Win32.Registry]::CurrentUser })
     $subKey = $hive.OpenSubKey($match.Groups[2].Value, $true)
@@ -939,25 +939,25 @@ function Clear-WinForgeRegistryIssues {
         # No finally: parar a ação no meio não deixa sem anotação (e sem o desfazer) o que já saiu.
         if ($removed -gt 0) {
             # File: as chaves inteiras (.reg); Values: os valores soltos (.json). Qualquer um dos dois pode faltar.
-            [void](Add-WinForgeChange -Action "Limpeza do registro" -Text (Format-WinForgeCount -Count $removed -One "referência removida" -Many "referências removidas") -Undo @{ Kind = "registry"; File = [string]$backup.File; Values = [string]$backup.Values })
+            [void](Add-WinForgeChange -Action (Get-WinForgeText 'Limpeza do registro') -Text (Format-WinForgeCount -Count $removed -One (Get-WinForgeText 'referência removida') -Many (Get-WinForgeText 'referências removidas')) -Undo @{ Kind = "registry"; File = [string]$backup.File; Values = [string]$backup.Values })
         }
     }
 
-    $removedText = Format-WinForgeCount -Count $removed -One "referência removida" -Many "referências removidas"
+    $removedText = Format-WinForgeCount -Count $removed -One (Get-WinForgeText 'referência removida') -Many (Get-WinForgeText 'referências removidas')
 
     $keptParts = @()
-    if ($back -gt 0) { $keptParts += Format-WinForgeCount -Count $back -One "referência voltou a apontar para um arquivo que existe e ficou" -Many "referências voltaram a apontar para arquivos que existem e ficaram" }
-    if ($gone -gt 0) { $keptParts += Format-WinForgeCount -Count $gone -One "referência já tinha saído do registro" -Many "referências já tinham saído do registro" }
+    if ($back -gt 0) { $keptParts += Format-WinForgeCount -Count $back -One (Get-WinForgeText 'referência voltou a apontar para um arquivo que existe e ficou') -Many (Get-WinForgeText 'referências voltaram a apontar para arquivos que existem e ficaram') }
+    if ($gone -gt 0) { $keptParts += Format-WinForgeCount -Count $gone -One (Get-WinForgeText 'referência já tinha saído do registro') -Many (Get-WinForgeText 'referências já tinham saído do registro') }
     if ($keptParts.Count -gt 0) { $removedText += "; " + ($keptParts -join "; ") }
 
     $data = @{ Backup = $(if ($backupFiles.Count -gt 0) { $backupFiles[0] } else { "" }); BackupFiles = $backupFiles; Removed = $removed; Failures = @($failures); Back = $back; Gone = $gone }
 
-    if ($current.Count -eq 0) { return (New-WinForgeResult -Kind Ok -Detail "nada a remover: $($keptParts -join '; ')" -Data $data) }
+    if ($current.Count -eq 0) { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nada a remover: {0}' "$($keptParts -join '; ')") -Data $data) }
 
     if ($failures.Count -eq 0) { return (New-WinForgeResult -Kind Ok -Detail $removedText -Data $data) }
-    if ($removed -eq 0) { return (New-WinForgeResult -Kind Failed -Detail "nenhuma referência foi removida" -Data $data) }
+    if ($removed -eq 0) { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhuma referência foi removida') -Data $data) }
 
-    return (New-WinForgeResult -Kind Warning -Detail "$removedText; $(if ($failures.Count -eq 1) { '1 não pôde ser removida' } else { "$($failures.Count) não puderam ser removidas" })" -Data $data)
+    return (New-WinForgeResult -Kind Warning -Detail $(if ($failures.Count -eq 1) { (Get-WinForgeText '{0}; 1 não pôde ser removida' "$removedText") } else { (Get-WinForgeText '{0}; {1} não puderam ser removidas' "$removedText" "$($failures.Count)") }) -Data $data)
 }
 
 
@@ -966,7 +966,7 @@ function Clear-WinForgeRegistryIssues {
 # ---------------------------------------------------------------------------
 
 function Invoke-WinForgeRegistryCleanup {
-    $title = "Limpar o registro"
+    $title = (Get-WinForgeText 'Limpar o registro')
 
     Enter-WinForgeAction -Title $title
 
@@ -975,7 +975,7 @@ function Invoke-WinForgeRegistryCleanup {
     try {
         $isAdmin = Test-WinForgeAdministrator
 
-        Write-Progress -Activity $title -Status "procurando referências a arquivos que não existem mais"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'procurando referências a arquivos que não existem mais')
 
         try {
             $issues = @(Find-WinForgeRegistryIssues -IncludeMachine $isAdmin)
@@ -985,34 +985,34 @@ function Invoke-WinForgeRegistryCleanup {
         }
 
         if (-not $isAdmin) {
-            Write-WinForgeStatus -Type Info -Message "Sem Administrador, só as entradas do seu usuário entram. Para incluir as do PC todo, feche o WinForge, abra de novo e aceite o aviso do Windows."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Sem Administrador, só as entradas do seu usuário entram. Para incluir as do PC todo, feche o WinForge, abra de novo e aceite o aviso do Windows.')
         }
 
         if ($issues.Count -eq 0) {
-            Write-WinForgeStatus -Type Success -Message "Nenhuma referência quebrada foi encontrada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Ok -Detail "nenhuma referência quebrada" -Title $title)
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhuma referência quebrada foi encontrada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhuma referência quebrada') -Title $title)
             return
         }
 
         $categories = @(Get-WinForgeRegistryCategories | Where-Object { $id = $_.Id; @($issues | Where-Object { $_.Category -eq $id }).Count -gt 0 })
 
-        Write-WinForgeSection -Title "Referências quebradas"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Referências quebradas')
 
         foreach ($category in $categories) {
             Write-WinForgeKeyValue -Label $category.Label -Value (Format-WinForgeNumber -Value @($issues | Where-Object { $_.Category -eq $category.Id }).Count) -LabelWidth 48
         }
 
         Write-Host ""
-        [void](Write-WinForgeOtherAccountNotice -What "as entradas do registro do usuário")
+        [void](Write-WinForgeOtherAccountNotice -What 'as entradas do registro do usuário')
 
         # A lista completa fica nos detalhes técnicos: a chave, o valor e o arquivo que falta.
         foreach ($issue in $issues) {
-            Write-Host "  $(ConvertTo-WinForgeRegExePath -Path $issue.Key)$(if ($issue.Value) { ' : ' + $issue.Value }) -> falta $($issue.Missing)" -ForegroundColor DarkGray
+            Write-Host (Get-WinForgeText '  {0}{1} -> falta {2}' "$(ConvertTo-WinForgeRegExePath -Path $issue.Key)" "$(if ($issue.Value) { ' : ' + $issue.Value })" "$($issue.Missing)") -ForegroundColor DarkGray
         }
 
         Write-Host ""
-        Write-WinForgeStatus -Type Info -Message "Só saem referências a arquivos que não existem mais. Antes, o WinForge salva um backup que desfaz tudo pelo Histórico de mudanças."
-        Write-WinForgeStatus -Type Info -Message "Isso não deixa o PC mais rápido: tira do registro entradas que levam a lugar nenhum."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Só saem referências a arquivos que não existem mais. Antes, o WinForge salva um backup que desfaz tudo pelo Histórico de mudanças.')
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Isso não deixa o PC mais rápido: tira do registro entradas que levam a lugar nenhum.')
         Write-Host ""
 
         $options = @(
@@ -1020,28 +1020,28 @@ function Invoke-WinForgeRegistryCleanup {
                 $inCategory = @($issues | Where-Object { $_.Category -eq $category.Id })
                 $examples = Join-WinForgeList -Items @($inCategory | Select-Object -First 3 | ForEach-Object { $_.Name })
                 # Bibliotecas compartilhadas vêm desmarcadas: é uma contagem que os instaladores consultam, e quem decide é a pessoa.
-                @{ Key = $category.Id; Label = "$($category.Label) ($($inCategory.Count))"; Description = "$($category.Description). Ex.: $examples"; Selected = ($category.Id -ne "shared-dlls") }
+                @{ Key = $category.Id; Label = "$($category.Label) ($($inCategory.Count))"; Description = (Get-WinForgeText '{0}. Ex.: {1}' "$($category.Description)" "$examples"); Selected = ($category.Id -ne "shared-dlls") }
             }
         )
 
-        $picked = Read-WinForgeMultiSelect -Message "O que remover?" -Options $options
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'O que remover?') -Options $options
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
         $chosen = @($issues | Where-Object { @($picked) -contains $_.Category })
-        $countText = Format-WinForgeCount -Count $chosen.Count -One "referência quebrada" -Many "referências quebradas"
+        $countText = Format-WinForgeCount -Count $chosen.Count -One (Get-WinForgeText 'referência quebrada') -Many (Get-WinForgeText 'referências quebradas')
 
-        if (-not (Confirm-WinForgeAction -Message "Remover $countText (com backup)?" -DefaultKey "S")) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+        if (-not (Confirm-WinForgeAction -Message (Get-WinForgeText 'Remover {0} (com backup)?' "$countText") -DefaultKey "S" -YesLabel (Get-WinForgeText 'Remover') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
-        Write-Progress -Activity $title -Status "salvando o backup e removendo"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'salvando o backup e removendo')
 
         try {
             $result = Clear-WinForgeRegistryIssues -Issues $chosen
@@ -1051,7 +1051,7 @@ function Invoke-WinForgeRegistryCleanup {
         }
 
         foreach ($backupFile in @($result.Data.BackupFiles)) {
-            Write-WinForgeKeyValue -Label "Backup" -Value $backupFile
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Backup') -Value $backupFile
         }
 
         Write-Host ""
@@ -1061,15 +1061,27 @@ function Invoke-WinForgeRegistryCleanup {
         }
 
         if ([int]$result.Data.Removed -gt 0) {
-            Write-WinForgeStatus -Type Success -Message "$(Format-WinForgeCount -Count ([int]$result.Data.Removed) -One 'referência removida' -Many 'referências removidas')."
-            Write-WinForgeStatus -Type Info -Message "Para desfazer, use Manutenção > Histórico de mudanças."
+            $removedText = Format-WinForgeCount -Count ([int]$result.Data.Removed) -One (Get-WinForgeText 'referência removida') -Many (Get-WinForgeText 'referências removidas')
+            Write-WinForgeStatus -Type Success -Message "$removedText."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para desfazer, use Manutenção > Histórico de mudanças.')
+
+            # A faixa diz quantas saíram e leva ao Histórico de mudanças, onde fica o desfazer (antes, só o texto apontava).
+            # Numa ressalva (alguma não pôde ser removida), o título e a frase continuam os dela, e o botão também entra: o
+            # que saiu tem desfazer do mesmo jeito.
+            if ([string]$result.Kind -eq "Ok") {
+                [void](Set-WinForgeResultView -Result $result -Headline (ConvertTo-WinForgeHeadline -Text $removedText) -Note (Get-WinForgeText 'Para desfazer, use Manutenção > Histórico de mudanças.') `
+                        -Next "maintenance.changes" -NextLabel (Get-WinForgeText 'Histórico de mudanças'))
+            }
+            elseif ([string]$result.Kind -eq "Warning") {
+                [void](Set-WinForgeResultView -Result $result -Next "maintenance.changes" -NextLabel (Get-WinForgeText 'Histórico de mudanças'))
+            }
         }
 
         $result.Etapa = $title
         $final = $result
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível limpar o registro: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível limpar o registro: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 

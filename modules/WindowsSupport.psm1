@@ -49,7 +49,7 @@ function Get-WinForgeLastUpdateDate {
     # A data da atualização mais recente instalada (Win32_QuickFixEngineering); $null sem leitura.
     try {
         $dates = @(
-            foreach ($fix in @(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop)) {
+            foreach ($fix in @(Get-CimInstance -ClassName Win32_QuickFixEngineering -OperationTimeoutSec 30 -ErrorAction Stop)) {
                 $installed = Get-WinForgeJsonValue -Object $fix -Name "InstalledOn" -Default $null
 
                 if ($installed -is [datetime]) {
@@ -76,9 +76,9 @@ function Get-WinForgeSupportDaysText {
     # "daqui a 12 dias"; no último dia, "hoje" ("daqui a 0 dias" não se diz).
     param ([int]$Days)
 
-    if ($Days -le 0) { return "hoje" }
+    if ($Days -le 0) { return (Get-WinForgeText 'hoje') }
 
-    return "daqui a $(Format-WinForgeCount -Count $Days -One 'dia' -Many 'dias')"
+    return (Get-WinForgeText 'daqui a {0}' "$(Format-WinForgeCount -Count $Days -One (Get-WinForgeText 'dia') -Many (Get-WinForgeText 'dias'))")
 }
 
 
@@ -89,9 +89,9 @@ function Get-WinForgeEsuText {
 
     $end = Get-WinForgeJsonValue -Object $Status -Name "EsuEnd" -Default $null
 
-    if ($end -is [datetime]) { return "atualizações estendidas (ESU) até $(Format-WinForgeDateTime -When $end -Pattern 'dd/MM/yyyy')" }
+    if ($end -is [datetime]) { return (Get-WinForgeText 'atualizações estendidas (ESU) até {0}' "$(Format-WinForgeDateTime -When $end -Pattern 'dd/MM/yyyy')") }
 
-    return "atualizações estendidas (ESU) da organização"
+    return (Get-WinForgeText 'atualizações estendidas (ESU) da organização')
 }
 
 
@@ -131,7 +131,7 @@ function Get-WinForgeWindowsSupportStatus {
     $isServer = ($EditionId -match '^Server' -and $EditionId -notmatch '^ServerRdsh')
     $entry = $(if ($isServer) { $null } else { @($entries | Where-Object { [int]$_.Build -eq $Build }) | Select-Object -First 1 })
     $isWindows11 = ($Build -ge 22000)
-    $update22H2 = "Atualize para o Windows 10 22H2 em Atualizações > Windows Update (é grátis): é a versão que ainda pode receber as atualizações estendidas (ESU). Se o PC for compatível, o melhor é o Windows 11."
+    $update22H2 = (Get-WinForgeText 'Atualize para o Windows 10 22H2 em Atualizações > Windows Update (é grátis): é a versão que ainda pode receber as atualizações estendidas (ESU). Se o PC for compatível, o melhor é o Windows 11.')
 
     $status = [ordered]@{
         Build      = $Build
@@ -156,18 +156,18 @@ function Get-WinForgeWindowsSupportStatus {
             $status.Product = $(if ($Build -ge 10240) { "Windows 10 (build $Build)" } else { "Windows (build $Build)" })
             $status.State = "Ended"
             $status.Level = "Bad"
-            $status.Text = "Esta versão do Windows não recebe mais atualizações de segurança."
-            $status.Advice = $(if ($Build -ge 10240) { $update22H2 } else { "Instale uma versão atual do Windows." })
+            $status.Text = (Get-WinForgeText 'Esta versão do Windows não recebe mais atualizações de segurança.')
+            $status.Advice = $(if ($Build -ge 10240) { $update22H2 } else { (Get-WinForgeText 'Instale uma versão atual do Windows.') })
         }
         elseif ($isServer) {
             $status.Product = $(if ($Build -gt 0) { "Windows Server (build $Build)" } else { "Windows Server" })
-            $status.Text = "O WinForge não tem as datas do Windows Server."
-            $status.Advice = "Confira o prazo desta versão na página de ciclo de vida da Microsoft."
+            $status.Text = (Get-WinForgeText 'O WinForge não tem as datas do Windows Server.')
+            $status.Advice = (Get-WinForgeText 'Confira o prazo desta versão na página de ciclo de vida da Microsoft.')
         }
         else {
             $status.Product = $(if ($Build -gt 0) { "Windows (build $Build)" } else { "Windows" })
-            $status.Text = "Esta versão não está na lista de datas do WinForge."
-            $status.Advice = "Use Sobre o WinForge > Conferir dados online para conferir."
+            $status.Text = (Get-WinForgeText 'Esta versão não está na lista de datas do WinForge.')
+            $status.Advice = (Get-WinForgeText 'Use Sobre o WinForge > Conferir dados online para conferir.')
         }
 
         return [PSCustomObject]$status
@@ -185,7 +185,7 @@ function Get-WinForgeWindowsSupportStatus {
     $end = ConvertFrom-WinForgeCatalogDateText -Text ([string]$endText)
     $status.EndDate = $end
     $endShown = Format-WinForgeDateTime -When $end -Pattern "dd/MM/yyyy"
-    $upgradeAdvice = "Atualize para a versão mais nova do Windows 11 em Atualizações > Windows Update: é grátis e mantém seus arquivos e programas."
+    $upgradeAdvice = (Get-WinForgeText 'Atualize para a versão mais nova do Windows 11 em Atualizações > Windows Update: é grátis e mantém seus arquivos e programas.')
 
     if ($Today -le $end) {
         $status.DaysLeft = [int]($end - $Today).TotalDays
@@ -194,15 +194,15 @@ function Get-WinForgeWindowsSupportStatus {
             $status.State = "EndingSoon"
             $status.Level = "Warn"
             $status.Text = $(
-                if ($status.DaysLeft -le 0) { "As atualizações de segurança desta versão terminam hoje ($endShown)." }
-                else { "As atualizações de segurança desta versão acabam em $endShown ($(Get-WinForgeSupportDaysText -Days $status.DaysLeft))." }
+                if ($status.DaysLeft -le 0) { (Get-WinForgeText 'As atualizações de segurança desta versão terminam hoje ({0}).' "$endShown") }
+                else { (Get-WinForgeText 'As atualizações de segurança desta versão acabam em {0} ({1}).' "$endShown" "$(Get-WinForgeSupportDaysText -Days $status.DaysLeft)") }
             )
-            $status.Advice = $(if ($isWindows11) { "$upgradeAdvice Faça isso antes da data." } else { "Planeje a troca de versão antes da data." })
+            $status.Advice = $(if ($isWindows11) { (Get-WinForgeText '{0} Faça isso antes da data.' "$upgradeAdvice") } else { (Get-WinForgeText 'Planeje a troca de versão antes da data.') })
         }
         else {
             $status.State = "Supported"
             $status.Level = "Ok"
-            $status.Text = "Recebe atualizações de segurança até $endShown."
+            $status.Text = (Get-WinForgeText 'Recebe atualizações de segurança até {0}.' "$endShown")
         }
 
         return [PSCustomObject]$status
@@ -230,17 +230,17 @@ function Get-WinForgeWindowsSupportStatus {
                 $status.State = "Esu"
                 $status.Level = "Warn"
                 $status.DaysLeft = [int]($esuEnd - $Today).TotalDays
-                $status.Text = "Recebe as atualizações de segurança estendidas (ESU) até ${esuShown}: o suporte normal acabou em $endShown."
-                $status.Advice = "O ESU é temporário. Se o PC for compatível, a saída definitiva é o Windows 11."
+                $status.Text = (Get-WinForgeText 'Recebe as atualizações de segurança estendidas (ESU) até {0}: o suporte normal acabou em {1}.' "${esuShown}" "$endShown")
+                $status.Advice = (Get-WinForgeText 'O ESU é temporário. Se o PC for compatível, a saída definitiva é o Windows 11.')
             }
             else {
                 $status.State = "EsuAvailable"
                 $status.Level = $(if ($status.EsuChecked) { "Bad" } else { "Warn" })
                 $status.Text = $(
-                    if ($status.EsuChecked) { "Não recebe mais atualizações de segurança gratuitas desde $endShown, e nenhuma atualização do programa ESU foi instalada." }
-                    else { "Não recebe mais atualizações de segurança gratuitas desde $endShown. Não foi possível conferir se este PC recebe as atualizações estendidas (ESU)." }
+                    if ($status.EsuChecked) { (Get-WinForgeText 'Não recebe mais atualizações de segurança gratuitas desde {0}, e nenhuma atualização do programa ESU foi instalada.' "$endShown") }
+                    else { (Get-WinForgeText 'Não recebe mais atualizações de segurança gratuitas desde {0}. Não foi possível conferir se este PC recebe as atualizações estendidas (ESU).' "$endShown") }
                 )
-                $status.Advice = "Dá para receber as de segurança até $esuShown pelo programa ESU: inscreva-se em Configurações, Windows Update (atalho: Atualizações > Windows Update); se o PC já está inscrito, instale as atualizações pendentes por lá. Se o PC for compatível, a saída definitiva é o Windows 11."
+                $status.Advice = (Get-WinForgeText 'Dá para receber as de segurança até {0} pelo programa ESU: inscreva-se em Configurações, Windows Update (atalho: Atualizações > Windows Update); se o PC já está inscrito, instale as atualizações pendentes por lá. Se o PC for compatível, a saída definitiva é o Windows 11.' "$esuShown")
             }
 
             return [PSCustomObject]$status
@@ -264,8 +264,8 @@ function Get-WinForgeWindowsSupportStatus {
         if ($status.EsuChecked -and [int]$Revision -ge $firstEsu) {
             $status.State = "Esu"
             $status.Level = "Warn"
-            $status.Text = "Recebe as atualizações de segurança estendidas (ESU) contratadas pela organização: o suporte normal acabou em $endShown."
-            $status.Advice = "O ESU de empresas e escolas é renovado a cada ano. Se o PC for compatível, a saída definitiva é o Windows 11."
+            $status.Text = (Get-WinForgeText 'Recebe as atualizações de segurança estendidas (ESU) contratadas pela organização: o suporte normal acabou em {0}.' "$endShown")
+            $status.Advice = (Get-WinForgeText 'O ESU de empresas e escolas é renovado a cada ano. Se o PC for compatível, a saída definitiva é o Windows 11.')
 
             return [PSCustomObject]$status
         }
@@ -273,16 +273,47 @@ function Get-WinForgeWindowsSupportStatus {
 
     $status.State = "Ended"
     $status.Level = "Bad"
-    $status.Text = "Não recebe mais atualizações de segurança desde $endShown."
+    $status.Text = (Get-WinForgeText 'Não recebe mais atualizações de segurança desde {0}.' "$endShown")
     $status.Advice = $(
-        if ($class -eq "Ltsc") { "Esta edição de longo prazo (LTSC) precisa ser trocada por uma versão com suporte; fale com quem administra o PC." }
+        if ($class -eq "Ltsc") { (Get-WinForgeText 'Esta edição de longo prazo (LTSC) precisa ser trocada por uma versão com suporte; fale com quem administra o PC.') }
         elseif ($isWindows11) { $upgradeAdvice }
-        elseif ($firstEsu -gt 0 -and $class -eq "Enterprise" -and $null -ne $orgEnd -and $Today -le $orgEnd) { "Empresas e escolas podem contratar as atualizações estendidas (ESU) para este PC; fale com quem administra o PC. Se ele for compatível, a saída definitiva é o Windows 11." }
+        elseif ($firstEsu -gt 0 -and $class -eq "Enterprise" -and $null -ne $orgEnd -and $Today -le $orgEnd) { (Get-WinForgeText 'Empresas e escolas podem contratar as atualizações estendidas (ESU) para este PC; fale com quem administra o PC. Se ele for compatível, a saída definitiva é o Windows 11.') }
         elseif ($Build -lt 19045) { $update22H2 }
-        else { "Se o PC for compatível, atualize para o Windows 11 em Atualizações > Windows Update." }
+        else { (Get-WinForgeText 'Se o PC for compatível, atualize para o Windows 11 em Atualizações > Windows Update.') }
     )
 
     return [PSCustomObject]$status
+}
+
+
+function Get-WinForgeWindowsSupportShortText {
+    <#
+    O prazo do suporte em poucas palavras, para o cartão do Windows no Início e a faixa do alto das Atualizações:
+    "suporte até 13/10/2026", "ESU até 12/10/2027", "ESU da organização", "suporte não conferido" (sem conseguir conferir
+    o ESU) ou "sem suporte de segurança". Vazio quando a versão não está na lista do WinForge (ou é um Windows Server).
+    #>
+    param ([Parameter(Mandatory)]$Status)
+
+    $endDate = Get-WinForgeJsonValue -Object $Status -Name "EndDate" -Default $null
+    $esuEnd = Get-WinForgeJsonValue -Object $Status -Name "EsuEnd" -Default $null
+
+    switch ([string]$Status.State) {
+        { $_ -in @("Supported", "EndingSoon") } {
+            if ($endDate -is [datetime]) { return (Get-WinForgeText 'suporte até {0}' "$(Format-WinForgeDateTime -When $endDate -Pattern 'dd/MM/yyyy')") }
+            return ""
+        }
+        "Esu" {
+            if ($esuEnd -is [datetime]) { return (Get-WinForgeText 'ESU até {0}' "$(Format-WinForgeDateTime -When $esuEnd -Pattern 'dd/MM/yyyy')") }
+            return (Get-WinForgeText 'ESU da organização')
+        }
+        "EsuAvailable" {
+            if (-not [bool](Get-WinForgeJsonValue -Object $Status -Name "EsuChecked" -Default $true)) { return (Get-WinForgeText 'suporte não conferido') }
+            return (Get-WinForgeText 'sem suporte de segurança')
+        }
+        "Ended" { return (Get-WinForgeText 'sem suporte de segurança') }
+    }
+
+    return ""
 }
 
 
@@ -297,21 +328,21 @@ function Get-WinForgeWindowsSupportIssue {
         "EsuAvailable" {
             # Sem conseguir conferir o ESU (revisão da build não lida), não afirma que o PC está sem atualizações.
             if (-not [bool](Get-WinForgeJsonValue -Object $Status -Name "EsuChecked" -Default $true)) {
-                return (New-WinForgeHealthIssue -Id "windows-support" -Text "Não foi possível conferir se o $($Status.Product) ainda recebe atualizações de segurança" -Weight 10 -Target "diagnostics.windows-support" -ButtonText "Ver opções")
+                return (New-WinForgeHealthIssue -Id "windows-support" -Text (Get-WinForgeText 'Não foi possível conferir se o {0} ainda recebe atualizações de segurança' "$($Status.Product)") -Weight 10 -Target "diagnostics.windows-support" -ButtonText (Get-WinForgeText 'Ver opções'))
             }
 
-            return (New-WinForgeHealthIssue -Id "windows-support" -Text "O $($Status.Product) não recebe mais atualizações de segurança" -Weight 20 -Target "diagnostics.windows-support" -ButtonText "Ver como resolver")
+            return (New-WinForgeHealthIssue -Id "windows-support" -Text (Get-WinForgeText 'O {0} não recebe mais atualizações de segurança' "$($Status.Product)") -Weight 20 -Target "diagnostics.windows-support" -ButtonText (Get-WinForgeText 'Ver como resolver'))
         }
         "Ended" {
-            return (New-WinForgeHealthIssue -Id "windows-support" -Text "O $($Status.Product) não recebe mais atualizações de segurança" -Weight 20 -Target "diagnostics.windows-support" -ButtonText "Ver como resolver")
+            return (New-WinForgeHealthIssue -Id "windows-support" -Text (Get-WinForgeText 'O {0} não recebe mais atualizações de segurança' "$($Status.Product)") -Weight 20 -Target "diagnostics.windows-support" -ButtonText (Get-WinForgeText 'Ver como resolver'))
         }
         "EndingSoon" {
-            $when = $(if ([int]$Status.DaysLeft -le 0) { "terminam hoje" } else { "acabam em $(Format-WinForgeCount -Count $Status.DaysLeft -One 'dia' -Many 'dias')" })
-            return (New-WinForgeHealthIssue -Id "windows-support" -Text "As atualizações de segurança do $($Status.Product) $when" -Weight 8 -Target "diagnostics.windows-support" -ButtonText "Ver como resolver")
+            $when = $(if ([int]$Status.DaysLeft -le 0) { (Get-WinForgeText 'terminam hoje') } else { (Get-WinForgeText 'acabam em {0}' "$(Format-WinForgeCount -Count $Status.DaysLeft -One (Get-WinForgeText 'dia') -Many (Get-WinForgeText 'dias'))") })
+            return (New-WinForgeHealthIssue -Id "windows-support" -Text (Get-WinForgeText 'As atualizações de segurança do {0} {1}' "$($Status.Product)" "$when") -Weight 8 -Target "diagnostics.windows-support" -ButtonText (Get-WinForgeText 'Ver como resolver'))
         }
         "Esu" {
-            $text = $(if ($Status.EsuEnd -is [datetime]) { "O Windows 10 está nas atualizações estendidas (ESU), que acabam em $(Format-WinForgeDateTime -When $Status.EsuEnd -Pattern 'dd/MM/yyyy')" } else { "O Windows 10 está nas atualizações estendidas (ESU) da organização" })
-            return (New-WinForgeHealthIssue -Id "windows-support" -Text $text -Weight 5 -Target "diagnostics.windows-support" -ButtonText "Ver opções")
+            $text = $(if ($Status.EsuEnd -is [datetime]) { (Get-WinForgeText 'O Windows 10 está nas atualizações estendidas (ESU), que acabam em {0}' "$(Format-WinForgeDateTime -When $Status.EsuEnd -Pattern 'dd/MM/yyyy')") } else { (Get-WinForgeText 'O Windows 10 está nas atualizações estendidas (ESU) da organização') })
+            return (New-WinForgeHealthIssue -Id "windows-support" -Text $text -Weight 5 -Target "diagnostics.windows-support" -ButtonText (Get-WinForgeText 'Ver opções'))
         }
     }
 
@@ -426,7 +457,7 @@ function Get-WinForgeTpmVersion {
     if (-not (Test-WinForgeAdministrator)) { return $null }
 
     try {
-        $tpm = @(Get-CimInstance -Namespace "root/cimv2/Security/MicrosoftTpm" -ClassName Win32_Tpm -ErrorAction Stop) | Select-Object -First 1
+        $tpm = @(Get-CimInstance -Namespace "root/cimv2/Security/MicrosoftTpm" -ClassName Win32_Tpm -OperationTimeoutSec 15 -ErrorAction Stop) | Select-Object -First 1
     }
     catch {
         return $null
@@ -491,37 +522,39 @@ function Get-WinForgeWindows11Readiness {
     $checks = @()
 
     $tpmState = $(if ($null -eq $TpmVersion) { "Unknown" } elseif ([string]$TpmVersion -match '^2') { "Ok" } else { "Bad" })
-    $tpmValue = $(if ($null -eq $TpmVersion) { $(if (Test-WinForgeAdministrator) { "não foi possível ler" } else { "não verificado (requer Administrador)" }) } elseif ([string]::IsNullOrWhiteSpace([string]$TpmVersion)) { "não encontrado ou desligado no firmware" } else { "TPM $TpmVersion" })
-    $checks += [PSCustomObject]@{ Name = "TPM 2.0"; State = $tpmState; Value = $tpmValue }
+    $tpmValue = $(if ($null -eq $TpmVersion) { $(if (Test-WinForgeAdministrator) { (Get-WinForgeText 'não foi possível ler') } else { (Get-WinForgeText 'não verificado (requer Administrador)') }) } elseif ([string]::IsNullOrWhiteSpace([string]$TpmVersion)) { (Get-WinForgeText 'não encontrado ou desligado no firmware') } else { "TPM $TpmVersion" })
+    $checks += [PSCustomObject]@{ Name = (Get-WinForgeText 'TPM 2.0'); State = $tpmState; Value = $tpmValue }
 
-    $uefiState = $(if ($SecureBootText -match '^(Ativado|Desativado)$') { "Ok" } elseif ($SecureBootText -match 'BIOS legado') { "Bad" } else { "Unknown" })
+    # O texto vem de Get-WinForgeSecureBootText, já no idioma da tela.
+    $legacyText = Get-WinForgeText 'Indisponível (o Windows iniciou no modo BIOS legado)'
+    $uefiState = $(if ($SecureBootText -eq (Get-WinForgeText 'Ativado') -or $SecureBootText -eq (Get-WinForgeText 'Desativado')) { "Ok" } elseif ($SecureBootText -eq $legacyText) { "Bad" } else { "Unknown" })
     $uefiValue = $(
-        if ($SecureBootText -eq "Desativado") { "UEFI, Secure Boot desligado (dá para ligar no firmware)" }
-        elseif ($SecureBootText -eq "Ativado") { "UEFI, Secure Boot ligado" }
+        if ($SecureBootText -eq (Get-WinForgeText 'Desativado')) { (Get-WinForgeText 'UEFI, Secure Boot desligado (dá para ligar no firmware)') }
+        elseif ($SecureBootText -eq (Get-WinForgeText 'Ativado')) { (Get-WinForgeText 'UEFI, Secure Boot ligado') }
         # O modo de inicialização, e não o que a placa suporta: muitos PCs com BIOS legado (CSM) têm UEFI, e o disco pode
         # ser convertido (MBR2GPT) sem reinstalar o Windows.
-        elseif ($SecureBootText -match 'BIOS legado') { "o Windows iniciou no modo antigo (BIOS legado); trocar para UEFI exige preparar o disco antes, trabalho para um técnico" }
+        elseif ($SecureBootText -eq $legacyText) { (Get-WinForgeText 'o Windows iniciou no modo antigo (BIOS legado); trocar para UEFI exige preparar o disco antes, trabalho para um técnico') }
         else { $SecureBootText }
     )
-    $checks += [PSCustomObject]@{ Name = "UEFI e Secure Boot"; State = $uefiState; Value = $uefiValue }
+    $checks += [PSCustomObject]@{ Name = (Get-WinForgeText 'UEFI e Secure Boot'); State = $uefiState; Value = $uefiValue }
 
     $memoryState = $(if ($MemoryBytes -le 0) { "Unknown" } elseif ($MemoryBytes -ge $memoryMinimum) { "Ok" } else { "Bad" })
-    $checks += [PSCustomObject]@{ Name = "Memória (4 GB)"; State = $memoryState; Value = $(if ($MemoryBytes -gt 0) { Format-WinForgeBytes -Bytes $MemoryBytes } else { "não lida" }) }
+    $checks += [PSCustomObject]@{ Name = (Get-WinForgeText 'Memória (4 GB)'); State = $memoryState; Value = $(if ($MemoryBytes -gt 0) { Format-WinForgeBytes -Bytes $MemoryBytes } else { (Get-WinForgeText 'não lida') }) }
 
     # 64 GB, contados como no script de requisitos da Microsoft (HardwareReadiness.ps1): o tamanho da unidade do
     # Windows dividido por 1 GB e arredondado para inteiro.
     $diskState = $(if ($DiskBytes -le 0) { "Unknown" } elseif ([int]($DiskBytes / 1GB) -ge 64) { "Ok" } else { "Bad" })
-    $checks += [PSCustomObject]@{ Name = "Disco do sistema (64 GB)"; State = $diskState; Value = $(if ($DiskBytes -gt 0) { Format-WinForgeBytes -Bytes $DiskBytes } else { "não lido" }) }
+    $checks += [PSCustomObject]@{ Name = (Get-WinForgeText 'Disco do sistema (64 GB)'); State = $diskState; Value = $(if ($DiskBytes -gt 0) { Format-WinForgeBytes -Bytes $DiskBytes } else { (Get-WinForgeText 'não lido') }) }
 
     $cpuState = Get-WinForgeWindows11CpuSupport -Name $CpuName
     if ($CpuCores -gt 0 -and $CpuCores -lt 2) { $cpuState = "Bad" }
-    $cpuValue = $(if ([string]::IsNullOrWhiteSpace($CpuName)) { "não lido" } elseif ($cpuState -eq "Unknown") { "$($CpuName.Trim()) (confira na lista da Microsoft)" } else { $CpuName.Trim() })
-    $checks += [PSCustomObject]@{ Name = "Processador"; State = $cpuState; Value = $cpuValue }
+    $cpuValue = $(if ([string]::IsNullOrWhiteSpace($CpuName)) { (Get-WinForgeText 'não lido') } elseif ($cpuState -eq "Unknown") { (Get-WinForgeText '{0} (confira na lista da Microsoft)' "$($CpuName.Trim())") } else { $CpuName.Trim() })
+    $checks += [PSCustomObject]@{ Name = (Get-WinForgeText 'Processador'); State = $cpuState; Value = $cpuValue }
 
     # O Windows de 32 bits é uma linha à parte: o processador pode servir, mas o Windows 11 só existe em 64 bits, e a
     # troca pede uma instalação nova (a atualização pelo Windows Update não converte).
     if (-not $Is64Bit) {
-        $checks += [PSCustomObject]@{ Name = "Windows de 64 bits"; State = "Bad"; Value = "este Windows é de 32 bits: o Windows 11 pede uma instalação nova, de 64 bits" }
+        $checks += [PSCustomObject]@{ Name = (Get-WinForgeText 'Windows de 64 bits'); State = "Bad"; Value = (Get-WinForgeText 'este Windows é de 32 bits: o Windows 11 pede uma instalação nova, de 64 bits') }
     }
 
     $overall = $(if (@($checks | Where-Object { $_.State -eq "Bad" }).Count -gt 0) { "Bad" } elseif (@($checks | Where-Object { $_.State -eq "Unknown" }).Count -gt 0) { "Unknown" } else { "Ok" })
@@ -535,14 +568,14 @@ function Get-WinForgeWindows11Readiness {
 # ---------------------------------------------------------------------------
 
 function Show-WinForgeWindowsSupport {
-    $title = "Suporte do Windows"
+    $title = (Get-WinForgeText 'Suporte do Windows')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-Progress -Activity $title -Status "conferindo a versão e as atualizações instaladas"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'conferindo a versão e as atualizações instaladas')
 
         try {
             $build = Get-WinForgeWindowsBuild
@@ -559,16 +592,16 @@ function Show-WinForgeWindowsSupport {
         $session = Get-WinForgeSessionInfo
         $name = [string](Get-WinForgeJsonValue -Object $session -Name "WindowsName" -Default "")
         $version = [string](Get-WinForgeJsonValue -Object $session -Name "WindowsVersion" -Default "")
-        $windowsText = $(if ($name) { "$name$(if ($version) { " $version" }) (build $build)" } elseif ([string]$status.Product -match 'build') { [string]$status.Product } else { "$($status.Product) (build $build)" })
+        $windowsText = $(if ($name) { (Get-WinForgeText '{0}{1} (build {2})' "$name" "$(if ($version) { " $version" })" "$build") } elseif ([string]$status.Product -match 'build') { [string]$status.Product } else { (Get-WinForgeText '{0} (build {1})' "$($status.Product)" "$build") })
 
-        Write-WinForgeSection -Title "Atualizações de segurança"
-        Write-WinForgeKeyValue -Label "Windows" -Value $windowsText
-        Write-WinForgeKeyValue -Label "Prazo da edição" -Value $(if ($editionId -match '^Server' -and $editionId -notmatch '^ServerRdsh') { "Windows Server" } else { switch ($status.Class) { "Ltsc" { $(if ($editionId -match '^IoT') { "IoT Enterprise LTSC (prazo longo)" } else { "LTSC (prazo longo)" }) } "Enterprise" { "Enterprise e Education" } default { "Home e Pro" } } })
-        Write-WinForgeKeyValue -Label "Atualizações até" -Value $(if ($null -ne $status.EndDate) { Format-WinForgeDateTime -When $status.EndDate -Pattern "dd/MM/yyyy" } else { "não está na lista" }) -Level $(if ($status.Level -in "Ok", "Warn", "Bad") { $status.Level } else { "Normal" })
-        if ($null -ne $status.EsuEnd) { Write-WinForgeKeyValue -Label "Atualizações estendidas (ESU)" -Value "até $(Format-WinForgeDateTime -When $status.EsuEnd -Pattern 'dd/MM/yyyy')" }
-        if ($lastUpdate -is [datetime]) { Write-WinForgeKeyValue -Label "Última atualização instalada" -Value (Format-WinForgeDateTime -When $lastUpdate -Pattern "dd/MM/yyyy") }
+        Write-WinForgeSection -Title (Get-WinForgeText 'Atualizações de segurança')
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Windows') -Value $windowsText
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Prazo da edição') -Value $(if ($editionId -match '^Server' -and $editionId -notmatch '^ServerRdsh') { (Get-WinForgeText 'Windows Server') } else { switch ($status.Class) { "Ltsc" { $(if ($editionId -match '^IoT') { (Get-WinForgeText 'IoT Enterprise LTSC (prazo longo)') } else { (Get-WinForgeText 'LTSC (prazo longo)') }) } "Enterprise" { (Get-WinForgeText 'Enterprise e Education') } default { (Get-WinForgeText 'Home e Pro') } } })
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Atualizações até') -Value $(if ($null -ne $status.EndDate) { Format-WinForgeDateTime -When $status.EndDate -Pattern "dd/MM/yyyy" } else { (Get-WinForgeText 'não está na lista') }) -Level $(if ($status.Level -in "Ok", "Warn", "Bad") { $status.Level } else { "Normal" })
+        if ($null -ne $status.EsuEnd) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Atualizações estendidas (ESU)') -Value (Get-WinForgeContextText 'data' 'até {0}' "$(Format-WinForgeDateTime -When $status.EsuEnd -Pattern 'dd/MM/yyyy')") }
+        if ($lastUpdate -is [datetime]) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Última atualização instalada') -Value (Format-WinForgeDateTime -When $lastUpdate -Pattern "dd/MM/yyyy") }
         # É a build (e não a data acima) que mostra se o PC recebe o ESU: a 19045.6575 em diante só sai para quem se inscreveu.
-        if ($null -ne $status.Revision) { Write-WinForgeKeyValue -Label "Build instalada" -Value "$build.$($status.Revision)" }
+        if ($null -ne $status.Revision) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Build instalada') -Value "$build.$($status.Revision)" }
         Write-Host ""
 
         $statusType = switch ($status.Level) { "Ok" { "Success" } "Warn" { "Warning" } "Bad" { "Error" } default { "Info" } }
@@ -577,7 +610,7 @@ function Show-WinForgeWindowsSupport {
 
         # Os requisitos do Windows 11 são para o Windows 10 de mesa: o Windows Server não vai para o Windows 11.
         if ($build -lt 22000 -and -not [bool](Get-WinForgeJsonValue -Object $status -Name "IsServer" -Default $false)) {
-            Write-Progress -Activity $title -Status "conferindo os requisitos do Windows 11"
+            Write-Progress -Activity $title -Status (Get-WinForgeText 'conferindo os requisitos do Windows 11')
 
             try {
                 $readiness = Get-WinForgeWindows11Readiness
@@ -586,46 +619,46 @@ function Show-WinForgeWindowsSupport {
                 Write-Progress -Activity $title -Completed
             }
 
-            Write-WinForgeSection -Title "Requisitos do Windows 11"
+            Write-WinForgeSection -Title (Get-WinForgeText 'Requisitos do Windows 11')
 
             foreach ($check in $readiness.Checks) {
-                $mark = switch ($check.State) { "Ok" { "atende" } "Bad" { "não atende" } default { "não verificado" } }
+                $mark = switch ($check.State) { "Ok" { (Get-WinForgeText 'atende') } "Bad" { (Get-WinForgeText 'não atende') } default { (Get-WinForgeText 'não verificado') } }
                 Write-WinForgeKeyValue -Label $check.Name -Value "$mark · $($check.Value)" -LabelWidth 26 -Level $(if ($check.State -in "Ok", "Bad") { $check.State } else { "Normal" })
             }
 
             Write-Host ""
 
             switch ($readiness.State) {
-                "Ok" { Write-WinForgeStatus -Type Success -Message "Este PC atende aos requisitos do Windows 11: a atualização é grátis, em Atualizações > Windows Update." }
-                "Bad" { Write-WinForgeStatus -Type Warning -Message "Este PC não atende a todos os requisitos do Windows 11: o ESU é o caminho para continuar recebendo atualizações de segurança$(if ($build -lt 19045) { ', depois de atualizar para o Windows 10 22H2' })." }
-                default { Write-WinForgeStatus -Type Info -Message "Parte dos requisitos não pôde ser conferida; o aplicativo Verificação de Integridade do PC dá a resposta final." }
+                "Ok" { Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Este PC atende aos requisitos do Windows 11: a atualização é grátis, em Atualizações > Windows Update.') }
+                "Bad" { Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Este PC não atende a todos os requisitos do Windows 11: o ESU é o caminho para continuar recebendo atualizações de segurança{0}.' "$(if ($build -lt 19045) { (Get-WinForgeText ', depois de atualizar para o Windows 10 22H2') })") }
+                default { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Parte dos requisitos não pôde ser conferida; o aplicativo Verificação de Integridade do PC dá a resposta final.') }
             }
 
-            if (@($readiness.Checks | Where-Object { $_.Name -eq "TPM 2.0" -and $_.State -eq "Unknown" }).Count -gt 0 -and -not (Test-WinForgeAdministrator)) {
-                Write-WinForgeStatus -Type Info -Message "Abra o WinForge como Administrador para conferir o TPM."
+            if (@($readiness.Checks | Where-Object { $_.Name -eq (Get-WinForgeText 'TPM 2.0') -and $_.State -eq "Unknown" }).Count -gt 0 -and -not (Test-WinForgeAdministrator)) {
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Abra o WinForge como Administrador para conferir o TPM.')
             }
         }
 
-        Write-WinForgeStatus -Type Info -Message "Datas publicadas pela Microsoft; dados de $(Format-WinForgeDateTime -When (ConvertFrom-WinForgeCatalogDateText -Text $catalog.Updated) -Pattern 'dd/MM/yyyy')."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Datas publicadas pela Microsoft; dados de {0}.' "$(Format-WinForgeDateTime -When (ConvertFrom-WinForgeCatalogDateText -Text $catalog.Updated) -Pattern 'dd/MM/yyyy')")
 
         $final = switch ($status.State) {
-            "Supported" { New-WinForgeResult -Kind Ok -Detail "atualizações de segurança até $(Format-WinForgeDateTime -When $status.EndDate -Pattern 'dd/MM/yyyy')" -Title $title }
+            "Supported" { New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'atualizações de segurança até {0}' "$(Format-WinForgeDateTime -When $status.EndDate -Pattern 'dd/MM/yyyy')") -Title $title }
             # Fora da lista (Windows 11 mais novo que ela, prévia do Insider, Windows Server): sem veredito, porque o
             # WinForge não sabe a data.
             "Unknown" { $null }
             "Esu" { New-WinForgeResult -Kind Warning -Detail (Get-WinForgeEsuText -Status $status) -Title $title }
-            "EndingSoon" { New-WinForgeResult -Kind Warning -Detail $(if ($status.DaysLeft -le 0) { "as atualizações de segurança terminam hoje" } else { "as atualizações de segurança acabam em $(Format-WinForgeCount -Count $status.DaysLeft -One 'dia' -Many 'dias')" }) -Title $title }
+            "EndingSoon" { New-WinForgeResult -Kind Warning -Detail $(if ($status.DaysLeft -le 0) { (Get-WinForgeText 'as atualizações de segurança terminam hoje') } else { (Get-WinForgeText 'as atualizações de segurança acabam em {0}' "$(Format-WinForgeCount -Count $status.DaysLeft -One (Get-WinForgeText 'dia') -Many (Get-WinForgeText 'dias'))") }) -Title $title }
             # Sem conseguir ler a build instalada, o PC pode estar no ESU: a faixa diz o que a tela diz, sem afirmar que
             # ele está sem atualizações (como no Início e no Verificar o PC).
             "EsuAvailable" {
-                if ([bool]$status.EsuChecked) { New-WinForgeResult -Kind Warning -Detail "esta versão não recebe mais atualizações de segurança gratuitas" -Title $title }
-                else { New-WinForgeResult -Kind Warning -Detail "não foi possível conferir se este PC recebe as atualizações estendidas (ESU)" -Title $title }
+                if ([bool]$status.EsuChecked) { New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'esta versão não recebe mais atualizações de segurança gratuitas') -Title $title }
+                else { New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não foi possível conferir se este PC recebe as atualizações estendidas (ESU)') -Title $title }
             }
-            default { New-WinForgeResult -Kind Warning -Detail "esta versão não recebe mais atualizações de segurança" -Title $title }
+            default { New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'esta versão não recebe mais atualizações de segurança') -Title $title }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível conferir o suporte do Windows: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível conferir o suporte do Windows: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
     }
 

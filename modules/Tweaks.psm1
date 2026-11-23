@@ -6,6 +6,9 @@
 
 $script:WinForgeTweakCatalog = $null
 
+# Os ajustes do catálogo por Id (Get-WinForgeTweakById), montado junto com ele.
+$script:WinForgeTweakIndex = $null
+
 # Verdadeiro enquanto a chave de um ajuste desfaz (a pessoa pediu o estado oposto, Test-WinForgeTweakSwitchRevert); falso
 # em Desfazer ajustes do WinForge e no Histórico, que só devolvem o que o WinForge mudou.
 $script:WinForgeTweakSwitchRevert = $false
@@ -127,7 +130,7 @@ function Get-WinForgeAccessibilityFlags {
     if ($null -eq $value) { $value = $Default }
 
     $number = 0
-    if (-not [int]::TryParse(([string]$value).Trim(), [ref]$number)) { throw "As opções das teclas de acessibilidade não se leem: '$value'." }
+    if (-not [int]::TryParse(([string]$value).Trim(), [ref]$number)) { throw (Get-WinForgeText 'As opções das teclas de acessibilidade não se leem: ''{0}''.' "$value") }
 
     return $number
 }
@@ -186,7 +189,7 @@ function Invoke-WinForgePowercfg {
     $run = Invoke-WinForgeCapture -FilePath "powercfg.exe" -Arguments $Arguments
 
     if ($run.ExitCode -ne 0) {
-        throw "powercfg $($Arguments -join ' ') falhou (código $($run.ExitCode)): $($run.Text.Trim())"
+        throw (Get-WinForgeText 'powercfg {0} falhou (código {1}): {2}' "$($Arguments -join ' ')" "$($run.ExitCode)" "$($run.Text.Trim())")
     }
 
     return $run
@@ -488,7 +491,7 @@ function Test-WinForgeHighPerformanceActive {
     }
 
     # Planos duplicados têm outro GUID; o nome (localizado), que vem na mesma saída, é a segunda checagem.
-    return [bool]($active.Text -match "(?i)alto desempenho|high performance|desempenho m[aá]ximo|ultimate")
+    return [bool]($active.Text -match "(?i)alto desempenho|high performance|desempenho m[aá]ximo|ultimate|alto rendimiento|m[aá]ximo rendimiento")
 }
 
 
@@ -517,7 +520,7 @@ function Remove-WinForgeCreatedPowerScheme {
         $list = Invoke-WinForgeCapture -FilePath "powercfg.exe" -Arguments @("/list")
         $line = @($list.Lines | Where-Object { ([string]$_).ToLowerInvariant().Contains($Guid) }) | Select-Object -First 1
 
-        if ($null -ne $line -and [string]$line -match "(?i)alto desempenho|high performance") {
+        if ($null -ne $line -and [string]$line -match "(?i)alto desempenho|high performance|alto rendimiento") {
             [void](Invoke-WinForgeCapture -FilePath "powercfg.exe" -Arguments @("/delete", $Guid))
         }
     }
@@ -540,7 +543,7 @@ function Get-WinForgeTweakBackupPath {
 
 
 function Get-WinForgeTweakBackupUnreadableText {
-    return "Não foi possível ler o backup dos valores originais dos ajustes (o arquivo pode estar aberto em outro programa). Nada foi alterado; tente de novo."
+    return (Get-WinForgeText 'Não foi possível ler o backup dos valores originais dos ajustes (o arquivo pode estar aberto em outro programa). Nada foi alterado; tente de novo.')
 }
 
 
@@ -729,7 +732,14 @@ function New-WinForgeTweak {
         # Junta a captura de agora com o original já guardado, quando o ajuste é aplicado de novo (param $Previous,
         # $Snapshot; devolve o novo original). Sem ele, a captura de agora substitui o original guardado.
         [scriptblock]$Merge = $null,
+
+        # Entra em Aplicar ajustes recomendados. A aparência é gosto e nunca é recomendada: nunca junto de Cosmetic.
         [switch]$Recommended,
+
+        # Só muda a aparência ou a arrumação da barra de tarefas, da área de trabalho ou das cores: é gosto de cada um. A
+        # revisão do Otimizar não o oferece (Test-WinForgeTweakInReview). O jeito do Explorador e os widgets da tela de
+        # bloqueio ficam na revisão: a pessoa os quer ali.
+        [switch]$Cosmetic,
 
         # Ajuste de energia ou desempenho que muda o comportamento do PC; a janela o esconde em "Avançados".
         [switch]$Advanced,
@@ -738,6 +748,10 @@ function New-WinForgeTweak {
         [switch]$UserScope,
         [switch]$RestartExplorer,
         [switch]$Windows11Only,
+
+        # Não existe nos PCs com Modern Standby (Test-WinForgeModernStandby): neles, a Microsoft só permite o plano
+        # Equilibrado e os derivados dele.
+        [switch]$NotOnModernStandby,
 
         # O ajuste só vale depois de reiniciar o PC: a faixa do resultado pede o reinício.
         [switch]$NeedsReboot,
@@ -768,12 +782,14 @@ function New-WinForgeTweak {
         Name            = $Name
         Description     = $Description
         Recommended     = [bool]$Recommended
+        Cosmetic        = [bool]$Cosmetic
         Advanced        = [bool]$Advanced
         LaptopRisk      = [bool]$LaptopRisk
         RequiresAdmin   = [bool]$RequiresAdmin
         UserScope       = [bool]$UserScope
         RestartExplorer = [bool]$RestartExplorer
         Windows11Only   = [bool]$Windows11Only
+        NotOnModernStandby = [bool]$NotOnModernStandby
         NeedsReboot     = [bool]$NeedsReboot
         MinBuild        = $MinBuild
         MaxBuild        = $MaxBuild
@@ -783,9 +799,11 @@ function New-WinForgeTweak {
         OnByDefault     = [bool]$OnByDefault
 
         # Como a chave aparece (Get-WinForgeTweakSwitchLabels completa no catálogo): Feature é o recurso do Windows,
-        # About diz o que ele é, e Inverted diz que o ajuste desativa o recurso (a chave fica ativada com o ajuste fora).
+        # About diz o que ele é, Short é a frase da linha (até 60 letras), e Inverted diz que o ajuste desativa o recurso
+        # (a chave fica ativada com o ajuste fora).
         Feature         = $Name
         About           = $Description
+        Short           = ""
         Inverted        = $false
         Capture         = $Capture
         Apply           = $Apply
@@ -813,7 +831,7 @@ function Restore-WinForgeTweakRegistryValue {
         Remove-WinForgeRegistryValue -Path $Path -Name $Name
     }
     elseif ([string]::IsNullOrWhiteSpace($kind) -or $kind -eq "DWord") {
-        Set-WinForgeRegistryDWord -Path $Path -Name $Name -Value ([int]$value)
+        Set-WinForgeRegistryDWord -Path $Path -Name $Name -Value $value
     }
     else {
         Set-WinForgeRegistryValue -Path $Path -Name $Name -Kind $kind -Value $value
@@ -823,41 +841,29 @@ function Restore-WinForgeTweakRegistryValue {
 
 function New-WinForgeTweakRevertReport {
     # O que um desfazer fez: Restored (valores que ainda estavam como o WinForge deixou e voltaram ao original) e Kept
-    # (valores mudados depois, que ficaram como estão). Quem desfaz vários usa isso para não dizer "desfeito" à toa.
+    # (valores mudados depois, que ficaram como estão). Quem desfaz vários usa isso para não dizer "desfeito" à toa. Note:
+    # algo a mais que a pessoa precisa saber (a hibernação ligada junto com a Inicialização Rápida).
     param (
         [int]$Restored = 0,
-        [int]$Kept = 0
+        [int]$Kept = 0,
+        [string]$Note = ""
     )
 
-    return [PSCustomObject]@{ PSTypeName = "WinForge.TweakRevert"; Restored = $Restored; Kept = $Kept }
+    return [PSCustomObject]@{ PSTypeName = "WinForge.TweakRevert"; Restored = $Restored; Kept = $Kept; Note = $Note }
 }
 
 
 function Test-WinForgeTweakValueAtTarget {
     <#
-    Se o valor de agora no registro é o que o ajuste grava. Um valor diferente foi mudado depois (pela pessoa, pelo Windows
-    ou por outro programa): ao desfazer, ele fica como está, porque desfazer não passa por cima de uma escolha mais nova.
+    Se o valor de agora no registro tem o efeito de uma alteração do catálogo (Test-WinForgeTweakValueMatches: o valor, os
+    outros do mesmo efeito e a ausência quando ela é o efeito). Um valor diferente foi mudado depois (pela pessoa, pelo
+    Windows ou por outro programa): ao desfazer, ele fica como está, porque desfazer não passa por cima de uma escolha mais
+    nova. Uma leitura que falha também não está no alvo: nada é gravado por cima dela.
     #>
-    param (
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Name,
-        $Target,
-
-        # "DWord" (número) ou "String" (texto, como as opções do teclado e do mouse no Painel de Controle).
-        [string]$Kind = "DWord",
-
-        # A alteração do catálogo: com ela, contam também os outros valores do mesmo efeito (Also) e a ausência do valor
-        # quando ela é o efeito do ajuste (AbsentIsTarget).
-        $Change = $null
-    )
+    param ([Parameter(Mandatory)]$Change)
 
     try {
-        $current = Get-WinForgeRegistryValueOrNull -Path $Path -Name $Name
-
-        if ($null -ne $Change) { return (Test-WinForgeTweakValueMatches -Current $current -Change $Change) }
-        if ($null -eq $current) { return $false }
-        if ($Kind -eq "String") { return ([string]$current -ceq [string]$Target) }
-        return ([int]$current -eq [int]$Target)
+        return (Test-WinForgeTweakValueMatches -Current (Get-WinForgeRegistryValueOrNull -Path $Change.Path -Name $Change.Name) -Change $Change)
     }
     catch {
         return $false
@@ -912,7 +918,7 @@ function Test-WinForgeTweakChangeState {
     $current = Get-WinForgeRegistryValueOrNull -Path $Change.Path -Name $Change.Name
 
     if ($null -eq $current -and [bool](Get-WinForgeTweakField -Entry $Change -Name "AbsentUnknown" -Default $false)) {
-        throw "Sem o valor $($Change.Name), o Windows decide sozinho, e o estado não se lê."
+        throw (Get-WinForgeText 'Sem o valor {0}, o Windows decide sozinho, e o estado não se lê.' "$($Change.Name)")
     }
 
     return (Test-WinForgeTweakValueMatches -Current $current -Change $Change)
@@ -936,7 +942,7 @@ function Test-WinForgeTweakRegistryTarget {
 
     try {
         if ($Kind -eq "String") { return ([string]$value -ceq [string]$Target) }
-        return ([int]$value -eq [int]$Target)
+        return ((ConvertTo-WinForgeRegistryDWord -Value $value) -eq (ConvertTo-WinForgeRegistryDWord -Value $Target))
     }
     catch {
         return $false
@@ -968,6 +974,7 @@ function New-WinForgeRegistryTweak {
         [Parameter(Mandatory)][string]$Description,
         [Parameter(Mandatory)][object[]]$Changes,
         [switch]$Recommended,
+        [switch]$Cosmetic,
         [switch]$Advanced,
         [switch]$RestartExplorer,
         [switch]$Windows11Only,
@@ -1076,7 +1083,7 @@ function New-WinForgeRegistryTweak {
 
             $kind = Get-WinForgeTweakChangeKind $change
 
-            if (-not (Test-WinForgeTweakValueAtTarget -Path $change.Path -Name $change.Name -Target $change.Value -Kind $kind -Change $change)) {
+            if (-not (Test-WinForgeTweakValueAtTarget -Change $change)) {
                 $kept++
                 continue
             }
@@ -1122,7 +1129,7 @@ function New-WinForgeRegistryTweak {
 
     return (New-WinForgeTweak -Id $Id -Category $Category -Name $Name -Description $Description `
             -Capture $capture -Apply $apply -Revert $revert -Test $test -Merge $merge `
-            -Recommended:$Recommended -Advanced:$Advanced -RestartExplorer:$RestartExplorer -Windows11Only:$Windows11Only `
+            -Recommended:$Recommended -Cosmetic:$Cosmetic -Advanced:$Advanced -RestartExplorer:$RestartExplorer -Windows11Only:$Windows11Only `
             -NeedsReboot:$NeedsReboot -MinBuild $MinBuild -MaxBuild $MaxBuild -Protected $Protected `
             -RequiresAdmin:$requiresAdmin -UserScope:$userScope -Changes $changeList -OnByDefault:$OnByDefault)
 }
@@ -1133,8 +1140,8 @@ function Get-WinForgeTweakPages {
     # Ajustes do Windows: o comportamento, do que o usuário mais vê para o que mexe no hardware. Personalização: o visual
     # do Windows (barra de tarefas, área de trabalho, cores e tela de bloqueio).
     return [ordered]@{
-        "tweaks"      = @("Explorador", "Privacidade e sugestões", "Windows Update", "Notificações e teclado", "Jogos", "Energia e desempenho")
-        "personalize" = @("Barra de tarefas e Iniciar", "Área de trabalho", "Cores e transparência", "Tela de bloqueio")
+        "tweaks"      = @((Get-WinForgeText 'Explorador'), (Get-WinForgeText 'Privacidade e sugestões'), "Windows Update", (Get-WinForgeText 'Notificações e teclado'), (Get-WinForgeText 'Jogos'), (Get-WinForgeText 'Energia e desempenho'))
+        "personalize" = @((Get-WinForgeText 'Barra de tarefas e Iniciar'), (Get-WinForgeText 'Área de trabalho'), (Get-WinForgeText 'Cores e transparência'), (Get-WinForgeText 'Tela de bloqueio'))
     }
 }
 
@@ -1181,23 +1188,23 @@ function Get-WinForgeTweakCatalog {
     $catalog = @()
 
     # --- Explorador (e, na Personalização, a barra de tarefas) -----------------
-    $catalog += New-WinForgeRegistryTweak -Id "file-extensions" -Category "Explorador" -Name "Mostrar extensões de arquivos" `
-        -Description "Exibe .exe, .pdf, .png etc. no Explorador (ajuda a perceber arquivos disfarçados)." -Recommended -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "file-extensions" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Mostrar extensões de arquivos') `
+        -Description (Get-WinForgeText 'Exibe .exe, .pdf, .png etc. no Explorador (ajuda a perceber arquivos disfarçados).') -Recommended -RestartExplorer `
         -Changes @(@{ Path = $advanced; Name = "HideFileExt"; Value = 0; Default = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "hidden-files" -Category "Explorador" -Name "Mostrar arquivos e pastas ocultos" `
-        -Description "Arquivos protegidos do sistema continuam ocultos." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "hidden-files" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Mostrar arquivos e pastas ocultos') `
+        -Description (Get-WinForgeText 'Arquivos protegidos do sistema continuam ocultos.') -RestartExplorer `
         -Changes @(@{ Path = $advanced; Name = "Hidden"; Value = 1; Default = 2 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "taskbar-left" -Category "Barra de tarefas e Iniciar" -Name "Barra de tarefas alinhada à esquerda" `
-        -Description "Move o menu Iniciar e os ícones para a esquerda, como no Windows 10." -RestartExplorer -Windows11Only `
+    $catalog += New-WinForgeRegistryTweak -Id "taskbar-left" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Barra de tarefas alinhada à esquerda') `
+        -Description (Get-WinForgeText 'Move o menu Iniciar e os ícones para a esquerda, como no Windows 10.') -Cosmetic -RestartExplorer -Windows11Only `
         -Changes @(@{ Path = $advanced; Name = "TaskbarAl"; Value = 0; Default = 1 })
 
     $classicClsid = "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}"
     $classicKey = "$classicClsid\InprocServer32"
 
-    $catalog += New-WinForgeTweak -Id "classic-context-menu" -Category "Explorador" -Name "Menu de contexto clássico" `
-        -Description "O clique direito mostra logo o menu completo, sem o passo extra de Mostrar mais opções." -RestartExplorer -UserScope -Windows11Only `
+    $catalog += New-WinForgeTweak -Id "classic-context-menu" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Menu de contexto clássico') `
+        -Description (Get-WinForgeText 'O clique direito mostra logo o menu completo, sem o passo extra de Mostrar mais opções.') -RestartExplorer -UserScope -Windows11Only `
         -Capture ({ return [ordered]@{ Existed = (Test-WinForgeRegistryKey -Path $classicKey) } }.GetNewClosure()) `
         -Apply ({ Set-WinForgeRegistryKeyDefault -Path $classicKey -Value "" }.GetNewClosure()) `
         -Revert ({
@@ -1212,39 +1219,39 @@ function Get-WinForgeTweakCatalog {
         }.GetNewClosure()) `
         -Test ({ return (Test-WinForgeRegistryKey -Path $classicKey) }.GetNewClosure())
 
-    $catalog += New-WinForgeRegistryTweak -Id "explorer-this-pc" -Category "Explorador" -Name "Abrir o Explorador em Este Computador" `
-        -Description "O Explorador abre mostrando as unidades e pastas do PC, em vez dos arquivos recentes." `
+    $catalog += New-WinForgeRegistryTweak -Id "explorer-this-pc" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Abrir o Explorador em Este Computador') `
+        -Description (Get-WinForgeText 'O Explorador abre mostrando as unidades e pastas do PC, em vez dos arquivos recentes.') `
         -Changes @(@{ Path = $advanced; Name = "LaunchTo"; Value = 1 })
 
     # A opção chegou com o Windows 11 23H2 (build 22631, atualização de novembro de 2023); antes dela, o valor não faz nada.
-    $catalog += New-WinForgeRegistryTweak -Id "taskbar-end-task" -Category "Barra de tarefas e Iniciar" -Name "Finalizar tarefa pela barra de tarefas" `
-        -Description "O clique direito num programa travado na barra de tarefas ganha a opção Finalizar tarefa." -RestartExplorer -Windows11Only -MinBuild 22631 `
+    $catalog += New-WinForgeRegistryTweak -Id "taskbar-end-task" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Finalizar tarefa pela barra de tarefas') `
+        -Description (Get-WinForgeText 'O clique direito num programa travado na barra de tarefas ganha a opção Finalizar tarefa.') -Cosmetic -RestartExplorer -Windows11Only -MinBuild 22631 `
         -Changes @(@{ Path = "$advanced\TaskbarDeveloperSettings"; Name = "TaskbarEndTask"; Value = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "taskbar-search" -Category "Barra de tarefas e Iniciar" -Name "Ocultar a pesquisa da barra de tarefas" `
-        -Description "Libera espaço na barra; para pesquisar, abra o Iniciar e comece a digitar." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "taskbar-search" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Ocultar a pesquisa da barra de tarefas') `
+        -Description (Get-WinForgeText 'Libera espaço na barra; para pesquisar, abra o Iniciar e comece a digitar.') -Cosmetic -RestartExplorer `
         -Protected @{
             Shortcut   = "Taskbar"
-            Apply      = "Nas Configurações do Windows, em Personalização, Barra de tarefas, escolha Ocultar em Pesquisa."
-            Undo       = "Nas Configurações do Windows, em Personalização, Barra de tarefas, escolha como a pesquisa aparece em Pesquisa."
-            Apply10    = "Clique com o botão direito na barra de tarefas, vá em Pesquisar e escolha Oculto."
-            Undo10     = "Clique com o botão direito na barra de tarefas, vá em Pesquisar e escolha Mostrar caixa de pesquisa."
+            Apply      = (Get-WinForgeText 'Nas Configurações do Windows, em Personalização, Barra de tarefas, escolha Ocultar em Pesquisa.')
+            Undo       = (Get-WinForgeText 'Nas Configurações do Windows, em Personalização, Barra de tarefas, escolha como a pesquisa aparece em Pesquisa.')
+            Apply10    = (Get-WinForgeText 'Clique com o botão direito na barra de tarefas, vá em Pesquisar e escolha Oculto.')
+            Undo10     = (Get-WinForgeText 'Clique com o botão direito na barra de tarefas, vá em Pesquisar e escolha Mostrar caixa de pesquisa.')
             Shortcut10 = ""
         } `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"; Name = "SearchboxTaskbarMode"; Value = 0 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "task-view-button" -Category "Barra de tarefas e Iniciar" -Name "Ocultar o botão Visão de Tarefas" `
-        -Description "Tira o botão da barra de tarefas; a Visão de Tarefas continua no atalho Windows + Tab." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "task-view-button" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Ocultar o botão Visão de Tarefas') `
+        -Description (Get-WinForgeText 'Tira o botão da barra de tarefas; a Visão de Tarefas continua no atalho Windows + Tab.') -Cosmetic -RestartExplorer `
         -Changes @(@{ Path = $advanced; Name = "ShowTaskViewButton"; Value = 0; Default = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "autoplay-off" -Category "Explorador" -Name "Desativar a Reprodução Automática" `
-        -Description "Pendrives, cartões e celulares não abrem nada sozinhos ao conectar; mais seguro contra vírus." `
+    $catalog += New-WinForgeRegistryTweak -Id "autoplay-off" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Desativar a Reprodução Automática') `
+        -Description (Get-WinForgeText 'Pendrives, cartões e celulares não abrem nada sozinhos ao conectar; mais seguro contra vírus.') `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers"; Name = "DisableAutoplay"; Value = 1; Default = 0 })
 
     # As duas opções de Opções de Pasta, Geral, Privacidade: "Mostrar arquivos usados recentemente" e "Mostrar pastas
     # usadas com frequência". Sem os valores, as duas listas aparecem.
-    $catalog += New-WinForgeRegistryTweak -Id "explorer-recent" -Category "Explorador" -Name "Não mostrar os recentes no Explorador" `
-        -Description "O Explorador para de listar os arquivos usados há pouco e as pastas mais usadas." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "explorer-recent" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Não mostrar os recentes no Explorador') `
+        -Description (Get-WinForgeText 'O Explorador para de listar os arquivos usados há pouco e as pastas mais usadas.') -RestartExplorer `
         -Changes @(
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer"; Name = "ShowRecent"; Value = 0; Default = 1 },
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer"; Name = "ShowFrequent"; Value = 0; Default = 1 }
@@ -1252,48 +1259,48 @@ function Get-WinForgeTweakCatalog {
 
     # Opções de Pasta, Modo de Exibição: "Mostrar notificações do provedor de sincronização" (os avisos do OneDrive e do
     # Microsoft 365 no alto do Explorador). Sem o valor, eles aparecem.
-    $catalog += New-WinForgeRegistryTweak -Id "explorer-sync-ads" -Category "Explorador" -Name "Desativar os anúncios no Explorador" `
-        -Description "O Explorador para de mostrar avisos de produtos da Microsoft, como o OneDrive e o Microsoft 365." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "explorer-sync-ads" -Category (Get-WinForgeText 'Explorador') -Name (Get-WinForgeText 'Desativar os anúncios no Explorador') `
+        -Description (Get-WinForgeText 'O Explorador para de mostrar avisos de produtos da Microsoft, como o OneDrive e o Microsoft 365.') -RestartExplorer `
         -Changes @(@{ Path = $advanced; Name = "ShowSyncProviderNotifications"; Value = 0; Default = 1 })
 
     # --- Personalização: cores e barra de tarefas ------------------------------
-    $catalog += New-WinForgeRegistryTweak -Id "dark-mode" -Category "Cores e transparência" -Name "Modo escuro" `
-        -Description "Tema escuro para o Windows e para os aplicativos. Alguns programas precisam ser reabertos." `
+    $catalog += New-WinForgeRegistryTweak -Id "dark-mode" -Category (Get-WinForgeText 'Cores e transparência') -Name (Get-WinForgeText 'Modo escuro') `
+        -Description (Get-WinForgeText 'Tema escuro para o Windows e para os aplicativos. Alguns programas precisam ser reabertos.') -Cosmetic `
         -Changes @(
             @{ Path = $personalize; Name = "AppsUseLightTheme"; Value = 0; Default = 1 },
             @{ Path = $personalize; Name = "SystemUsesLightTheme"; Value = 0; Default = 1 }
         ) `
         -AfterChange { Send-WinForgeSettingChange -Section "ImmersiveColorSet" }
 
-    $catalog += New-WinForgeRegistryTweak -Id "no-transparency" -Category "Cores e transparência" -Name "Desativar efeitos de transparência" `
-        -Description "Menus e janelas sem transparência; pode melhorar a fluidez em PCs modestos." `
+    $catalog += New-WinForgeRegistryTweak -Id "no-transparency" -Category (Get-WinForgeText 'Cores e transparência') -Name (Get-WinForgeText 'Desativar efeitos de transparência') `
+        -Description (Get-WinForgeText 'Menus e janelas sem transparência; pode melhorar a fluidez em PCs modestos.') -Cosmetic `
         -Changes @(@{ Path = $personalize; Name = "EnableTransparency"; Value = 0; Default = 1 }) `
         -AfterChange { Send-WinForgeSettingChange -Section "ImmersiveColorSet" }
 
-    $catalog += New-WinForgeRegistryTweak -Id "show-seconds" -Category "Barra de tarefas e Iniciar" -Name "Mostrar segundos no relógio da barra de tarefas" `
-        -Description "O relógio passa a mostrar os segundos; usa um pouco mais de processador." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "show-seconds" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Mostrar segundos no relógio da barra de tarefas') `
+        -Description (Get-WinForgeText 'O relógio passa a mostrar os segundos; usa um pouco mais de processador.') -Cosmetic -RestartExplorer `
         -Changes @(@{ Path = $advanced; Name = "ShowSecondsInSystemClock"; Value = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "hide-widgets" -Category "Barra de tarefas e Iniciar" -Name "Desativar os Widgets" `
-        -Description "Remove o painel de notícias e clima e o botão dele na barra de tarefas." -RestartExplorer -Windows11Only `
+    $catalog += New-WinForgeRegistryTweak -Id "hide-widgets" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Desativar os Widgets') `
+        -Description (Get-WinForgeText 'Remove o painel de notícias e clima e o botão dele na barra; vale para todas as contas do PC.') -RestartExplorer -Windows11Only `
         -Protected @{
             Shortcut     = "Taskbar"
-            Apply        = "Para tirar o botão dos Widgets, desligue Widgets nas Configurações do Windows, em Personalização, Barra de tarefas."
-            Undo         = "Com a política gravada, a chave dos Widgets nas Configurações fica travada; no Windows Pro, o Editor de Política de Grupo (gpedit.msc) a desfaz: em Configuração do Computador, Modelos Administrativos, Componentes do Windows, Widgets, deixe a política Permitir widgets como Não configurada."
+            Apply        = (Get-WinForgeText 'Para tirar o botão dos Widgets, desligue Widgets nas Configurações do Windows, em Personalização, Barra de tarefas.')
+            Undo         = (Get-WinForgeText 'Com a política gravada, a chave dos Widgets nas Configurações fica travada; no Windows Pro, o Editor de Política de Grupo (gpedit.msc) a desfaz: em Configuração do Computador, Modelos Administrativos, Componentes do Windows, Widgets, deixe a política Permitir widgets como Não configurada.')
             UndoShortcut = ""
         } `
         -Changes @(@{ Path = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"; Name = "AllowNewsAndInterests"; Value = 0 })
 
     # Do Windows 11 24H2 (build 26100) em diante, o Copilot é um aplicativo comum, fixado na barra como qualquer outro, e
     # este botão não existe mais: o ajuste não faria nada.
-    $catalog += New-WinForgeRegistryTweak -Id "hide-copilot" -Category "Barra de tarefas e Iniciar" -Name "Ocultar o botão do Copilot" `
-        -Description "Tira o botão do Copilot da barra de tarefas; o aplicativo continua instalado." -RestartExplorer -Windows11Only -MaxBuild 26099 `
+    $catalog += New-WinForgeRegistryTweak -Id "hide-copilot" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Ocultar o botão do Copilot') `
+        -Description (Get-WinForgeText 'Tira o botão do Copilot da barra de tarefas; o aplicativo continua instalado.') -Cosmetic -RestartExplorer -Windows11Only -MaxBuild 26099 `
         -Changes @(@{ Path = $advanced; Name = "ShowCopilotButton"; Value = 0; Default = 1 })
 
     # --- Personalização: barra de tarefas, área de trabalho, cores e tela de bloqueio ---------------------------------
     # Nunca agrupar: a opção voltou no Windows 11 23H2 (build 22631); antes dela, o valor não faz nada no Windows 11.
-    $catalog += New-WinForgeRegistryTweak -Id "taskbar-never-combine" -Category "Barra de tarefas e Iniciar" -Name "Nunca agrupar os botões da barra de tarefas" `
-        -Description "Cada janela ganha o próprio botão, com o nome, em vez de juntar as do mesmo programa." -RestartExplorer -Windows11Only -MinBuild 22631 `
+    $catalog += New-WinForgeRegistryTweak -Id "taskbar-never-combine" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Nunca agrupar os botões da barra de tarefas') `
+        -Description (Get-WinForgeText 'Cada janela ganha o próprio botão, com o nome, em vez de juntar as do mesmo programa.') -Cosmetic -RestartExplorer -Windows11Only -MinBuild 22631 `
         -Changes @(
             @{ Path = $advanced; Name = "TaskbarGlomLevel"; Value = 2; Default = 0 },
             @{ Path = $advanced; Name = "MMTaskbarGlomLevel"; Value = 2; Default = 0; State = $false }
@@ -1303,40 +1310,40 @@ function Get-WinForgeTweakCatalog {
     # (a Lixeira aparece, Este Computador não).
     $desktopIcons = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
 
-    $catalog += New-WinForgeRegistryTweak -Id "desktop-recycle-bin" -Category "Área de trabalho" -Name "Ocultar a Lixeira da área de trabalho" `
-        -Description "O ícone sai da área de trabalho; a Lixeira continua funcionando e abre pelo Explorador." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "desktop-recycle-bin" -Category (Get-WinForgeText 'Área de trabalho') -Name (Get-WinForgeText 'Ocultar a Lixeira da área de trabalho') `
+        -Description (Get-WinForgeText 'O ícone sai da área de trabalho; a Lixeira continua funcionando e abre pelo Explorador.') -Cosmetic -RestartExplorer `
         -Changes @(@{ Path = $desktopIcons; Name = "{645FF040-5081-101B-9F08-00AA002F954E}"; Value = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "desktop-this-pc" -Category "Área de trabalho" -Name "Mostrar Este Computador na área de trabalho" `
-        -Description "Põe na área de trabalho o ícone que abre as unidades e as pastas do PC." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "desktop-this-pc" -Category (Get-WinForgeText 'Área de trabalho') -Name (Get-WinForgeText 'Mostrar Este Computador na área de trabalho') `
+        -Description (Get-WinForgeText 'Põe na área de trabalho o ícone que abre as unidades e as pastas do PC.') -Cosmetic -RestartExplorer `
         -Changes @(@{ Path = $desktopIcons; Name = "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"; Value = 0 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "accent-taskbar" -Category "Cores e transparência" -Name "Cor de destaque no Iniciar e na barra de tarefas" `
-        -Description "Pinta o Iniciar e a barra de tarefas com a cor de destaque; só funciona com o modo escuro." `
+    $catalog += New-WinForgeRegistryTweak -Id "accent-taskbar" -Category (Get-WinForgeText 'Cores e transparência') -Name (Get-WinForgeText 'Cor de destaque no Iniciar e na barra de tarefas') `
+        -Description (Get-WinForgeText 'Pinta o Iniciar e a barra de tarefas com a cor de destaque; só com o Windows no modo escuro.') -Cosmetic `
         -Changes @(@{ Path = $personalize; Name = "ColorPrevalence"; Value = 1; Default = 0 }) `
         -AfterChange { Send-WinForgeSettingChange -Section "ImmersiveColorSet" }
 
-    $catalog += New-WinForgeRegistryTweak -Id "accent-titlebars" -Category "Cores e transparência" -Name "Cor de destaque nas barras de título" `
-        -Description "A barra de título e a borda das janelas ganham a cor de destaque." `
+    $catalog += New-WinForgeRegistryTweak -Id "accent-titlebars" -Category (Get-WinForgeText 'Cores e transparência') -Name (Get-WinForgeText 'Cor de destaque nas barras de título') `
+        -Description (Get-WinForgeText 'A barra de título e a borda das janelas ganham a cor de destaque.') -Cosmetic `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\DWM"; Name = "ColorPrevalence"; Value = 1; Default = 0 }) `
         -AfterChange { Send-WinForgeSettingChange -Section "ImmersiveColorSet" }
 
     # Os widgets da tela de bloqueio (Windows 11): o valor do usuário que a chave das Configurações grava, e não a política
     # (que trava a chave e só vale em algumas edições). O painel e o botão dos Widgets ficam.
-    $catalog += New-WinForgeRegistryTweak -Id "lock-screen-widgets" -Category "Tela de bloqueio" -Name "Remover os widgets da tela de bloqueio" `
-        -Description "Tira o clima, as notícias e as cotações que aparecem com o PC bloqueado." -Windows11Only `
+    $catalog += New-WinForgeRegistryTweak -Id "lock-screen-widgets" -Category (Get-WinForgeText 'Tela de bloqueio') -Name (Get-WinForgeText 'Remover os widgets da tela de bloqueio') `
+        -Description (Get-WinForgeText 'Tira o clima, as notícias e as cotações que aparecem com o PC bloqueado.') -Windows11Only `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Lock Screen"; Name = "LockScreenWidgetsEnabled"; Value = 0 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "lock-screen-notifications" -Category "Tela de bloqueio" -Name "Não mostrar notificações na tela de bloqueio" `
-        -Description "Avisos de mensagens e programas não aparecem com o PC bloqueado; mais privacidade." `
+    $catalog += New-WinForgeRegistryTweak -Id "lock-screen-notifications" -Category (Get-WinForgeText 'Tela de bloqueio') -Name (Get-WinForgeText 'Não mostrar notificações na tela de bloqueio') `
+        -Description (Get-WinForgeText 'Avisos de mensagens e programas não aparecem com o PC bloqueado; mais privacidade.') `
         -Changes @(
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications"; Name = "LockScreenToastEnabled"; Value = 0; Default = 1; State = $false },
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"; Name = "NOC_GLOBAL_SETTING_ALLOW_TOASTS_ABOVE_LOCK"; Value = 0 }
         )
 
     # --- Privacidade e sugestões --------------------------------------------
-    $catalog += New-WinForgeRegistryTweak -Id "tips-suggestions" -Category "Privacidade e sugestões" -Name "Desativar dicas e sugestões do Windows" `
-        -Description "O Windows para de mostrar sugestões e a tela Vamos terminar de configurar o seu dispositivo." -Recommended `
+    $catalog += New-WinForgeRegistryTweak -Id "tips-suggestions" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar dicas e sugestões do Windows') `
+        -Description (Get-WinForgeText 'O Windows para de mostrar sugestões e a tela Vamos terminar de configurar o seu dispositivo.') -Recommended `
         -Changes @(
             @{ Path = $content; Name = "SoftLandingEnabled"; Value = 0; Default = 1; State = $false },
             @{ Path = $content; Name = "SystemPaneSuggestionsEnabled"; Value = 0; Default = 1; State = $false },
@@ -1346,59 +1353,61 @@ function Get-WinForgeTweakCatalog {
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement"; Name = "ScoobeSystemSettingEnabled"; Value = 0; Default = 1; State = $false }
         )
 
-    $catalog += New-WinForgeRegistryTweak -Id "lock-screen-tips" -Category "Tela de bloqueio" -Name "Desativar dicas da tela de bloqueio" `
-        -Description "Remove as dicas e curiosidades exibidas sobre a imagem da tela de bloqueio." -Recommended `
+    $catalog += New-WinForgeRegistryTweak -Id "lock-screen-tips" -Category (Get-WinForgeText 'Tela de bloqueio') -Name (Get-WinForgeText 'Desativar dicas da tela de bloqueio') `
+        -Description (Get-WinForgeText 'Remove as dicas e curiosidades exibidas sobre a imagem da tela de bloqueio.') -Recommended `
         -Changes @(
             @{ Path = $content; Name = "RotatingLockScreenOverlayEnabled"; Value = 0; Default = 1 },
             @{ Path = $content; Name = "SubscribedContent-338387Enabled"; Value = 0; Default = 1 }
         ) `
         -AfterChange { Send-WinForgeSettingChange -Section "ContentDeliveryManager" }
 
-    $catalog += New-WinForgeRegistryTweak -Id "advertising-id" -Category "Privacidade e sugestões" -Name "Desativar o ID de publicidade" `
-        -Description "Os aplicativos deixam de usar um identificador seu para personalizar anúncios." -Recommended `
+    $catalog += New-WinForgeRegistryTweak -Id "advertising-id" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar o ID de publicidade') `
+        -Description (Get-WinForgeText 'Os aplicativos deixam de usar um identificador seu para personalizar anúncios.') -Recommended `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo"; Name = "Enabled"; Value = 0; Default = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "bing-start" -Category "Privacidade e sugestões" -Name "Desativar resultados da web na busca do Iniciar" `
-        -Description "A busca do Iniciar mostra só o que está no PC, sem sugestões do Bing." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "bing-start" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar resultados da web na busca do Iniciar') `
+        -Description (Get-WinForgeText 'A busca do Iniciar fica só no PC, sem o Bing; o Explorador deixa de sugerir as buscas recentes.') -RestartExplorer `
         -Changes @(@{ Path = "HKCU:\Software\Policies\Microsoft\Windows\Explorer"; Name = "DisableSearchBoxSuggestions"; Value = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "recall" -Category "Privacidade e sugestões" -Name "Desativar o Recall" `
-        -Description "Impede o Windows de salvar instantâneos periódicos da tela nos PCs que têm o recurso." -Windows11Only `
+    # O Recall chegou com o Windows 11 24H2 (build 26100), nos PCs Copilot+; antes dele, a política não tem o que desligar.
+    # A política vale para o computador (HKLM) e para o usuário; a Microsoft a documenta nos dois.
+    $catalog += New-WinForgeRegistryTweak -Id "recall" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar o Recall') `
+        -Description (Get-WinForgeText 'Impede o Windows de salvar instantâneos periódicos da tela nos PCs que têm o recurso.') -Windows11Only -MinBuild 26100 `
         -Changes @(@{ Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"; Name = "DisableAIDataAnalysis"; Value = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "start-recommendations" -Category "Barra de tarefas e Iniciar" -Name "Desativar recomendações do Iniciar" `
-        -Description "O Iniciar deixa de sugerir dicas, atalhos e aplicativos novos." -RestartExplorer -Windows11Only `
+    $catalog += New-WinForgeRegistryTweak -Id "start-recommendations" -Category (Get-WinForgeText 'Barra de tarefas e Iniciar') -Name (Get-WinForgeText 'Desativar recomendações do Iniciar') `
+        -Description (Get-WinForgeText 'O Iniciar deixa de sugerir dicas, atalhos e aplicativos novos.') -RestartExplorer -Windows11Only `
         -Changes @(@{ Path = $advanced; Name = "Start_IrisRecommendations"; Value = 0; Default = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "tailored-experiences" -Category "Privacidade e sugestões" -Name "Desativar experiências personalizadas" `
-        -Description "A Microsoft para de usar os dados de diagnóstico para mostrar dicas e anúncios sob medida." `
+    $catalog += New-WinForgeRegistryTweak -Id "tailored-experiences" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar experiências personalizadas') `
+        -Description (Get-WinForgeText 'A Microsoft para de usar os dados de diagnóstico para mostrar dicas e anúncios sob medida.') `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy"; Name = "TailoredExperiencesWithDiagnosticDataEnabled"; Value = 0; Default = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "feedback-requests" -Category "Privacidade e sugestões" -Name "Não pedir opinião sobre o Windows" `
-        -Description "O Windows para de abrir pesquisas pedindo a sua avaliação." `
+    $catalog += New-WinForgeRegistryTweak -Id "feedback-requests" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Não pedir opinião sobre o Windows') `
+        -Description (Get-WinForgeText 'O Windows para de abrir pesquisas pedindo a sua avaliação.') `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Siuf\Rules"; Name = "NumberOfSIUFInPeriod"; Value = 0 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "activity-history" -Category "Privacidade e sugestões" -Name "Desativar o histórico de atividades" `
-        -Description "O Windows deixa de guardar e enviar a lista do que você abriu e fez no PC." `
+    $catalog += New-WinForgeRegistryTweak -Id "activity-history" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar o histórico de atividades') `
+        -Description (Get-WinForgeText 'O Windows deixa de guardar e enviar a lista do que você abriu e fez no PC.') `
         -Changes @(
             @{ Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"; Name = "PublishUserActivities"; Value = 0 },
             @{ Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"; Name = "UploadUserActivities"; Value = 0 }
         )
 
-    $catalog += New-WinForgeRegistryTweak -Id "diagnostic-data" -Category "Privacidade e sugestões" -Name "Enviar só os dados de diagnóstico obrigatórios" `
-        -Description "O Windows envia à Microsoft só o mínimo; nas Configurações, a opção aparece como gerenciada." `
+    $catalog += New-WinForgeRegistryTweak -Id "diagnostic-data" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Enviar só os dados de diagnóstico obrigatórios') `
+        -Description (Get-WinForgeText 'O Windows envia à Microsoft só o mínimo; nas Configurações, a opção aparece como gerenciada.') `
         -Changes @(@{ Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection"; Name = "AllowTelemetry"; Value = 1; Also = @(0) })
 
-    $catalog += New-WinForgeRegistryTweak -Id "app-tracking" -Category "Privacidade e sugestões" -Name "Não acompanhar os programas abertos" `
-        -Description "O Iniciar e a busca deixam de usar os programas que você mais abre para montar as listas." -RestartExplorer `
+    $catalog += New-WinForgeRegistryTweak -Id "app-tracking" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Não acompanhar os programas abertos') `
+        -Description (Get-WinForgeText 'O Iniciar e a busca deixam de usar os programas que você mais abre para montar as listas.') -RestartExplorer `
         -Changes @(@{ Path = $advanced; Name = "Start_TrackProgs"; Value = 0; Default = 1 })
 
-    $catalog += New-WinForgeRegistryTweak -Id "online-speech" -Category "Privacidade e sugestões" -Name "Desativar o reconhecimento de fala online" `
-        -Description "A voz não vai mais para a Microsoft; o ditado e outros recursos online podem parar." -OnByDefault `
+    $catalog += New-WinForgeRegistryTweak -Id "online-speech" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar o reconhecimento de fala online') `
+        -Description (Get-WinForgeText 'A voz não vai mais para a Microsoft; o ditado e outros recursos online podem parar.') -OnByDefault `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy"; Name = "HasAccepted"; Value = 0; Default = 1; AbsentIsTarget = $true })
 
-    $catalog += New-WinForgeRegistryTweak -Id "inking-typing" -Category "Privacidade e sugestões" -Name "Não personalizar digitação e escrita à mão" `
-        -Description "O Windows deixa de montar um dicionário seu a partir do que você digita e escreve com a caneta." `
+    $catalog += New-WinForgeRegistryTweak -Id "inking-typing" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Não personalizar digitação e escrita à mão') `
+        -Description (Get-WinForgeText 'O Windows deixa de montar um dicionário seu a partir do que você digita e escreve com a caneta.') `
         -Changes @(
             @{ Path = "HKCU:\Software\Microsoft\InputPersonalization"; Name = "RestrictImplicitInkCollection"; Value = 1; Default = 0 },
             @{ Path = "HKCU:\Software\Microsoft\InputPersonalization"; Name = "RestrictImplicitTextCollection"; Value = 1; Default = 0 },
@@ -1408,24 +1417,24 @@ function Get-WinForgeTweakCatalog {
     # Configurações, Privacidade e segurança, Permissões de pesquisa: "Mostrar destaques da pesquisa" (datas, notícias e
     # ilustrações do dia na pesquisa). Chegou numa atualização de 2022 do Windows 10 21H2 e do Windows 11; sem o valor, ele
     # aparece.
-    $catalog += New-WinForgeRegistryTweak -Id "search-highlights" -Category "Privacidade e sugestões" -Name "Desativar os destaques da pesquisa" `
-        -Description "A pesquisa do Windows para de mostrar datas comemorativas, notícias e ilustrações do dia." -MinBuild 19044 `
+    $catalog += New-WinForgeRegistryTweak -Id "search-highlights" -Category (Get-WinForgeText 'Privacidade e sugestões') -Name (Get-WinForgeText 'Desativar os destaques da pesquisa') `
+        -Description (Get-WinForgeText 'A pesquisa do Windows para de mostrar datas comemorativas, notícias e ilustrações do dia.') -MinBuild 19044 `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings"; Name = "IsDynamicSearchBoxEnabled"; Value = 0; Default = 1 })
 
     # --- Windows Update -----------------------------------------------------------
     # A opção "Receba as atualizações mais recentes assim que estiverem disponíveis", na página do Windows Update nas
     # Configurações: sem o valor, ela vem desligada.
-    $catalog += New-WinForgeRegistryTweak -Id "early-updates" -Category "Windows Update" -Name "Não receber as atualizações antes da hora" `
-        -Description "O Windows recebe as novidades no ritmo normal, junto com todo mundo, e não assim que saem." -OnByDefault `
+    $catalog += New-WinForgeRegistryTweak -Id "early-updates" -Category (Get-WinForgeText 'Windows Update') -Name (Get-WinForgeText 'Não receber as atualizações antes da hora') `
+        -Description (Get-WinForgeText 'O Windows recebe as novidades no ritmo normal, junto com todo mundo, e não assim que saem.') -OnByDefault `
         -Changes @(@{ Path = "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings"; Name = "IsContinuousInnovationOptedIn"; Value = 0; Default = 1; AbsentIsTarget = $true })
 
-    $catalog += New-WinForgeRegistryTweak -Id "delivery-peers" -Category "Windows Update" -Name "Não compartilhar atualizações com outros PCs" `
-        -Description "O Windows baixa as atualizações só da Microsoft, sem enviar partes delas a outros computadores." `
+    $catalog += New-WinForgeRegistryTweak -Id "delivery-peers" -Category (Get-WinForgeText 'Windows Update') -Name (Get-WinForgeText 'Não compartilhar atualizações com outros PCs') `
+        -Description (Get-WinForgeText 'O Windows baixa as atualizações só da Microsoft, sem enviar partes delas a outros computadores.') `
         -Changes @(@{ Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization"; Name = "DODownloadMode"; Value = 0; Also = @(99, 100) })
 
     # --- Notificações e teclado --------------------------------------------------
-    $catalog += New-WinForgeRegistryTweak -Id "notifications-off" -Category "Notificações e teclado" -Name "Desativar as notificações" `
-        -Description "Nenhum programa mostra avisos no canto da tela, nem o WinForge. Vale após sair e entrar." `
+    $catalog += New-WinForgeRegistryTweak -Id "notifications-off" -Category (Get-WinForgeText 'Notificações e teclado') -Name (Get-WinForgeText 'Desativar as notificações') `
+        -Description (Get-WinForgeText 'Nenhum programa mostra avisos no canto da tela, nem o WinForge. Vale após sair e entrar.') `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications"; Name = "ToastEnabled"; Value = 0; Default = 1 })
 
     # As opções de acessibilidade do teclado são texto (Flags) com várias opções em bits; o do atalho é o 4: sem ele, Shift 5
@@ -1439,8 +1448,8 @@ function Get-WinForgeTweakCatalog {
         @{ Path = "$access\ToggleKeys"; Default = "62" }
     )
 
-    $catalog += New-WinForgeTweak -Id "sticky-keys-shortcut" -Category "Notificações e teclado" -Name "Desativar o atalho das Teclas de Aderência" `
-        -Description "Apertar o Shift 5 vezes ou segurar o Shift ou o Num Lock não abre mais o aviso de acessibilidade." -UserScope `
+    $catalog += New-WinForgeTweak -Id "sticky-keys-shortcut" -Category (Get-WinForgeText 'Notificações e teclado') -Name (Get-WinForgeText 'Desativar o atalho das Teclas de Aderência') `
+        -Description (Get-WinForgeText 'Apertar o Shift 5 vezes ou segurar o Shift ou o Num Lock não abre mais o aviso de acessibilidade.') -UserScope `
         -Capture ({
             return @(foreach ($key in $accessKeys) {
                     $value = Get-WinForgeRegistryValueOrNull -Path $key.Path -Name "Flags"
@@ -1485,13 +1494,13 @@ function Get-WinForgeTweakCatalog {
         }.GetNewClosure()) `
         -Test ({ return (-not ((Get-WinForgeAccessibilityFlags -Path $accessKeys[0].Path -Default $accessKeys[0].Default) -band 4)) }.GetNewClosure())
 
-    $catalog += New-WinForgeRegistryTweak -Id "clipboard-history" -Category "Notificações e teclado" -Name "Ativar o histórico da área de transferência" `
-        -Description "Windows + V mostra o que você copiou antes, e não só o último item." `
+    $catalog += New-WinForgeRegistryTweak -Id "clipboard-history" -Category (Get-WinForgeText 'Notificações e teclado') -Name (Get-WinForgeText 'Ativar o histórico da área de transferência') `
+        -Description (Get-WinForgeText 'Windows + V mostra o que você copiou antes, e não só o último item.') `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Clipboard"; Name = "EnableClipboardHistory"; Value = 1 })
 
     # --- Jogos ---------------------------------------------------------------
-    $catalog += New-WinForgeRegistryTweak -Id "game-bar" -Category "Jogos" -Name "Desativar Xbox Game Bar e Game DVR" `
-        -Description "Para a gravação de jogos em segundo plano e o botão Xbox do controle que abre a Game Bar." `
+    $catalog += New-WinForgeRegistryTweak -Id "game-bar" -Category (Get-WinForgeText 'Jogos') -Name (Get-WinForgeText 'Desativar Xbox Game Bar e Game DVR') `
+        -Description (Get-WinForgeText 'Para a gravação de jogos em segundo plano e o botão Xbox do controle que abre a Game Bar.') `
         -Changes @(
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR"; Name = "AppCaptureEnabled"; Value = 0; Default = 1 },
             @{ Path = "HKCU:\System\GameConfigStore"; Name = "GameDVR_Enabled"; Value = 0; Default = 1 },
@@ -1509,8 +1518,8 @@ function Get-WinForgeTweakCatalog {
     # porque o ajuste só é aplicado com o Modo de Jogo desativado).
     $gameBar = "HKCU:\Software\Microsoft\GameBar"
 
-    $catalog += New-WinForgeTweak -Id "game-mode" -Category "Jogos" -Name "Ativar o Modo de Jogo" `
-        -Description "Liga o Modo de Jogo, se algo o desligou: o Windows prioriza o jogo aberto." -UserScope -OnByDefault `
+    $catalog += New-WinForgeTweak -Id "game-mode" -Category (Get-WinForgeText 'Jogos') -Name (Get-WinForgeText 'Ativar o Modo de Jogo') `
+        -Description (Get-WinForgeText 'Liga o Modo de Jogo, se algo o desligou: o Windows prioriza o jogo aberto.') -UserScope -OnByDefault `
         -Capture ({
             $kind = [string](Get-WinForgeRegistryValueKind -Path $gameBar -Name "AutoGameModeEnabled")
             $value = Get-WinForgeRegistryValueOrNull -Path $gameBar -Name "AutoGameModeEnabled"
@@ -1531,8 +1540,8 @@ function Get-WinForgeTweakCatalog {
 
     # "Aumentar a precisão do ponteiro" do Painel de Controle: os três valores (texto) zerados a desligam. Sync-WinForgeMouseSettings
     # aplica na hora.
-    $catalog += New-WinForgeRegistryTweak -Id "mouse-acceleration" -Category "Jogos" -Name "Desativar a aceleração do mouse" `
-        -Description "O ponteiro anda sempre na mesma proporção do mouse: a mira fica mais previsível nos jogos." `
+    $catalog += New-WinForgeRegistryTweak -Id "mouse-acceleration" -Category (Get-WinForgeText 'Jogos') -Name (Get-WinForgeText 'Desativar a aceleração do mouse') `
+        -Description (Get-WinForgeText 'O ponteiro anda sempre na mesma proporção do mouse: a mira fica mais previsível nos jogos.') `
         -Changes @(
             @{ Path = "HKCU:\Control Panel\Mouse"; Name = "MouseSpeed"; Value = "0"; Default = "1"; Kind = "String" },
             @{ Path = "HKCU:\Control Panel\Mouse"; Name = "MouseThreshold1"; Value = "0"; Default = "6"; Kind = "String" },
@@ -1544,15 +1553,15 @@ function Get-WinForgeTweakCatalog {
     # Configurações, Sistema, Armazenamento, Sensor de Armazenamento: com o padrão do Windows, ele roda quando o disco fica
     # com pouco espaço, apaga temporários dos aplicativos e o que está na Lixeira há mais de 30 dias (os Downloads, nunca).
     # Sem o valor, ele está desligado.
-    $catalog += New-WinForgeRegistryTweak -Id "storage-sense" -Category "Energia e desempenho" -Name "Ativar o Sensor de Armazenamento" `
-        -Description "Com o disco cheio, o Windows apaga temporários e o que está há mais de 30 dias na Lixeira." `
+    $catalog += New-WinForgeRegistryTweak -Id "storage-sense" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Ativar o Sensor de Armazenamento') `
+        -Description (Get-WinForgeText 'Com o disco cheio, o Windows apaga temporários e o que está há mais de 30 dias na Lixeira.') `
         -Changes @(@{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy"; Name = "01"; Value = 1; Default = 0 })
 
     # Configurações, Privacidade, Aplicativos em segundo plano: "Permitir que os aplicativos sejam executados em segundo
     # plano", a chave geral que só o Windows 10 tem (no 11, a escolha é por aplicativo). As Configurações gravam os dois
     # valores; o que decide é o GlobalUserDisabled.
-    $catalog += New-WinForgeRegistryTweak -Id "background-apps" -Category "Energia e desempenho" -Name "Desativar os aplicativos em segundo plano" `
-        -Description "Poupa memória e bateria, mas os avisos e alarmes dos aplicativos da Store podem não chegar." -MaxBuild 19045 `
+    $catalog += New-WinForgeRegistryTweak -Id "background-apps" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Desativar os aplicativos em segundo plano') `
+        -Description (Get-WinForgeText 'Poupa memória e bateria, mas os avisos e alarmes dos aplicativos da Store podem não chegar.') -MaxBuild 19045 `
         -Changes @(
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications"; Name = "GlobalUserDisabled"; Value = 1; Default = 0 },
             @{ Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"; Name = "BackgroundAppGlobalToggle"; Value = 0; Default = 1; State = $false }
@@ -1563,8 +1572,8 @@ function Get-WinForgeTweakCatalog {
     # hibernação estiver desligada, liga a hibernação também, senão a Inicialização Rápida continuaria desligada.
     $hibernateKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Power"
 
-    $catalog += New-WinForgeTweak -Id "fast-startup" -Category "Energia e desempenho" -Name "Desativar Inicialização Rápida" `
-        -Description "O PC desliga por completo, o que evita problemas de driver; pode demorar um pouco mais para ligar." -Advanced -RequiresAdmin `
+    $catalog += New-WinForgeTweak -Id "fast-startup" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Desativar Inicialização Rápida') `
+        -Description (Get-WinForgeText 'O PC desliga por completo, o que evita problemas de driver; pode demorar um pouco mais para ligar.') -Advanced -RequiresAdmin `
         -Capture ({
             $value = Get-WinForgeRegistryValueOrNull -Path $power -Name "HiberbootEnabled"
             return [ordered]@{ Path = $power; Name = "HiberbootEnabled"; Exists = ($null -ne $value); Kind = [string](Get-WinForgeRegistryValueKind -Path $power -Name "HiberbootEnabled"); Value = $value }
@@ -1575,6 +1584,7 @@ function Get-WinForgeTweakCatalog {
 
             $restored = 0
             $kept = 0
+            $note = ""
             $now = Get-WinForgeRegistryValueOrNull -Path $power -Name "HiberbootEnabled"
 
             # Backups da 3.49 e de antes guardavam uma lista com um valor.
@@ -1599,13 +1609,14 @@ function Get-WinForgeTweakCatalog {
 
                 if ($null -ne $hibernation -and [int]$hibernation -eq 0) {
                     [void](Invoke-WinForgePowercfg -Arguments @("/hibernate", "on"))
-                    Write-WinForgeStatus -Type Info -Message "A Inicialização Rápida precisa da hibernação: a hibernação foi ativada também."
+                    $note = (Get-WinForgeText 'A Inicialização Rápida precisa da hibernação: a hibernação foi ativada também.')
+                    Write-WinForgeStatus -Type Info -Message $note
                     $restored++
                     if ($kept -gt 0) { $kept-- }
                 }
             }
 
-            return (New-WinForgeTweakRevertReport -Restored $restored -Kept $kept)
+            return (New-WinForgeTweakRevertReport -Restored $restored -Kept $kept -Note $note)
         }.GetNewClosure()) `
         -Test ({
             $hibernation = Get-WinForgeRegistryValueOrNull -Path $hibernateKey -Name "HibernateEnabled"
@@ -1615,9 +1626,11 @@ function Get-WinForgeTweakCatalog {
             return ($null -ne $value -and [int]$value -eq 0)
         }.GetNewClosure())
 
-    $catalog += New-WinForgeTweak -Id "high-performance" -Category "Energia e desempenho" -Name "Plano de energia Alto desempenho" `
-        -Description "Prioriza desempenho; em notebook reduz a autonomia." -Advanced -LaptopRisk -RequiresAdmin `
-        -Warning "Em notebook, consome mais bateria e esquenta mais." `
+    # Nos PCs com Modern Standby, a Microsoft só permite o plano Equilibrado e os derivados dele: lá, o ajuste não aparece
+    # (o modo de energia das Configurações do Windows é o caminho).
+    $catalog += New-WinForgeTweak -Id "high-performance" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Plano de energia Alto desempenho') `
+        -Description (Get-WinForgeText 'Prioriza o desempenho; o PC passa a gastar mais energia.') -Advanced -LaptopRisk -RequiresAdmin -NotOnModernStandby `
+        -Warning (Get-WinForgeText 'Em notebook, consome mais bateria e esquenta mais.') `
         -Capture { return [ordered]@{ SchemeGuid = (Get-WinForgeActivePowerSchemeGuid) } } `
         -Merge {
             param ($Previous, $Snapshot)
@@ -1653,7 +1666,7 @@ function Get-WinForgeTweakCatalog {
             # sobe (o backup fica, para uma nova tentativa).
             $active = Get-WinForgeActivePowerScheme
 
-            if ($null -eq $active) { throw "não foi possível ler o plano de energia ativo; nada foi alterado." }
+            if ($null -eq $active) { throw (Get-WinForgeText 'não foi possível ler o plano de energia ativo; nada foi alterado.') }
 
             $created = ([string](Get-WinForgeTweakField -Entry $Saved -Name "CreatedGuid" -Default "")).ToLowerInvariant()
             $ours = ($active.Guid -eq (Get-WinForgeHighPerformancePlanGuid) -or ((Test-WinForgeGuidText -Text $created) -and $active.Guid -eq $created))
@@ -1680,9 +1693,9 @@ function Get-WinForgeTweakCatalog {
         } `
         -Test { return (Test-WinForgeHighPerformanceActive) }
 
-    $catalog += New-WinForgeTweak -Id "pcie-aspm" -Category "Energia e desempenho" -Name "Desativar economia de energia PCI Express" `
-        -Description "Pode resolver travamentos da placa de vídeo ou do SSD; o PC passa a gastar mais energia." -Advanced -LaptopRisk -RequiresAdmin `
-        -Warning "Em notebook, aumenta o consumo em repouso." `
+    $catalog += New-WinForgeTweak -Id "pcie-aspm" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Desativar economia de energia PCI Express') `
+        -Description (Get-WinForgeText 'Pode resolver travamentos da placa de vídeo ou do SSD; o PC passa a gastar mais energia.') -Advanced -LaptopRisk -RequiresAdmin `
+        -Warning (Get-WinForgeText 'Em notebook, aumenta o consumo em repouso.') `
         -Capture {
             $guid = Get-WinForgeActivePowerSchemeGuid
             $setting = Get-WinForgePowerSetting -Subgroup "SUB_PCIEXPRESS" -Setting "ASPM"
@@ -1808,14 +1821,14 @@ function Get-WinForgeTweakCatalog {
         return (Merge-WinForgePowerOriginal -Previous $Previous -Snapshot $Snapshot -Groups $sleepGroups)
     }.GetNewClosure()
 
-    $catalog += New-WinForgeTweak -Id "no-sleep-timeouts" -Category "Energia e desempenho" -Name "Nunca desligar a tela nem suspender" `
-        -Description "Tela, suspensão e hibernação automática em Nunca (tomada e bateria)." -Advanced -LaptopRisk -RequiresAdmin `
-        -Warning "Em notebook, a tela fica ligada na bateria até você fechar a tampa ou desligar." `
+    $catalog += New-WinForgeTweak -Id "no-sleep-timeouts" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Nunca desligar a tela nem suspender') `
+        -Description (Get-WinForgeText 'Tela, suspensão e hibernação automática em Nunca (tomada e bateria).') -Advanced -LaptopRisk -RequiresAdmin `
+        -Warning (Get-WinForgeText 'Em notebook, a tela fica ligada na bateria até você fechar a tampa ou desligar.') `
         -Capture $sleepCapture -Apply $sleepApply -Revert $sleepRevert -Test $sleepTest -Merge $sleepMerge
 
-    $catalog += New-WinForgeTweak -Id "hibernation" -Category "Energia e desempenho" -Name "Desativar hibernação" `
-        -Description "Apaga o arquivo de hibernação (hiberfil.sys) e libera espaço; desliga também a Inicialização Rápida." -Advanced -LaptopRisk -RequiresAdmin `
-        -Warning "Em notebook, você perde a hibernação (útil quando a bateria acaba)." `
+    $catalog += New-WinForgeTweak -Id "hibernation" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Desativar hibernação') `
+        -Description (Get-WinForgeText 'Apaga o arquivo de hibernação (hiberfil.sys) e libera espaço; desliga também a Inicialização Rápida.') -Advanced -LaptopRisk -RequiresAdmin `
+        -Warning (Get-WinForgeText 'Em notebook, você perde a hibernação (útil quando a bateria acaba).') `
         -Capture {
             return [ordered]@{
                 Enabled = (Get-WinForgeRegistryValueOrNull -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name "HibernateEnabled")
@@ -1842,8 +1855,8 @@ function Get-WinForgeTweakCatalog {
             return ($null -ne $value -and [int]$value -eq 0)
         }
 
-    $catalog += New-WinForgeRegistryTweak -Id "gpu-scheduling" -Category "Energia e desempenho" -Name "Agendamento de GPU acelerado por hardware" `
-        -Description "A placa de vídeo organiza a própria memória; pode reduzir atrasos em jogos. Vale após reiniciar." -Advanced -NeedsReboot `
+    $catalog += New-WinForgeRegistryTweak -Id "gpu-scheduling" -Category (Get-WinForgeText 'Energia e desempenho') -Name (Get-WinForgeText 'Agendamento de GPU acelerado por hardware') `
+        -Description (Get-WinForgeText 'A placa de vídeo organiza a própria memória; pode reduzir atrasos em jogos. Vale após reiniciar.') -Advanced -NeedsReboot `
         -Changes @(@{ Path = "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"; Name = "HwSchMode"; Value = 2; Default = 1; AbsentUnknown = $true })
 
     # Como cada ajuste aparece na lista (o recurso que a chave mostra); sem entrada na tabela, o próprio nome do ajuste.
@@ -1856,6 +1869,7 @@ function Get-WinForgeTweakCatalog {
         $tweak.Feature = [string]$label.Feature
         $tweak.Inverted = [bool]$label.Inverted
         if (-not [string]::IsNullOrEmpty([string]$label.About)) { $tweak.About = [string]$label.About }
+        $tweak.Short = [string]$label.Short
     }
 
     # Na ordem de exibição: página por página e categoria por categoria; dentro de cada categoria, na ordem acima. Uma
@@ -1869,17 +1883,26 @@ function Get-WinForgeTweakCatalog {
 
     $ordered += @($catalog | Where-Object { $categories -notcontains $_.Category })
 
+    $index = @{}
+    foreach ($tweak in $ordered) { if (-not $index.ContainsKey([string]$tweak.Id)) { $index[[string]$tweak.Id] = $tweak } }
+
+    $script:WinForgeTweakIndex = $index
     $script:WinForgeTweakCatalog = @($ordered)
     return $script:WinForgeTweakCatalog
 }
 
 
 function Get-WinForgeTweakById {
+    # Um ajuste do catálogo pelo Id, direto no índice (o desfazer, a importação e os perfis procuram um por um); $null
+    # quando não existe.
     param (
         [string]$Id
     )
 
-    return (Get-WinForgeTweakCatalog | Where-Object { $_.Id -eq $Id } | Select-Object -First 1)
+    if ($null -eq $script:WinForgeTweakIndex) { [void](Get-WinForgeTweakCatalog) }
+    if ([string]::IsNullOrEmpty($Id) -or -not $script:WinForgeTweakIndex.ContainsKey($Id)) { return $null }
+
+    return $script:WinForgeTweakIndex[$Id]
 }
 
 
@@ -1890,6 +1913,7 @@ function Test-WinForgeTweakAvailable {
     )
 
     if ($Tweak.Windows11Only -and -not (Test-WinForgeWindows11)) { return $false }
+    if ([bool](Get-WinForgeTweakField -Entry $Tweak -Name "NotOnModernStandby" -Default $false) -and (Test-WinForgeModernStandby)) { return $false }
 
     # Os limites de build só valem com a build conhecida: num Windows de verdade ela é 10240 ou mais, e uma leitura que
     # falhou não esconde nada.
@@ -1923,7 +1947,7 @@ function Test-WinForgeAccessDenied {
         if ($current -is [System.UnauthorizedAccessException] -or $current -is [System.Security.SecurityException]) { return $true }
     }
 
-    return ([string](Get-WinForgeTweakField -Entry $Exception -Name "Message" -Default "") -match '(?i)unauthorized operation|registry access is not allowed|access is denied|operação não autorizada|acesso ao registro solicitado|acesso negado')
+    return ([string](Get-WinForgeTweakField -Entry $Exception -Name "Message" -Default "") -match '(?i)unauthorized operation|registry access is not allowed|access is denied|operação não autorizada|acesso ao registro solicitado|acesso negado|operaci.n no autorizada|acceso al registro solicitado|acceso denegado')
 }
 
 
@@ -1962,7 +1986,7 @@ function Get-WinForgeTweakProtectedText {
     # A frase de quando o Windows recusa um ajuste protegido, com o caminho nas Configurações quando há.
     param ($Help)
 
-    $text = "O Windows protege esta configuração e não deixa o WinForge mudá-la, nem como Administrador."
+    $text = (Get-WinForgeText 'O Windows protege esta configuração e não deixa o WinForge mudá-la, nem como Administrador.')
     if ($null -ne $Help -and $Help.Hint) { $text = "$text $($Help.Hint)" }
 
     return $text
@@ -1976,6 +2000,7 @@ function Get-WinForgeTweakStatus {
     )
 
     try {
+        # Códigos (a tela mostra Get-WinForgeTweakSwitchState): não se traduzem.
         if (& $Tweak.Test) { return "Aplicado" }
         return "Padrão"
     }
@@ -1998,106 +2023,142 @@ function Get-WinForgeTweakSwitchState {
     )
 
     if ($Status -eq "Desconhecido") {
-        return [PSCustomObject]@{ IsOn = $false; Caption = "Não identificado"; Level = "Warn" }
+        return [PSCustomObject]@{ IsOn = $false; Caption = (Get-WinForgeText 'Não identificado'); Level = "Warn" }
     }
 
     $on = (($Status -eq "Aplicado") -xor $Inverted)
 
-    return [PSCustomObject]@{ IsOn = $on; Caption = $(if ($on) { "Ativado" } else { "Desativado" }); Level = $(if ($on) { "Normal" } else { "Muted" }) }
+    return [PSCustomObject]@{ IsOn = $on; Caption = $(if ($on) { (Get-WinForgeText 'Ativado') } else { (Get-WinForgeText 'Desativado') }); Level = $(if ($on) { "Normal" } else { "Muted" }) }
 }
 
 
 function Get-WinForgeTweakSwitchLabels {
     <#
     Como cada ajuste aparece na lista: o recurso do Windows que a chave mostra (Feature), o que ele é (About, até 100
-    caracteres) e se o ajuste o desativa (Inverted: a chave fica ativada com o ajuste fora). O nome do ajuste (Name) e a
+    caracteres, na dica e no leitor de tela), a frase da linha (Short, até 60 letras nos três idiomas, como as das ações)
+    e se o ajuste o desativa (Inverted: a chave fica ativada com o ajuste fora). O nome do ajuste (Name) e a
     descrição dele continuam valendo onde se fala da mudança (recomendados, perfis, Desfazer ajustes do WinForge,
     Histórico). Nas políticas do Windows, a chave diz "Permitir": ela mostra a política, não a opção das Configurações.
     #>
     return @{
-        "file-extensions"           = @{ Feature = "Mostrar extensões de arquivos"; Inverted = $false; About = "" }
-        "hidden-files"              = @{ Feature = "Mostrar arquivos e pastas ocultos"; Inverted = $false; About = "Mostra o que o Windows esconde; os arquivos protegidos do sistema continuam ocultos." }
-        "classic-context-menu"      = @{ Feature = "Menu de contexto clássico"; Inverted = $false; About = "" }
-        "explorer-this-pc"          = @{ Feature = "Abrir o Explorador em Este Computador"; Inverted = $false; About = "" }
-        "explorer-recent"           = @{ Feature = "Recentes no Explorador"; Inverted = $true; About = "O Explorador lista os arquivos usados há pouco e as pastas que você mais usa." }
-        "explorer-sync-ads"         = @{ Feature = "Avisos de produtos no Explorador"; Inverted = $true; About = "Avisos do OneDrive e do Microsoft 365 no alto do Explorador." }
-        "search-highlights"         = @{ Feature = "Destaques da pesquisa"; Inverted = $true; About = "Datas comemorativas, notícias e ilustrações do dia na pesquisa do Windows." }
-        "storage-sense"             = @{ Feature = "Sensor de Armazenamento"; Inverted = $false; About = "Com o disco cheio, o Windows apaga temporários e o que está há mais de 30 dias na Lixeira." }
-        "background-apps"           = @{ Feature = "Aplicativos em segundo plano"; Inverted = $true; About = "Os aplicativos da Microsoft Store rodam escondidos para avisar, tocar alarmes e se atualizar." }
-        "autoplay-off"              = @{ Feature = "Reprodução Automática"; Inverted = $true; About = "Pendrives, cartões e celulares abrem algo sozinhos ao conectar; desativá-la é mais seguro." }
-        "tips-suggestions"          = @{ Feature = "Dicas e sugestões do Windows"; Inverted = $true; About = "Sugestões do Windows e a tela Vamos terminar de configurar o seu dispositivo." }
-        "advertising-id"            = @{ Feature = "ID de publicidade"; Inverted = $true; About = "Um identificador seu que os aplicativos usam para personalizar anúncios." }
-        "bing-start"                = @{ Feature = "Resultados da web na busca do Iniciar"; Inverted = $true; About = "A busca do Iniciar mostra também sugestões do Bing, além do que está no PC." }
-        "recall"                    = @{ Feature = "Permitir o Recall"; Inverted = $true; About = "Nos PCs que têm o recurso, o Recall pode salvar instantâneos periódicos da tela." }
-        "tailored-experiences"      = @{ Feature = "Experiências personalizadas"; Inverted = $true; About = "A Microsoft usa os dados de diagnóstico para mostrar dicas e anúncios sob medida." }
-        "feedback-requests"         = @{ Feature = "Pedidos de opinião sobre o Windows"; Inverted = $true; About = "O Windows abre pesquisas pedindo a sua avaliação." }
-        "activity-history"          = @{ Feature = "Permitir o histórico de atividades"; Inverted = $true; About = "O Windows pode guardar e enviar a lista do que você abriu e fez no PC." }
-        "diagnostic-data"           = @{ Feature = "Permitir dados de diagnóstico opcionais"; Inverted = $true; About = "Além do mínimo, o Windows pode enviar à Microsoft dados de uso; desativado, só o obrigatório." }
-        "app-tracking"              = @{ Feature = "Acompanhar os programas abertos"; Inverted = $true; About = "O Iniciar e a busca usam os programas que você mais abre para montar as listas." }
-        "online-speech"             = @{ Feature = "Reconhecimento de fala online"; Inverted = $true; About = "A voz vai para a Microsoft no ditado e em outros recursos online." }
-        "inking-typing"             = @{ Feature = "Personalizar a digitação e a escrita à mão"; Inverted = $true; About = "O Windows monta um dicionário seu a partir do que você digita e escreve com a caneta." }
-        "delivery-peers"            = @{ Feature = "Permitir atualizações entre PCs"; Inverted = $true; About = "O Windows baixa partes das atualizações de outros computadores e envia partes a eles." }
-        "early-updates"             = @{ Feature = "Receber as atualizações assim que saem"; Inverted = $true; About = "O Windows instala as novidades antes de chegarem a todos; pode trazer instabilidade." }
-        "notifications-off"         = @{ Feature = "Notificações"; Inverted = $true; About = "Os avisos dos programas no canto da tela, os do WinForge também. A troca vale após sair e entrar." }
-        "sticky-keys-shortcut"      = @{ Feature = "Teclas de Aderência pelo Shift"; Inverted = $true; About = "Apertar o Shift 5 vezes (ou segurar o Shift ou o Num Lock) abre o aviso de acessibilidade." }
-        "clipboard-history"         = @{ Feature = "Histórico da área de transferência"; Inverted = $false; About = "" }
-        "game-bar"                  = @{ Feature = "Xbox Game Bar e gravação de jogos"; Inverted = $true; About = "A gravação de jogos em segundo plano e o botão Xbox do controle que abre a Game Bar." }
-        "game-mode"                 = @{ Feature = "Modo de Jogo"; Inverted = $false; About = "O Windows prioriza o jogo aberto e segura atualizações e avisos. Vem ativado no Windows." }
-        "mouse-acceleration"        = @{ Feature = "Aceleração do mouse"; Inverted = $true; About = "O ponteiro anda mais quando o mouse se move rápido; desativada, a mira fica mais previsível." }
-        "fast-startup"              = @{ Feature = "Inicialização Rápida"; Inverted = $true; About = "O PC não desliga por completo, para ligar mais rápido; desativar evita problemas de driver." }
-        "high-performance"          = @{ Feature = "Plano de energia Alto desempenho"; Inverted = $false; About = "" }
-        "pcie-aspm"                 = @{ Feature = "Economia de energia do PCI Express"; Inverted = $true; About = "Poupa energia da placa de vídeo e do SSD; desativar pode resolver travamentos." }
-        "no-sleep-timeouts"         = @{ Feature = "Tela e suspensão automáticas"; Inverted = $true; About = "Depois de um tempo parado (na tomada ou na bateria), a tela desliga e o PC suspende ou hiberna." }
-        "hibernation"               = @{ Feature = "Hibernação"; Inverted = $true; About = "Guarda a memória no hiberfil.sys; desativar libera espaço e desliga a Inicialização Rápida." }
-        "gpu-scheduling"            = @{ Feature = "Agendamento de GPU acelerado por hardware"; Inverted = $false; About = "" }
-        "taskbar-left"              = @{ Feature = "Barra de tarefas alinhada à esquerda"; Inverted = $false; About = "O menu Iniciar e os ícones à esquerda, como no Windows 10; desativada, ficam no centro." }
-        "taskbar-end-task"          = @{ Feature = "Finalizar tarefa pela barra de tarefas"; Inverted = $false; About = "" }
-        "taskbar-search"            = @{ Feature = "Pesquisa na barra de tarefas"; Inverted = $true; About = "A caixa ou o ícone de pesquisa na barra; sem ela, abra o Iniciar e comece a digitar." }
-        "task-view-button"          = @{ Feature = "Botão Visão de Tarefas"; Inverted = $true; About = "O botão na barra de tarefas; a Visão de Tarefas continua no atalho Windows + Tab." }
-        "show-seconds"              = @{ Feature = "Segundos no relógio da barra de tarefas"; Inverted = $false; About = "O relógio mostra os segundos; usa um pouco mais de processador." }
-        "hide-widgets"              = @{ Feature = "Permitir os Widgets"; Inverted = $true; About = "O painel de notícias e clima e o botão dele na barra de tarefas." }
-        "hide-copilot"              = @{ Feature = "Botão do Copilot"; Inverted = $true; About = "O botão na barra de tarefas; sem ele, o aplicativo continua instalado." }
-        "taskbar-never-combine"     = @{ Feature = "Agrupar os botões da barra de tarefas"; Inverted = $true; About = "Junta as janelas do mesmo programa num botão; desativado, cada uma tem o seu, com o nome." }
-        "start-recommendations"     = @{ Feature = "Recomendações no Iniciar"; Inverted = $true; About = "O Iniciar sugere dicas, atalhos e aplicativos novos." }
-        "desktop-recycle-bin"       = @{ Feature = "Ícone da Lixeira na área de trabalho"; Inverted = $true; About = "O ícone da Lixeira; sem ele, a Lixeira continua funcionando e abre pelo Explorador." }
-        "desktop-this-pc"           = @{ Feature = "Ícone de Este Computador na área de trabalho"; Inverted = $false; About = "O ícone que abre as unidades e as pastas do PC." }
-        "dark-mode"                 = @{ Feature = "Modo escuro"; Inverted = $false; About = "" }
-        "no-transparency"           = @{ Feature = "Efeitos de transparência"; Inverted = $true; About = "Menus e janelas translúcidos; desativar pode deixar PCs modestos mais fluidos." }
-        "accent-taskbar"            = @{ Feature = "Cor de destaque no Iniciar e na barra de tarefas"; Inverted = $false; About = "" }
-        "accent-titlebars"          = @{ Feature = "Cor de destaque nas barras de título"; Inverted = $false; About = "" }
-        "lock-screen-widgets"       = @{ Feature = "Clima e notícias na tela de bloqueio"; Inverted = $true; About = "Os widgets (clima, notícias e cotações) que aparecem com o PC bloqueado." }
-        "lock-screen-notifications" = @{ Feature = "Notificações na tela de bloqueio"; Inverted = $true; About = "Avisos de mensagens e programas com o PC bloqueado; desativar dá mais privacidade." }
-        "lock-screen-tips"          = @{ Feature = "Dicas na tela de bloqueio"; Inverted = $true; About = "As dicas e curiosidades exibidas sobre a imagem da tela de bloqueio." }
+        "file-extensions"           = @{ Feature = (Get-WinForgeText 'Mostrar extensões de arquivos'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'Ajuda a perceber arquivos disfarçados') }
+        "hidden-files"              = @{ Feature = (Get-WinForgeText 'Mostrar arquivos e pastas ocultos'); Inverted = $false; About = (Get-WinForgeText 'Mostra o que o Windows esconde; os arquivos protegidos do sistema continuam ocultos.'); Short = (Get-WinForgeText 'Os arquivos protegidos do sistema continuam ocultos') }
+        "classic-context-menu"      = @{ Feature = (Get-WinForgeText 'Menu de contexto clássico'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'O clique direito abre o menu completo de uma vez') }
+        "explorer-this-pc"          = @{ Feature = (Get-WinForgeText 'Abrir o Explorador em Este Computador'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'As unidades e pastas do PC, em vez dos recentes') }
+        "explorer-recent"           = @{ Feature = (Get-WinForgeText 'Recentes no Explorador'); Inverted = $true; About = (Get-WinForgeText 'O Explorador lista os arquivos usados há pouco e as pastas que você mais usa.'); Short = (Get-WinForgeText 'Os arquivos usados há pouco e as pastas mais usadas') }
+        "explorer-sync-ads"         = @{ Feature = (Get-WinForgeText 'Avisos de produtos no Explorador'); Inverted = $true; About = (Get-WinForgeText 'Avisos do OneDrive e do Microsoft 365 no alto do Explorador.'); Short = (Get-WinForgeText 'Avisos do OneDrive e do Microsoft 365 no alto') }
+        "search-highlights"         = @{ Feature = (Get-WinForgeText 'Destaques da pesquisa'); Inverted = $true; About = (Get-WinForgeText 'Datas comemorativas, notícias e ilustrações do dia na pesquisa do Windows.'); Short = (Get-WinForgeText 'Datas, notícias e ilustrações do dia na pesquisa') }
+        "storage-sense"             = @{ Feature = (Get-WinForgeText 'Sensor de Armazenamento'); Inverted = $false; About = (Get-WinForgeText 'Com o disco cheio, o Windows apaga temporários e o que está há mais de 30 dias na Lixeira.'); Short = (Get-WinForgeText 'Com o disco cheio, apaga temporários e a Lixeira antiga') }
+        "background-apps"           = @{ Feature = (Get-WinForgeText 'Aplicativos em segundo plano'); Inverted = $true; About = (Get-WinForgeText 'Os aplicativos da Microsoft Store rodam escondidos para avisar, tocar alarmes e se atualizar.'); Short = (Get-WinForgeText 'Aplicativos da Store rodando escondidos') }
+        "autoplay-off"              = @{ Feature = (Get-WinForgeText 'Reprodução Automática'); Inverted = $true; About = (Get-WinForgeText 'Pendrives, cartões e celulares abrem algo sozinhos ao conectar; desativá-la é mais seguro.'); Short = (Get-WinForgeText 'Pendrives e celulares abrem algo sozinhos ao conectar') }
+        "tips-suggestions"          = @{ Feature = (Get-WinForgeText 'Dicas e sugestões do Windows'); Inverted = $true; About = (Get-WinForgeText 'Sugestões do Windows e a tela Vamos terminar de configurar o seu dispositivo.'); Short = (Get-WinForgeText 'Sugestões e a tela Vamos terminar de configurar') }
+        "advertising-id"            = @{ Feature = (Get-WinForgeText 'ID de publicidade'); Inverted = $true; About = (Get-WinForgeText 'Um identificador seu que os aplicativos usam para personalizar anúncios.'); Short = (Get-WinForgeText 'Um identificador que os aplicativos usam para anúncios') }
+        "bing-start"                = @{ Feature = (Get-WinForgeText 'Resultados da web na busca do Iniciar'); Inverted = $true; About = (Get-WinForgeText 'A busca do Iniciar traz sugestões do Bing; desativar tira também as buscas recentes do Explorador.'); Short = (Get-WinForgeText 'Sugestões do Bing e as buscas recentes do Explorador') }
+        "recall"                    = @{ Feature = (Get-WinForgeText 'Permitir o Recall'); Inverted = $true; About = (Get-WinForgeText 'Nos PCs que têm o recurso, o Recall pode salvar instantâneos periódicos da tela.'); Short = (Get-WinForgeText 'Instantâneos da tela, nos PCs que têm o recurso') }
+        "tailored-experiences"      = @{ Feature = (Get-WinForgeText 'Experiências personalizadas'); Inverted = $true; About = (Get-WinForgeText 'A Microsoft usa os dados de diagnóstico para mostrar dicas e anúncios sob medida.'); Short = (Get-WinForgeText 'Dicas e anúncios sob medida pelos dados de diagnóstico') }
+        "feedback-requests"         = @{ Feature = (Get-WinForgeText 'Pedidos de opinião sobre o Windows'); Inverted = $true; About = (Get-WinForgeText 'O Windows abre pesquisas pedindo a sua avaliação.'); Short = (Get-WinForgeText 'Pesquisas do Windows pedindo a sua avaliação') }
+        "activity-history"          = @{ Feature = (Get-WinForgeText 'Permitir o histórico de atividades'); Inverted = $true; About = (Get-WinForgeText 'O Windows pode guardar e enviar a lista do que você abriu e fez no PC.'); Short = (Get-WinForgeText 'A lista do que você abriu e fez no PC') }
+        "diagnostic-data"           = @{ Feature = (Get-WinForgeText 'Permitir dados de diagnóstico opcionais'); Inverted = $true; About = (Get-WinForgeText 'Além do mínimo, o Windows pode enviar à Microsoft dados de uso; desativado, só o obrigatório.'); Short = (Get-WinForgeText 'Dados de uso além do mínimo obrigatório') }
+        "app-tracking"              = @{ Feature = (Get-WinForgeText 'Acompanhar os programas abertos'); Inverted = $true; About = (Get-WinForgeText 'O Iniciar e a busca usam os programas que você mais abre para montar as listas.'); Short = (Get-WinForgeText 'O Iniciar e a busca listam o que você mais abre') }
+        "online-speech"             = @{ Feature = (Get-WinForgeText 'Reconhecimento de fala online'); Inverted = $true; About = (Get-WinForgeText 'A voz vai para a Microsoft no ditado e em outros recursos online.'); Short = (Get-WinForgeText 'A voz vai para a Microsoft no ditado online') }
+        "inking-typing"             = @{ Feature = (Get-WinForgeText 'Personalizar a digitação e a escrita à mão'); Inverted = $true; About = (Get-WinForgeText 'O Windows monta um dicionário seu a partir do que você digita e escreve com a caneta.'); Short = (Get-WinForgeText 'Um dicionário seu, do que você digita e escreve') }
+        "delivery-peers"            = @{ Feature = (Get-WinForgeText 'Permitir atualizações entre PCs'); Inverted = $true; About = (Get-WinForgeText 'O Windows baixa partes das atualizações de outros computadores e envia partes a eles.'); Short = (Get-WinForgeText 'Partes das atualizações trocadas com outros PCs') }
+        "early-updates"             = @{ Feature = (Get-WinForgeText 'Receber as atualizações assim que saem'); Inverted = $true; About = (Get-WinForgeText 'O Windows instala as novidades antes de chegarem a todos, e o PC pode reiniciar mais vezes por mês.'); Short = (Get-WinForgeText 'Novidades antes de todos; o PC pode reiniciar mais') }
+        "notifications-off"         = @{ Feature = (Get-WinForgeText 'Notificações'); Inverted = $true; About = (Get-WinForgeText 'Os avisos dos programas no canto da tela, os do WinForge também. A troca vale após sair e entrar.'); Short = (Get-WinForgeText 'Os avisos dos programas, os do WinForge também') }
+        "sticky-keys-shortcut"      = @{ Feature = (Get-WinForgeText 'Teclas de Aderência pelo Shift'); Inverted = $true; About = (Get-WinForgeText 'Apertar o Shift 5 vezes (ou segurar o Shift ou o Num Lock) abre o aviso de acessibilidade.'); Short = (Get-WinForgeText 'Shift cinco vezes abre o aviso de acessibilidade') }
+        "clipboard-history"         = @{ Feature = (Get-WinForgeText 'Histórico da área de transferência'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'Windows + V mostra o que você copiou antes') }
+        "game-bar"                  = @{ Feature = (Get-WinForgeText 'Xbox Game Bar e gravação de jogos'); Inverted = $true; About = (Get-WinForgeText 'A gravação de jogos em segundo plano e o botão Xbox do controle que abre a Game Bar.'); Short = (Get-WinForgeText 'A gravação em segundo plano e o botão Xbox do controle') }
+        "game-mode"                 = @{ Feature = (Get-WinForgeText 'Modo de Jogo'); Inverted = $false; About = (Get-WinForgeText 'O Windows prioriza o jogo aberto e segura atualizações e avisos. Vem ativado no Windows.'); Short = (Get-WinForgeText 'Prioriza o jogo aberto; vem ativado no Windows') }
+        "mouse-acceleration"        = @{ Feature = (Get-WinForgeText 'Aceleração do mouse'); Inverted = $true; About = (Get-WinForgeText 'O ponteiro anda mais quando o mouse se move rápido; desativada, a mira fica mais previsível.'); Short = (Get-WinForgeText 'O ponteiro vai mais longe com o mouse rápido') }
+        "fast-startup"              = @{ Feature = (Get-WinForgeText 'Inicialização Rápida'); Inverted = $true; About = (Get-WinForgeText 'O PC não desliga por completo, para ligar mais rápido; desativar evita problemas de driver.'); Short = (Get-WinForgeText 'Liga mais rápido; desativar evita problemas de driver') }
+        "high-performance"          = @{ Feature = (Get-WinForgeText 'Plano de energia Alto desempenho'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'Prioriza o desempenho e gasta mais energia') }
+        "pcie-aspm"                 = @{ Feature = (Get-WinForgeText 'Economia de energia do PCI Express'); Inverted = $true; About = (Get-WinForgeText 'Poupa energia da placa de vídeo e do SSD; desativar pode resolver travamentos.'); Short = (Get-WinForgeText 'Poupa energia; desativar pode resolver travamentos') }
+        "no-sleep-timeouts"         = @{ Feature = (Get-WinForgeText 'Tela e suspensão automáticas'); Inverted = $true; About = (Get-WinForgeText 'Depois de um tempo parado (na tomada ou na bateria), a tela desliga e o PC suspende ou hiberna.'); Short = (Get-WinForgeText 'Parado, o PC apaga a tela e depois suspende') }
+        "hibernation"               = @{ Feature = (Get-WinForgeText 'Hibernação'); Inverted = $true; About = (Get-WinForgeText 'Guarda a memória no hiberfil.sys; desativar libera espaço e desliga a Inicialização Rápida.'); Short = (Get-WinForgeText 'Desativar libera espaço e desliga a Inicialização Rápida') }
+        "gpu-scheduling"            = @{ Feature = (Get-WinForgeText 'Agendamento de GPU acelerado por hardware'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'Pode reduzir atrasos em jogos; vale após reiniciar') }
+        "taskbar-left"              = @{ Feature = (Get-WinForgeText 'Barra de tarefas alinhada à esquerda'); Inverted = $false; About = (Get-WinForgeText 'O menu Iniciar e os ícones à esquerda, como no Windows 10; desativada, ficam no centro.'); Short = (Get-WinForgeText 'O Iniciar e os ícones à esquerda, como no Windows 10') }
+        "taskbar-end-task"          = @{ Feature = (Get-WinForgeText 'Finalizar tarefa pela barra de tarefas'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'Finalizar tarefa no clique direito de um programa') }
+        "taskbar-search"            = @{ Feature = (Get-WinForgeText 'Pesquisa na barra de tarefas'); Inverted = $true; About = (Get-WinForgeText 'A caixa ou o ícone de pesquisa na barra; sem ela, abra o Iniciar e comece a digitar.'); Short = (Get-WinForgeText 'A caixa ou o ícone; sem ela, digite no Iniciar') }
+        "task-view-button"          = @{ Feature = (Get-WinForgeText 'Botão Visão de Tarefas'); Inverted = $true; About = (Get-WinForgeText 'O botão na barra de tarefas; a Visão de Tarefas continua no atalho Windows + Tab.'); Short = (Get-WinForgeText 'A Visão de Tarefas continua no Windows + Tab') }
+        "show-seconds"              = @{ Feature = (Get-WinForgeText 'Segundos no relógio da barra de tarefas'); Inverted = $false; About = (Get-WinForgeText 'O relógio mostra os segundos; usa um pouco mais de processador.'); Short = (Get-WinForgeText 'Usa um pouco mais de processador') }
+        "hide-widgets"              = @{ Feature = (Get-WinForgeText 'Permitir os Widgets'); Inverted = $true; About = (Get-WinForgeText 'O painel de notícias e clima e o botão dele na barra; a política vale para todas as contas do PC.'); Short = (Get-WinForgeText 'Notícias e clima na barra; vale para todas as contas') }
+        "hide-copilot"              = @{ Feature = (Get-WinForgeText 'Botão do Copilot'); Inverted = $true; About = (Get-WinForgeText 'O botão na barra de tarefas; sem ele, o aplicativo continua instalado.'); Short = (Get-WinForgeText 'Sem ele, o aplicativo continua instalado') }
+        "taskbar-never-combine"     = @{ Feature = (Get-WinForgeText 'Agrupar os botões da barra de tarefas'); Inverted = $true; About = (Get-WinForgeText 'Junta as janelas do mesmo programa num botão; desativado, cada uma tem o seu, com o nome.'); Short = (Get-WinForgeText 'Desativado, cada janela tem o seu botão, com o nome') }
+        "start-recommendations"     = @{ Feature = (Get-WinForgeText 'Recomendações no Iniciar'); Inverted = $true; About = (Get-WinForgeText 'O Iniciar sugere dicas, atalhos e aplicativos novos.'); Short = (Get-WinForgeText 'Dicas, atalhos e aplicativos novos no Iniciar') }
+        "desktop-recycle-bin"       = @{ Feature = (Get-WinForgeText 'Ícone da Lixeira na área de trabalho'); Inverted = $true; About = (Get-WinForgeText 'O ícone da Lixeira; sem ele, a Lixeira continua funcionando e abre pelo Explorador.'); Short = (Get-WinForgeText 'Sem ele, a Lixeira continua no Explorador') }
+        "desktop-this-pc"           = @{ Feature = (Get-WinForgeText 'Ícone de Este Computador na área de trabalho'); Inverted = $false; About = (Get-WinForgeText 'O ícone que abre as unidades e as pastas do PC.'); Short = (Get-WinForgeText 'Abre as unidades e as pastas do PC') }
+        "dark-mode"                 = @{ Feature = (Get-WinForgeText 'Modo escuro'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'O Windows e os aplicativos no tema escuro') }
+        "no-transparency"           = @{ Feature = (Get-WinForgeText 'Efeitos de transparência'); Inverted = $true; About = (Get-WinForgeText 'Menus e janelas translúcidos; desativar pode deixar PCs modestos mais fluidos.'); Short = (Get-WinForgeText 'Desativar pode deixar PCs modestos mais fluidos') }
+        "accent-taskbar"            = @{ Feature = (Get-WinForgeText 'Cor de destaque no Iniciar e na barra de tarefas'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'Só com o Windows no modo escuro') }
+        "accent-titlebars"          = @{ Feature = (Get-WinForgeText 'Cor de destaque nas barras de título'); Inverted = $false; About = ""; Short = (Get-WinForgeText 'A barra de título e a borda das janelas') }
+        "lock-screen-widgets"       = @{ Feature = (Get-WinForgeText 'Clima e notícias na tela de bloqueio'); Inverted = $true; About = (Get-WinForgeText 'Os widgets (clima, notícias e cotações) que aparecem com o PC bloqueado.'); Short = (Get-WinForgeText 'Os widgets que aparecem com o PC bloqueado') }
+        "lock-screen-notifications" = @{ Feature = (Get-WinForgeText 'Notificações na tela de bloqueio'); Inverted = $true; About = (Get-WinForgeText 'Avisos de mensagens e programas com o PC bloqueado; desativar dá mais privacidade.'); Short = (Get-WinForgeText 'Desativar dá mais privacidade') }
+        "lock-screen-tips"          = @{ Feature = (Get-WinForgeText 'Dicas na tela de bloqueio'); Inverted = $true; About = (Get-WinForgeText 'As dicas e curiosidades exibidas sobre a imagem da tela de bloqueio.'); Short = (Get-WinForgeText 'Curiosidades sobre a imagem da tela de bloqueio') }
     }
+}
+
+
+function Get-WinForgeTweaksForSession {
+    <#
+    Dos ajustes pedidos, os que esta sessão pode aplicar. Elevado com outra conta, o HKCU é o dessa conta: um ajuste do
+    perfil do usuário mudaria o perfil errado, e o estado lido também seria o dela. Esses ficam de fora, com um aviso só
+    (sem -Quiet), como na revisão do Otimizar; os de sistema (HKLM) seguem.
+    #>
+    param (
+        [AllowEmptyCollection()][object[]]$Tweaks = @(),
+        [switch]$Quiet
+    )
+
+    $session = Get-WinForgeSessionInfo
+    if (-not [bool](Get-WinForgeTweakField -Entry $session -Name "UserMismatch" -Default $false)) { return @($Tweaks) }
+
+    $mine = @($Tweaks | Where-Object { -not $_.UserScope })
+    $hidden = @($Tweaks).Count - $mine.Count
+
+    if ($hidden -gt 0 -and -not $Quiet) {
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}): {1} de fora, para não mudar o perfil dessa conta.' "$([string](Get-WinForgeTweakField -Entry $session -Name 'User' -Default ''))" "$(Format-WinForgeCount -Count $hidden -One (Get-WinForgeText 'ajuste do perfil do usuário ficou') -Many (Get-WinForgeText 'ajustes do perfil do usuário ficaram'))")
+    }
+
+    return $mine
 }
 
 
 function Get-WinForgeTweakOverview {
     # Lista os ajustes disponíveis neste Windows, agrupados na ordem de exibição, com o estado atual: os de uma página
-    # (-Page "personalize" ou "tweaks") ou todos.
+    # (-Page "personalize" ou "tweaks") ou todos. OtherAccount: o ajuste vale para o perfil do usuário, e o WinForge está
+    # elevado com outra conta (o estado lido seria o dessa conta, e a chave não o muda).
     param ([string]$Page = "")
 
     $session = Get-WinForgeSessionInfo
+    $otherAccount = [bool](Get-WinForgeTweakField -Entry $session -Name "UserMismatch" -Default $false)
     $categories = @(Get-WinForgeTweakCategories -Page $Page)
     $catalog = @(Get-WinForgeTweakCatalog | Where-Object { Test-WinForgeTweakAvailable -Tweak $_ })
 
     return @(
         foreach ($category in $categories) {
             foreach ($tweak in @($catalog | Where-Object { $_.Category -eq $category })) {
+                $detail = [string](Get-WinForgeTweakField -Entry $tweak -Name "About" -Default "")
+                if ([string]::IsNullOrWhiteSpace($detail)) { $detail = [string]$tweak.Description }
+                $short = [string](Get-WinForgeTweakField -Entry $tweak -Name "Short" -Default "")
+                if ([string]::IsNullOrWhiteSpace($short)) { $short = $detail }
+
                 [PSCustomObject]@{
                     Id            = $tweak.Id
                     Category      = $tweak.Category
 
-                    # O que a lista mostra: o recurso do Windows (Feature) e o que ele é (About). Action é o nome do
+                    # O que a lista mostra: o recurso do Windows (Feature) e a frase curta (Short); a inteira (About,
+                    # ou a descrição do ajuste) fica em Detail, para a dica e o leitor de tela. Action é o nome do
                     # ajuste, para onde se fala da mudança.
                     Name          = [string](Get-WinForgeTweakField -Entry $tweak -Name "Feature" -Default $tweak.Name)
-                    Description   = [string](Get-WinForgeTweakField -Entry $tweak -Name "About" -Default $tweak.Description)
+                    Description   = $short
+                    Detail        = $detail
                     Action        = $tweak.Name
                     Inverted      = [bool](Get-WinForgeTweakField -Entry $tweak -Name "Inverted" -Default $false)
                     Advanced      = [bool]$tweak.Advanced
                     RequiresAdmin = [bool]$tweak.RequiresAdmin
                     Status        = (Get-WinForgeTweakStatus -Tweak $tweak)
                     LaptopNote    = $(if ($session.IsLaptop -and $tweak.LaptopRisk) { $tweak.Warning } else { "" })
+                    OtherAccount  = ($otherAccount -and [bool]$tweak.UserScope)
                 }
             }
         }
@@ -2120,11 +2181,11 @@ function Invoke-WinForgeTweakApply {
     )
 
     if (-not (Test-WinForgeTweakAvailable -Tweak $Tweak)) {
-        throw "O ajuste '$($Tweak.Name)' não está disponível nesta versão do Windows."
+        throw (Get-WinForgeText 'O ajuste ''{0}'' não está disponível nesta versão do Windows.' "$($Tweak.Name)")
     }
 
     if ($Tweak.RequiresAdmin -and -not (Test-WinForgeAdministrator)) {
-        throw "O ajuste '$($Tweak.Name)' exige privilégios de Administrador."
+        throw (Get-WinForgeText 'O ajuste ''{0}'' exige privilégios de Administrador.' "$($Tweak.Name)")
     }
 
     $tweakId = [string]$Tweak.Id
@@ -2184,34 +2245,48 @@ function Invoke-WinForgeTweakApply {
     catch {
         $failure = $_
 
-        # Desfaz o que a tentativa mudou e não deixa um backup de algo que não foi aplicado.
+        # Desfaz o que a tentativa mudou e não deixa um backup de algo que não foi aplicado. Se nem o desfazer funcionou,
+        # parte do ajuste pode ter ficado no PC: o backup com o valor de antes fica, para o desfazer de depois voltar a ele.
         if ($null -ne $record) {
-            try { [void](& $Tweak.Revert $snapshot) } catch { }
+            $undone = $false
 
             try {
-                [void](Invoke-WinForgeStateLock -ScriptBlock {
-                        $current = Read-WinForgeTweakBackup -Status
-
-                        if ($current.Status -eq "Unreadable") { return }
-
-                        if ($record.HadEntry) {
-                            $current.Backup[$tweakId] = $record.PreviousEntry
-                        }
-                        elseif ($current.Backup.Contains($tweakId)) {
-                            $current.Backup.Remove($tweakId)
-                        }
-
-                        Save-WinForgeTweakBackup -Backup $current.Backup
-                    })
+                [void](& $Tweak.Revert $snapshot)
+                $undone = $true
             }
-            catch { }
+            catch {
+                Write-Verbose "Desfazer a tentativa de $($Tweak.Id): $($_.Exception.Message)"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: parte da tentativa pode ter ficado aplicada. O valor de antes continua guardado, e desfazer o ajuste volta a ele.' "$($Tweak.Name)")
+            }
+
+            if ($undone) {
+                try {
+                    [void](Invoke-WinForgeStateLock -ScriptBlock {
+                            $current = Read-WinForgeTweakBackup -Status
+
+                            if ($current.Status -eq "Unreadable") { return }
+
+                            if ($record.HadEntry) {
+                                $current.Backup[$tweakId] = $record.PreviousEntry
+                            }
+                            elseif ($current.Backup.Contains($tweakId)) {
+                                $current.Backup.Remove($tweakId)
+                            }
+
+                            Save-WinForgeTweakBackup -Backup $current.Backup
+                        })
+                }
+                catch {
+                    Write-Verbose "Backup do ajuste $($Tweak.Id): $($_.Exception.Message)"
+                }
+            }
         }
 
         throw $failure
     }
 
     if (-not $alreadyApplied) {
-        [void](Add-WinForgeChange -Action "Ajuste aplicado" -Text $Tweak.Name -Undo @{ Kind = "tweak"; Id = $Tweak.Id })
+        [void](Add-WinForgeChange -Action (Get-WinForgeText 'Ajuste aplicado') -Text $Tweak.Name -Undo @{ Kind = "tweak"; Id = $Tweak.Id })
     }
 }
 
@@ -2220,7 +2295,7 @@ function Invoke-WinForgeTweakRevert {
     <#
     Desfaz um ajuste. Devolve $true se havia backup e $false se foram usados os padrões do Windows. Com -Detailed, devolve
     HadBackup, Restored e Kept (quantos valores voltaram e quantos ficaram por terem mudado depois; sem o relatório do
-    ajuste, Restored = 1 e Kept = 0).
+    ajuste, Restored = 1 e Kept = 0) e Note (o que o desfazer fez a mais, ou vazio).
     #>
     param (
         [Parameter(Mandatory)]
@@ -2230,7 +2305,7 @@ function Invoke-WinForgeTweakRevert {
     )
 
     if ($Tweak.RequiresAdmin -and -not (Test-WinForgeAdministrator)) {
-        throw "O ajuste '$($Tweak.Name)' exige privilégios de Administrador."
+        throw (Get-WinForgeText 'O ajuste ''{0}'' exige privilégios de Administrador.' "$($Tweak.Name)")
     }
 
     $tweakId = [string]$Tweak.Id
@@ -2269,6 +2344,7 @@ function Invoke-WinForgeTweakRevert {
             HadBackup = ($null -ne $saved)
             Restored  = $(if ($null -ne $report) { [int]$report.Restored } else { 1 })
             Kept      = $(if ($null -ne $report) { [int]$report.Kept } else { 0 })
+            Note      = [string](Get-WinForgeTweakField -Entry $report -Name "Note" -Default "")
         }
     }
 
@@ -2305,23 +2381,23 @@ function Invoke-WinForgeTweakSet {
             $tweak = Get-WinForgeTweakById -Id $id
 
             if ($null -eq $tweak) {
-                $unknown = New-WinForgeResult -Kind Failed -Detail "ajuste desconhecido" -Title $id
+                $unknown = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'ajuste desconhecido') -Title $id
                 $results += $unknown
-                Write-WinForgeStatus -Type Error -Message "Ajuste desconhecido: $id"
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ajuste desconhecido: {0}' "$id")
                 continue
             }
 
             # O andamento vai para a barra de progresso; no resumo fica uma linha por ajuste, a do resultado.
-            Write-Progress -Activity "Aplicando os ajustes" -Status "$position de $($Ids.Count): $($tweak.Name)" -PercentComplete ([int](100 * ($position - 1) / $Ids.Count))
+            Write-Progress -Activity (Get-WinForgeText 'Aplicando os ajustes') -Status (Get-WinForgeText '{0} de {1}: {2}' "$position" "$($Ids.Count)" "$($tweak.Name)") -PercentComplete ([int](100 * ($position - 1) / $Ids.Count))
 
             if ($otherAccount -and $tweak.UserScope) {
                 if (-not $warnedOtherAccount) {
                     $warnedOtherAccount = $true
-                    Write-WinForgeStatus -Type Warning -Message "O WinForge está elevado com outra conta ($([string](Get-WinForgeTweakField -Entry $session -Name 'User' -Default ''))): os ajustes do perfil do usuário ficam de fora, para não mudar o perfil dessa conta. Para aplicá-los, abra o WinForge sem trocar de conta no pedido de Administrador."
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}): os ajustes do perfil do usuário ficam de fora, para não mudar o perfil dessa conta. Para aplicá-los, abra o WinForge sem trocar de conta no pedido de Administrador.' "$([string](Get-WinForgeTweakField -Entry $session -Name 'User' -Default ''))")
                 }
 
-                $results += (New-WinForgeResult -Kind Warning -Detail "não aplicado: vale para o perfil do usuário, e o WinForge está elevado com outra conta" -Title $tweak.Name)
-                Write-WinForgeStatus -Type Warning -Message "$($tweak.Name): não aplicado (vale para o perfil do usuário)."
+                $results += (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não aplicado: vale para o perfil do usuário, e o WinForge está elevado com outra conta') -Title $tweak.Name)
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: não aplicado (vale para o perfil do usuário).' "$($tweak.Name)")
                 continue
             }
 
@@ -2329,9 +2405,9 @@ function Invoke-WinForgeTweakSet {
                 $before = Get-WinForgeTweakStatus -Tweak $tweak
 
                 if ($before -eq "Aplicado") {
-                    $skipped = New-WinForgeResult -Kind Skipped -Detail "já estava aplicado" -Title $tweak.Name
+                    $skipped = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'já estava aplicado') -Title $tweak.Name
                     $results += $skipped
-                    Write-WinForgeStatus -Type Info -Message "$($tweak.Name): já estava aplicado."
+                    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0}: já estava aplicado.' "$($tweak.Name)")
                     continue
                 }
 
@@ -2339,21 +2415,21 @@ function Invoke-WinForgeTweakSet {
 
                 if ((Get-WinForgeTweakStatus -Tweak $tweak) -eq "Aplicado") {
                     $results += (New-WinForgeResult -Kind Ok -Title $tweak.Name)
-                    Write-WinForgeStatus -Type Success -Message "$($tweak.Name): aplicado."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: aplicado.' "$($tweak.Name)")
 
                     if ($tweak.RestartExplorer) { $needsExplorerRestart = $true }
                     if (Get-WinForgeTweakField -Entry $tweak -Name "NeedsReboot" -Default $false) { $needsReboot = $true }
                 }
                 else {
-                    $results += (New-WinForgeResult -Kind Warning -Detail "o Windows não manteve o valor" -Title $tweak.Name)
-                    Write-WinForgeStatus -Type Warning -Message "$($tweak.Name): o valor foi gravado, mas o Windows não o manteve (política da organização?)."
+                    $results += (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows não manteve o valor') -Title $tweak.Name)
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: o valor foi gravado, mas o Windows não o manteve (política da organização?).' "$($tweak.Name)")
                 }
             }
             catch {
                 $help = Get-WinForgeTweakProtectedHelp -Tweak $tweak
 
                 if ($null -ne $help -and (Test-WinForgeAccessDenied -Exception $_.Exception)) {
-                    $results += (New-WinForgeResult -Kind Warning -Detail "o Windows protege esta configuração e não deixa o WinForge mudá-la" -Title $tweak.Name)
+                    $results += (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows protege esta configuração e não deixa o WinForge mudá-la') -Title $tweak.Name)
                     Write-WinForgeStatus -Type Warning -Message "$($tweak.Name): $(Get-WinForgeTweakProtectedText -Help $help)"
                 }
                 else {
@@ -2364,7 +2440,7 @@ function Invoke-WinForgeTweakSet {
         }
     }
     finally {
-        Write-Progress -Activity "Aplicando os ajustes" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Aplicando os ajustes') -Completed
     }
 
     return [PSCustomObject]@{
@@ -2463,7 +2539,7 @@ function Test-WinForgeRestoreProtectionOffError {
 
     $message = $(if ($null -ne $Exception -and $null -ne $Exception.PSObject.Properties["Message"]) { [string]$Exception.Message } else { "" })
 
-    return ($message -match "(?i)disabled|desativ|desabilit")
+    return ($message -match "(?i)disabled|desativ|desabilit|deshabilit|desactiv")
 }
 
 
@@ -2559,16 +2635,16 @@ function New-WinForgeRestorePoint {
     documenta para isso) e volta ao que era.
     #>
     param (
-        [string]$Description = "WinForge - antes dos ajustes",
+        [string]$Description = (Get-WinForgeText 'WinForge - antes dos ajustes'),
         [switch]$IgnoreFrequency
     )
 
     if (-not (Get-Command Checkpoint-Computer -ErrorAction SilentlyContinue)) {
-        Write-WinForgeStatus -Type Warning -Message "Checkpoint-Computer não está disponível neste PowerShell. Use o Windows PowerShell 5.1."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Checkpoint-Computer não está disponível neste PowerShell. Use o Windows PowerShell 5.1.')
 
         # Nenhum ponto foi criado (quem aplica ajustes pergunta se segue sem ele), mas ligar a Proteção do Sistema não
         # resolveria: falta o comando, não a proteção.
-        return (New-WinForgeResult -Kind Warning -Detail "indisponível neste PowerShell" -Title "Criar ponto de restauração" -Data @{ NotCreated = $true; Unavailable = $true })
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'indisponível neste PowerShell') -Title (Get-WinForgeText 'Criar ponto de restauração') -Data @{ NotCreated = $true; Unavailable = $true })
     }
 
     # Desligada pela política (Diretiva de Grupo, a empresa): o Windows não cria pontos, e ligar a Proteção do Sistema
@@ -2576,8 +2652,8 @@ function New-WinForgeRestorePoint {
     $policy = Get-WinForgeRestorePolicy
 
     if ($policy -eq "DisableSR") {
-        Write-WinForgeStatus -Type Warning -Message "A Restauração do Sistema está desligada por uma política deste PC (Diretiva de Grupo ou a empresa). Só quem administra o PC pode ligá-la."
-        return (New-WinForgeResult -Kind Warning -Detail "não criado; desligado por uma política deste PC" -Title "Criar ponto de restauração" -Data @{ NotCreated = $true; Policy = $true })
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A Restauração do Sistema está desligada por uma política deste PC (Diretiva de Grupo ou a empresa). Só quem administra o PC pode ligá-la.')
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não criado; desligado por uma política deste PC') -Title (Get-WinForgeText 'Criar ponto de restauração') -Data @{ NotCreated = $true; Policy = $true })
     }
 
     $before = Get-WinForgeRestorePointSequence
@@ -2594,7 +2670,7 @@ function New-WinForgeRestorePoint {
     }
 
     try {
-        Write-Progress -Activity "Criando o ponto de restauração" -Status "o Windows está criando o ponto (pode levar um minuto)"
+        Write-Progress -Activity (Get-WinForgeText 'Criando o ponto de restauração') -Status (Get-WinForgeText 'o Windows está criando o ponto (pode levar um minuto)')
         Checkpoint-Computer -Description $Description -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop -WarningAction SilentlyContinue -WarningVariable checkpointWarning
     }
     catch {
@@ -2605,19 +2681,19 @@ function New-WinForgeRestorePoint {
         $protectionOff = (Test-WinForgeRestoreProtectionOffError -Exception $_.Exception)
 
         if ($protectionOff) {
-            Write-WinForgeStatus -Type Warning -Message "Não foi possível criar o ponto de restauração: a Proteção do Sistema está desligada no disco do Windows."
-            if ($policy -eq "DisableConfig") { Write-WinForgeStatus -Type Info -Message "Uma política deste PC impede ligá-la por aqui; só quem administra o PC pode fazer isso." }
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível criar o ponto de restauração: a Proteção do Sistema está desligada no disco do Windows.')
+            if ($policy -eq "DisableConfig") { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Uma política deste PC impede ligá-la por aqui; só quem administra o PC pode fazer isso.') }
         }
         else {
-            Write-WinForgeStatus -Type Warning -Message "Não foi possível criar o ponto de restauração: $message."
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível criar o ponto de restauração: {0}.' "$message")
         }
 
-        $reason = $(if ($protectionOff) { "não criado; a Proteção do Sistema está desligada" } else { "não criado; $message" })
+        $reason = $(if ($protectionOff) { (Get-WinForgeText 'não criado; a Proteção do Sistema está desligada') } else { (Get-WinForgeText 'não criado; {0}' "$message") })
 
-        return (New-WinForgeResult -Kind Warning -Detail $reason -Title "Criar ponto de restauração" -Data @{ NotCreated = $true; ProtectionOff = ($protectionOff -and $policy -ne "DisableConfig"); Policy = ($policy -ne "") })
+        return (New-WinForgeResult -Kind Warning -Detail $reason -Title (Get-WinForgeText 'Criar ponto de restauração') -Data @{ NotCreated = $true; ProtectionOff = ($protectionOff -and $policy -ne "DisableConfig"); Policy = ($policy -ne "") })
     }
     finally {
-        Write-Progress -Activity "Criando o ponto de restauração" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Criando o ponto de restauração') -Completed
         if ($null -ne $frequency) { [void](Restore-WinForgeRestorePointFrequency -Saved $frequency) }
     }
 
@@ -2626,8 +2702,8 @@ function New-WinForgeRestorePoint {
 
     if ($before -ge 0 -and $after -gt $before) {
         # O que fazer com ele, se algo der errado: a pessoa não precisa saber onde a Restauração do Sistema fica.
-        Write-WinForgeStatus -Type Success -Message "Ponto de restauração criado. Para voltar a ele, use Manutenção > Restauração do Sistema."
-        return (New-WinForgeResult -Kind Ok -Detail "ponto de restauração criado" -Title "Criar ponto de restauração")
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Ponto de restauração criado. Para voltar a ele, use Manutenção > Restauração do Sistema.')
+        return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'ponto de restauração criado') -Title (Get-WinForgeText 'Criar ponto de restauração'))
     }
 
     if (-not [string]::IsNullOrWhiteSpace($warningText) -or ($before -ge 0 -and $after -eq $before)) {
@@ -2639,36 +2715,36 @@ function New-WinForgeRestorePoint {
             $age = (Get-Date) - $latestTime
 
             if ($age.TotalHours -ge 0 -and $age.TotalHours -lt 24) {
-                Write-WinForgeStatus -Type Info -Message "Já existe um ponto de restauração recente ($(Format-WinForgeRelativeTime -When $latestTime)); o Windows cria no máximo um por dia."
-                return (New-WinForgeResult -Kind Skipped -Detail "já havia um ponto recente" -Title "Criar ponto de restauração")
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Já existe um ponto de restauração recente ({0}); o Windows cria no máximo um por dia.' "$(Format-WinForgeRelativeTime -When $latestTime)")
+                return (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'já havia um ponto recente') -Title (Get-WinForgeText 'Criar ponto de restauração'))
             }
         }
 
-        Write-WinForgeStatus -Type Warning -Message "O Windows não criou um novo ponto de restauração."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows não criou um novo ponto de restauração.')
 
         # A lista foi lida e não tem nenhum ponto: dizer que "um ponto recente já deve existir" prometeria uma rede de
         # segurança que não existe. Fica "não criado", como a Proteção do Sistema desativada (quem aplica ajustes pergunta
         # se segue sem ele, e o ponto pedido sozinho não é concluído).
         if ($before -eq 0 -and $after -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Não há nenhum ponto de restauração neste PC."
-            if (-not [string]::IsNullOrWhiteSpace($warningText)) { Write-WinForgeStatus -Type Info -Message "Aviso do Windows: $warningText" }
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Não há nenhum ponto de restauração neste PC.')
+            if (-not [string]::IsNullOrWhiteSpace($warningText)) { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Aviso do Windows: {0}' "$warningText") }
 
             # Sem nenhum ponto e sem erro, o mais comum é a Proteção do Sistema desligada (o padrão em muitos PCs).
-            return (New-WinForgeResult -Kind Warning -Detail "não criado; não há nenhum ponto de restauração" -Title "Criar ponto de restauração" -Data @{ NotCreated = $true; ProtectionOff = ($policy -ne "DisableConfig"); Policy = ($policy -ne "") })
+            return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não criado; não há nenhum ponto de restauração') -Title (Get-WinForgeText 'Criar ponto de restauração') -Data @{ NotCreated = $true; ProtectionOff = ($policy -ne "DisableConfig"); Policy = ($policy -ne "") })
         }
 
         # O ponto mais novo tem mais de um dia (ou a data dele não pôde ser lida): o limite de um por dia não explica a
         # recusa, e não há rede de segurança recente. É "não criado", como os outros casos (quem aplica ajustes pergunta
         # se segue sem ele, e o ponto pedido sozinho não é concluído).
-        if ($null -ne $latestTime) { Write-WinForgeStatus -Type Info -Message "O ponto mais novo é de $(Format-WinForgeDateTime -When $latestTime) ($(Format-WinForgeRelativeTime -When $latestTime))." }
-        if (-not [string]::IsNullOrWhiteSpace($warningText)) { Write-WinForgeStatus -Type Info -Message "Aviso do Windows: $warningText" }
+        if ($null -ne $latestTime) { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O ponto mais novo é de {0} ({1}).' "$(Format-WinForgeDateTime -When $latestTime)" "$(Format-WinForgeRelativeTime -When $latestTime)") }
+        if (-not [string]::IsNullOrWhiteSpace($warningText)) { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Aviso do Windows: {0}' "$warningText") }
 
-        return (New-WinForgeResult -Kind Warning -Detail "não criado; o Windows não criou um novo ponto" -Title "Criar ponto de restauração" -Data @{ NotCreated = $true })
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não criado; o Windows não criou um novo ponto') -Title (Get-WinForgeText 'Criar ponto de restauração') -Data @{ NotCreated = $true })
     }
 
     # Não foi possível consultar a lista de pontos, mas o comando terminou sem erro nem aviso.
-    Write-WinForgeStatus -Type Success -Message "Ponto de restauração solicitado."
-    return (New-WinForgeResult -Kind Ok -Title "Criar ponto de restauração")
+    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Ponto de restauração solicitado.')
+    return (New-WinForgeResult -Kind Ok -Title (Get-WinForgeText 'Criar ponto de restauração'))
 }
 
 
@@ -2679,7 +2755,7 @@ function Request-WinForgeRestorePoint {
     Description é o nome que o ponto terá na Restauração do Sistema. Devolve um WinForge.Result.
     #>
     param (
-        [string]$Description = "WinForge - antes dos ajustes",
+        [string]$Description = (Get-WinForgeText 'WinForge - antes dos ajustes'),
         [switch]$IgnoreFrequency,
 
         # O ponto é o objetivo inteiro (Criar ponto de restauração, pedido sozinho): ligar a Proteção do Sistema para
@@ -2697,14 +2773,14 @@ function Request-WinForgeRestorePoint {
 
     Write-Host ""
 
-    if (Confirm-WinForgeAction "A Proteção do Sistema está desligada. Ligá-la (usa um pouco do disco) e criar o ponto?" -DefaultKey $(if ($ProtectionDefaultYes) { "S" } else { "N" }) -YesLabel "Ligar e criar" -NoLabel "Agora não") {
+    if (Confirm-WinForgeAction (Get-WinForgeText 'A Proteção do Sistema está desligada. Ligá-la (usa um pouco do disco) e criar o ponto?') -DefaultKey $(if ($ProtectionDefaultYes) { "S" } else { "N" }) -YesLabel (Get-WinForgeText 'Ligar e criar') -NoLabel (Get-WinForgeText 'Agora não')) {
         try {
             Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction Stop
-            Write-WinForgeStatus -Type Success -Message "Proteção do Sistema ativada."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Proteção do Sistema ativada.')
             $result = New-WinForgeRestorePoint -Description $Description -IgnoreFrequency:$IgnoreFrequency
         }
         catch {
-            Write-WinForgeStatus -Type Error -Message "Não foi possível ativar a Proteção do Sistema: $($_.Exception.Message)"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ativar a Proteção do Sistema: {0}' "$($_.Exception.Message)")
         }
     }
 
@@ -2718,21 +2794,21 @@ function Invoke-WinForgeRestorePoint {
         [switch]$PassThru,
 
         # O nome do ponto na Restauração do Sistema, que é o que a pessoa vê na hora de escolher para onde voltar.
-        [string]$Description = "WinForge - ponto criado manualmente",
+        [string]$Description = (Get-WinForgeText 'WinForge - ponto criado manualmente'),
 
         # Dentro de um fluxo com a pessoa presente (o começo do Otimizar): sem a Proteção do Sistema, oferece ligá-la,
         # com Não como padrão, como antes de aplicar ajustes. Sem ele, dentro de um fluxo, não pergunta nada.
         [switch]$OfferProtection
     )
 
-    $title = "Criar ponto de restauração"
+    $title = (Get-WinForgeText 'Criar ponto de restauração')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
     $result = $null
 
-    if (-not (Test-WinForgeElevation -Reason "Criar um ponto de restauração exige privilégios de Administrador.")) {
-        $result = New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $title
+    if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Criar um ponto de restauração exige privilégios de Administrador.'))) {
+        $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title
     }
     elseif ($Embedded -and $OfferProtection) {
         # O começo do Otimizar: o ponto é para agora, antes das mudanças desta execução. Um ponto de horas atrás (de uma
@@ -2750,19 +2826,22 @@ function Invoke-WinForgeRestorePoint {
         # Pedido sozinho, o ponto é o objetivo inteiro: se ele não existe no fim, a ação não foi concluída (dentro de um
         # fluxo, o mesmo caso é uma ressalva e o fluxo segue).
         if (Test-WinForgeResultFlag -Result $result -Name "NotCreated") {
-            $reason = $(if (Test-WinForgeResultFlag -Result $result -Name "Unavailable") { "o comando do ponto de restauração não existe neste PowerShell" } else { "o ponto de restauração não foi criado" })
-            $why = ([string]$result.Detail -replace '^não criado;?\s*', '')
+            $reason = $(if (Test-WinForgeResultFlag -Result $result -Name "Unavailable") { (Get-WinForgeText 'o comando do ponto de restauração não existe neste PowerShell') } else { (Get-WinForgeText 'o ponto de restauração não foi criado') })
+            # O motivo sem o "não criado;" do começo (no idioma da tela, como em Invoke-WinForgeRestorePoint).
+            $why = [string]$result.Detail
+            $prefix = (Get-WinForgeText 'não criado; {0}' "").Trim()
+            if ($prefix -and $why.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { $why = $why.Substring($prefix.Length).TrimStart() }
             $result = New-WinForgeResult -Kind Failed -Detail $reason -Title $title -Data @{ NotCreated = $true }
 
             # O título da faixa diz o que aconteceu; o motivo vem embaixo (desligado, política, recusa do Windows).
             if (-not [string]::IsNullOrWhiteSpace($why) -and $why -ne [string]$reason) {
                 $note = "$($why.Substring(0, 1).ToUpperInvariant())$($why.Substring(1))."
-                $result = Set-WinForgeResultView -Result $result -Headline "O ponto de restauração não foi criado" -Note $note
+                $result = Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'O ponto de restauração não foi criado') -Note $note
             }
         }
-        elseif ([string]$result.Kind -eq "Ok" -and [string]$result.Detail -eq "ponto de restauração criado") {
+        elseif ([string]$result.Kind -eq "Ok" -and [string]$result.Detail -eq (Get-WinForgeText 'ponto de restauração criado')) {
             # Só o ponto conferido na lista do Windows; o "solicitado" (lista ilegível) não afirma que ele existe.
-            $result = Set-WinForgeResultView -Result $result -Headline "Ponto de restauração criado" -Note "Para voltar a ele, use Manutenção > Restauração do Sistema."
+            $result = Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Ponto de restauração criado') -Note (Get-WinForgeText 'Para voltar a ele, use Manutenção > Restauração do Sistema.')
         }
     }
 
@@ -2784,14 +2863,14 @@ function Read-WinForgeTweakSelection {
         [Parameter(Mandatory)]
         [object[]]$Tweaks,
 
-        [string]$Message = "Escolha os ajustes que deseja aplicar"
+        [string]$Message = (Get-WinForgeText 'Escolha os ajustes que deseja aplicar')
     )
 
     $session = Get-WinForgeSessionInfo
     $candidates = @($Tweaks)
 
     if ($session.IsLaptop -and @($candidates | Where-Object { $_.LaptopRisk }).Count -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "Notebook detectado: os ajustes de energia que reduzem a bateria vêm desmarcados."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Notebook detectado: os ajustes de energia que reduzem a bateria vêm desmarcados.')
         Write-Host ""
     }
 
@@ -2800,13 +2879,14 @@ function Read-WinForgeTweakSelection {
             $risky = ($session.IsLaptop -and $tweak.LaptopRisk)
             $note = $tweak.Description
 
-            if ($risky) { $note = "$($tweak.Description)  [notebook: $($tweak.Warning)]" }
+            # O aviso já diz que é do notebook ("Em notebook, consome mais bateria..."): vem logo depois da descrição.
+            if ($risky) { $note = "$($tweak.Description) $($tweak.Warning)" }
 
             @{ Key = $tweak.Id; Label = $tweak.Name; Description = $note; Selected = (-not $risky) }
         }
     )
 
-    $picked = Read-WinForgeMultiSelect -Message $Message -Options $options
+    $picked = Read-WinForgeMultiSelect -Message $Message -Options $options -ConfirmLabel (Get-WinForgeText 'Aplicar')
 
     if ($null -eq $picked) {
         return $null
@@ -2830,22 +2910,22 @@ function Request-WinForgeExplorerRestart {
     )
 
     # O reinício fecha as janelas de pastas abertas: uma cópia de arquivos em andamento nelas seria interrompida.
-    Write-WinForgeStatus -Type Info -Notice -Message "Reiniciar o Explorador fecha as janelas de pastas abertas e interrompe cópias de arquivos em andamento."
+    Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Reiniciar o Explorador fecha as janelas de pastas abertas e interrompe cópias de arquivos em andamento.')
 
-    if (-not (Confirm-WinForgeAction $Question -DefaultKey S)) {
+    if (-not (Confirm-WinForgeAction $Question -DefaultKey S -YesLabel (Get-WinForgeText 'Reiniciar agora') -NoLabel (Get-WinForgeText 'Depois'))) {
         # Sem o reinício, nada muda na tela por enquanto: a pessoa precisa saber quando a mudança vai aparecer.
-        Write-WinForgeStatus -Type Info -Message $(if ($Many) { "As mudanças aparecem quando você sair e entrar de novo no Windows." } else { "A mudança aparece quando você sair e entrar de novo no Windows." })
+        Write-WinForgeStatus -Type Info -Message $(if ($Many) { (Get-WinForgeText 'As mudanças aparecem quando você sair e entrar de novo no Windows.') } else { (Get-WinForgeText 'A mudança aparece quando você sair e entrar de novo no Windows.') })
         return "Declined"
     }
 
     try {
         Restart-WinForgeExplorerShell
-        Write-WinForgeStatus -Type Success -Message "Explorador reiniciado."
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Explorador reiniciado.')
         return "Restarted"
     }
     catch {
         $reason = ([string]$_.Exception.Message).Trim().TrimEnd(".")
-        Write-WinForgeStatus -Type Warning -Message "Não foi possível reiniciar o Explorador ($reason). Para ver as mudanças, saia do Windows e entre de novo."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível reiniciar o Explorador ({0}). Para ver as mudanças, saia do Windows e entre de novo.' "$reason")
         return "Failed"
     }
 }
@@ -2871,54 +2951,56 @@ function Get-WinForgePendingTweaks {
 
 function Select-WinForgeRecommendedTweaks {
     <#
-    Pergunta quais dos ajustes recomendados aplicar. Os que gastam bateria vêm desmarcados em notebook.
+    Pergunta quais dos ajustes recomendados aplicar. Os que gastam bateria vêm desmarcados em notebook; elevado com outra
+    conta, os do perfil do usuário ficam de fora (Get-WinForgeTweaksForSession).
     Devolve os Ids marcados, uma lista vazia se não há o que aplicar ou $null se o usuário cancelar.
     #>
-    $candidates = @(
-        Get-WinForgeTweakCatalog |
-            Where-Object { $_.Recommended -and (Test-WinForgeTweakAvailable -Tweak $_) -and (Get-WinForgeTweakStatus -Tweak $_) -ne "Aplicado" }
-    )
+    $mine = @(Get-WinForgeTweaksForSession -Tweaks @(Get-WinForgeTweakCatalog | Where-Object { $_.Recommended -and (Test-WinForgeTweakAvailable -Tweak $_) }))
+    $candidates = @($mine | Where-Object { (Get-WinForgeTweakStatus -Tweak $_) -ne "Aplicado" })
 
     if ($candidates.Count -eq 0) {
-        Write-WinForgeStatus -Type Success -Message "Todos os ajustes recomendados já estão aplicados."
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Todos os ajustes recomendados já estão aplicados.')
         # Uma lista vazia de verdade (e não $null, que é a desistência): o "return @()" chegaria a quem chama como $null.
         return , @()
     }
 
-    return (Read-WinForgeTweakSelection -Tweaks $candidates -Message "Escolha os ajustes recomendados que deseja aplicar")
+    return (Read-WinForgeTweakSelection -Tweaks $candidates -Message (Get-WinForgeText 'Escolha os ajustes recomendados que deseja aplicar'))
 }
 
 
 function Invoke-WinForgeTweakBatch {
     <#
-    Aplica os Ajustes escolhidos e devolve o resultado (WinForge.Result). Sem -Unattended, oferece o ponto de
-    restauração antes e o reinício do Explorador depois; com -Unattended (dentro da Manutenção) não pergunta nada.
+    Aplica os Ajustes escolhidos e devolve o resultado (WinForge.Result): oferece o ponto de restauração antes e o
+    reinício do Explorador depois. O ponto pede Administrador: sem ele (os recomendados, que só mudam o perfil do usuário,
+    não pedem), fica de fora, e cada ajuste continua com o desfazer do WinForge.
     #>
     param (
         [Parameter(Mandatory)]
         [string[]]$Ids,
 
         [Parameter(Mandatory)]
-        [string]$Title,
-
-        [switch]$Unattended
+        [string]$Title
     )
 
     $final = New-WinForgeResult -Kind Ok -Title $Title
 
-    if (-not $Unattended) {
+    Write-Host ""
+
+    if (-not (Test-WinForgeAdministrator)) {
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Sem Administrador, o ponto de restauração fica de fora; cada ajuste pode ser desfeito pela chave dele.')
+    }
+    elseif (Confirm-WinForgeAction (Get-WinForgeText 'Criar um ponto de restauração antes de aplicar?') -DefaultKey S -YesLabel (Get-WinForgeText 'Criar o ponto') -NoLabel (Get-WinForgeText 'Aplicar sem ele')) {
+        # O ponto é para agora, antes destes ajustes: um de horas atrás (de uma atualização do Windows, de um
+        # instalador) voltaria também o que mudou depois dele, então o limite de um por dia do Windows não vale aqui,
+        # como no começo do Otimizar e no ponto pedido sozinho.
+        $restorePoint = Request-WinForgeRestorePoint -IgnoreFrequency
         Write-Host ""
 
-        if (Confirm-WinForgeAction "Criar um ponto de restauração antes de aplicar?" -DefaultKey S) {
-            $restorePoint = Request-WinForgeRestorePoint
-            Write-Host ""
-
-            # Sem o ponto de restauração a escolha é do usuário; padrão: não aplicar.
-            if ((Test-WinForgeResultFlag -Result $restorePoint -Name "NotCreated") -and
-                -not (Confirm-WinForgeAction "Os ajustes ainda podem ser desfeitos pelo WinForge. Deseja aplicá-los mesmo sem o ponto de restauração?" -DefaultKey N)) {
-                Write-WinForgeStatus -Type Warning -Message "Ajustes não aplicados."
-                return (New-WinForgeResult -Kind Skipped -Detail "sem ponto de restauração" -Title $Title)
-            }
+        # Sem o ponto de restauração a escolha é do usuário; padrão: não aplicar.
+        if ((Test-WinForgeResultFlag -Result $restorePoint -Name "NotCreated") -and
+            -not (Confirm-WinForgeAction (Get-WinForgeText 'Os ajustes ainda podem ser desfeitos pelo WinForge. Deseja aplicá-los mesmo sem o ponto de restauração?') -DefaultKey N -YesLabel (Get-WinForgeText 'Aplicar mesmo assim') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Ajustes não aplicados.')
+            return (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'sem ponto de restauração') -Title $Title)
         }
     }
 
@@ -2927,18 +3009,22 @@ function Invoke-WinForgeTweakBatch {
     $applied = @($summary.Results | Where-Object { $_.Kind -eq "Ok" })
 
     Write-Host ""
-    Write-WinForgeStatus -Type Info -Message "$(Format-WinForgeCount -Count $applied.Count -One 'ajuste aplicado' -Many 'ajustes aplicados')$(if ($failed.Count -gt 0) { ", $($failed.Count) com problema" })."
+    $appliedText = Format-WinForgeCount -Count $applied.Count -One (Get-WinForgeText 'ajuste aplicado') -Many (Get-WinForgeText 'ajustes aplicados')
+
+    # Nada aplicado e tudo com problema: a frase diz isso, em vez de "0 ajustes aplicados, 4 com problema".
+    $countText = $(if ($failed.Count -gt 0 -and $applied.Count -eq 0) { (Get-WinForgeText 'Nenhum ajuste foi aplicado.') } elseif ($failed.Count -gt 0) { (Get-WinForgeText '{0}, {1} com problema.' "$appliedText" "$($failed.Count)") } else { "$appliedText." })
+    Write-WinForgeStatus -Type Info -Message $countText
 
     if ($applied.Count -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "Todos podem ser desfeitos em Ajustes do Windows > Desfazer ajustes do WinForge."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Todos podem ser desfeitos em Ajustes do Windows > Desfazer ajustes do WinForge.')
     }
 
     if ($failed.Count -gt 0 -and $applied.Count -eq 0) {
         # Nada foi aplicado: não é "concluído com ressalvas".
-        $final = New-WinForgeResult -Kind Failed -Detail "nenhum ajuste foi aplicado ($($failed.Count) com problema)" -Title $Title
+        $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhum ajuste foi aplicado ({0} com problema)' "$($failed.Count)") -Title $Title
     }
     elseif ($failed.Count -gt 0) {
-        $final = New-WinForgeResult -Kind Warning -Detail "$($failed.Count) de $(@($summary.Results).Count) com problema" -Title $Title
+        $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} com problema' "$($failed.Count)" "$(@($summary.Results).Count)") -Title $Title
     }
 
     # Um ajuste aplicado que só vale depois de reiniciar (o agendamento da placa de vídeo): a faixa pede o reinício.
@@ -2948,31 +3034,41 @@ function Invoke-WinForgeTweakBatch {
 
     $restart = ""
 
-    if ($summary.NeedsExplorerRestart -and -not $Unattended) {
+    if ($summary.NeedsExplorerRestart) {
         Write-Host ""
 
         # Os ajustes já estão gravados: um Explorador que não reinicia é uma ressalva, não uma falha do lote.
-        $restart = Request-WinForgeExplorerRestart -Question "Reiniciar o Explorador de Arquivos agora para ver as mudanças?" -Many
+        $restart = Request-WinForgeExplorerRestart -Question (Get-WinForgeText 'Reiniciar o Explorador de Arquivos agora para ver as mudanças?') -Many
 
         if ($restart -eq "Failed" -and $final.Kind -eq "Ok") {
-            $final = New-WinForgeResult -Kind Warning -Detail "o Explorador não reiniciou" -Title $Title
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Explorador não reiniciou') -Title $Title
         }
     }
 
     # Na janela, o título diz quantos ajustes foram aplicados; a frase, quais (ou, com falhas, quais não foram) e, sem o
     # Explorador reiniciado, quando a mudança aparece. Um Explorador que não reiniciou fica com a faixa de sempre.
-    $later = $(if ($restart -eq "Declined") { " $(if ($applied.Count -eq 1) { 'A mudança aparece' } else { 'As mudanças aparecem' }) quando você sair e entrar de novo no Windows." } else { "" })
+    $later = $(if ($restart -eq "Declined") { (Get-WinForgeText ' {0} quando você sair e entrar de novo no Windows.' "$(if ($applied.Count -eq 1) { (Get-WinForgeText 'A mudança aparece') } else { (Get-WinForgeText 'As mudanças aparecem') })") } else { "" })
     $names = @($applied | ForEach-Object { [string]$_.Etapa })
     $problems = @($failed | ForEach-Object { [string]$_.Etapa })
 
     if ($final.Kind -eq "Ok" -and $applied.Count -gt 0) {
-        [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $applied.Count -One "ajuste aplicado" -Many "ajustes aplicados") `
+        [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $applied.Count -One (Get-WinForgeText 'ajuste aplicado') -Many (Get-WinForgeText 'ajustes aplicados')) `
                 -Note "$(Join-WinForgeShortList -Items $names).$later")
     }
     elseif ($final.Kind -eq "Warning" -and $applied.Count -gt 0 -and $problems.Count -gt 0) {
-        $verbText = $(if ($problems.Count -eq 1) { "não foi aplicado; o motivo está no resumo" } else { "não foram aplicados; o motivo de cada um está no resumo" })
-        [void](Set-WinForgeResultView -Result $final -Headline "$($applied.Count) de $($applied.Count + $problems.Count) ajustes aplicados" `
+        $verbText = $(if ($problems.Count -eq 1) { (Get-WinForgeText 'não foi aplicado; o motivo está no resumo') } else { (Get-WinForgeText 'não foram aplicados; o motivo de cada um está no resumo') })
+        [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText '{0} de {1} ajustes aplicados' "$($applied.Count)" "$($applied.Count + $problems.Count)") `
                 -Note "$(Join-WinForgeShortList -Items $problems) $verbText.$later")
+    }
+    elseif ($final.Kind -eq "Failed" -and $applied.Count -eq 0 -and $problems.Count -gt 0) {
+        # Nenhum foi aplicado: o título diz isso, e a frase, onde está o motivo de cada um.
+        [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'Nenhum ajuste foi aplicado') `
+                -Note $(if ($problems.Count -eq 1) { (Get-WinForgeText 'O motivo está no resumo.') } else { (Get-WinForgeText 'O motivo de cada um está no resumo.') }))
+    }
+    elseif ($final.Kind -eq "Warning" -and $restart -eq "Failed" -and $applied.Count -gt 0) {
+        # Os ajustes foram aplicados; só o Explorador não reiniciou: o título diz quantos, e a frase, quando eles aparecem.
+        [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $applied.Count -One (Get-WinForgeText 'ajuste aplicado') -Many (Get-WinForgeText 'ajustes aplicados')) `
+                -Note $(if ($applied.Count -eq 1) { (Get-WinForgeText 'O Explorador não reiniciou; a mudança aparece quando você sair e entrar de novo no Windows.') } else { (Get-WinForgeText 'O Explorador não reiniciou; as mudanças aparecem quando você sair e entrar de novo no Windows.') }))
     }
 
     return $final
@@ -2981,53 +3077,51 @@ function Invoke-WinForgeTweakBatch {
 
 function Invoke-WinForgeRecommendedTweaks {
     <#
-    Aplica ajustes recomendados. Sozinha, pergunta quais, oferece o ponto de restauração e pergunta sobre o Explorador.
-    Dentro de um fluxo (-Embedded), aplica os Ids já escolhidos e não pergunta nada.
+    Aplicar ajustes recomendados: pergunta quais, oferece o ponto de restauração (com Administrador) e pergunta sobre o
+    Explorador. Os recomendados só mudam o perfil do usuário, como as Configurações do Windows: não pedem Administrador,
+    e numa conta sem Administrador aplicam no perfil dela. Elevado com outra conta, eles mudariam o perfil dessa conta:
+    a tela diz isso e para antes de perguntar qualquer coisa.
     #>
-    param (
-        [string[]]$Ids,
-        [switch]$Embedded,
-        [switch]$PassThru
-    )
+    $title = (Get-WinForgeText 'Aplicar ajustes recomendados')
 
-    $title = "Aplicar ajustes recomendados"
-
-    Enter-WinForgeAction -Title $title -Embedded:$Embedded
+    Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        if (-not $Embedded -and -not (Test-WinForgeElevation -Reason "Os ajustes de sistema exigem privilégios de Administrador.")) {
-            $final = New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $title
+        $recommended = @(Get-WinForgeTweakCatalog | Where-Object { $_.Recommended -and (Test-WinForgeTweakAvailable -Tweak $_) })
+
+        if ($recommended.Count -gt 0 -and @(Get-WinForgeTweaksForSession -Tweaks $recommended -Quiet).Count -eq 0) {
+            $user = [string](Get-WinForgeTweakField -Entry (Get-WinForgeSessionInfo) -Name "User" -Default "")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}): os ajustes recomendados valem para o perfil do usuário e mudariam o perfil dessa conta, não o seu.' "$user")
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'valem para o perfil do usuário, e o WinForge está elevado com outra conta') -Title $title) `
+                -Headline (Get-WinForgeText 'Os ajustes recomendados valem para a sua conta') `
+                -Note (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}). Para aplicá-los, abra o WinForge de novo e recuse o pedido de Administrador.' "$user")
         }
         else {
-            $asked = (-not $PSBoundParameters.ContainsKey("Ids"))
+            $Ids = Select-WinForgeRecommendedTweaks
 
-            if ($asked) {
-                $Ids = Select-WinForgeRecommendedTweaks
+            if ($null -eq $Ids) {
+                # A lista fechada sem marcar nada (na janela, o Aplicar fica desligado sem marca) é desistência.
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
             }
-
-            if ($asked -and $null -eq $Ids) {
-                # A lista fechada sem marcar nada (na janela, o Confirmar fica desligado sem marca) é desistência.
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $final = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title
-            }
-            elseif ($null -eq $Ids -or @($Ids).Count -eq 0) {
-                Write-WinForgeStatus -Type Info -Message "Nenhum ajuste a aplicar."
-                $final = New-WinForgeResult -Kind Skipped -Detail "nada a aplicar" -Title $title
+            elseif (@($Ids).Count -eq 0) {
+                # Todos já estão aplicados (Select-WinForgeRecommendedTweaks já disse): a faixa diz o mesmo.
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada a aplicar') -Title $title) `
+                    -Headline (Get-WinForgeText 'Os ajustes recomendados já estão aplicados')
             }
             else {
-                $final = Invoke-WinForgeTweakBatch -Ids @($Ids) -Title $title -Unattended:$Embedded
+                $final = Invoke-WinForgeTweakBatch -Ids @($Ids) -Title $title
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Falha ao aplicar os ajustes: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Falha ao aplicar os ajustes: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
     }
 
-    if ($PassThru) { $final }
-    Exit-WinForgeAction -Embedded:$Embedded -Result $final
+    Exit-WinForgeAction -Result $final
 }
 
 
@@ -3035,68 +3129,13 @@ function Invoke-WinForgeRecommendedTweaks {
 # Etapas do Otimizar
 # ---------------------------------------------------------------------------
 
-function Disable-WinForgeEarlyUpdates {
-    <#
-    A etapa do Otimizar que desliga "Receba as atualizações mais recentes assim que estiverem disponíveis" (o ajuste
-    early-updates, com o valor de antes guardado para desfazer). Já desligada, nada muda. Não pergunta nada.
-    #>
-    param (
-        [switch]$Embedded,
-        [switch]$PassThru
-    )
+function Test-WinForgeTweakInReview {
+    # Se a revisão do Otimizar oferece o ajuste. Ficam de fora a aparência (Cosmetic), que é gosto de cada um e não
+    # manutenção, e o agendamento da placa de vídeo, que depende do hardware. As atualizações antecipadas entram, marcadas
+    # conforme o Windows está: quem as ligou de propósito as mantém (antes, o Otimizar as desligava sozinho, a cada vez).
+    param ([Parameter(Mandatory)]$Tweak)
 
-    $title = "Desligar as atualizações antecipadas"
-
-    Enter-WinForgeAction -Title $title -Embedded:$Embedded
-
-    $final = $null
-
-    try {
-        $tweak = Get-WinForgeTweakById -Id "early-updates"
-
-        # Com a política de conteúdo opcional do Windows Update (a da empresa), quem decide é ela, e a chave da tela fica
-        # travada: mudar o valor não teria efeito, e "desligada" seria falso.
-        $policy = Get-WinForgeRegistryValueOrNull -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" -Name "SetAllowOptionalContent"
-
-        if ($null -ne $policy -and [string]$policy -eq "1") {
-            Write-WinForgeStatus -Type Info -Message "Controlada por uma política da empresa; nada foi mudado."
-            $final = New-WinForgeResult -Kind Skipped -Detail "controlada por uma política" -Title $title
-        }
-        elseif ((Get-WinForgeTweakStatus -Tweak $tweak) -eq "Aplicado") {
-            Write-WinForgeStatus -Type Success -Message "Já estava desligada."
-            $final = New-WinForgeResult -Kind Ok -Detail "já estava desligada" -Title $title
-        }
-        else {
-            $summary = Invoke-WinForgeTweakSet -Ids @("early-updates")
-            $result = @($summary.Results) | Select-Object -Last 1
-
-            if ($null -ne $result -and $result.Kind -eq "Ok") {
-                # Para religar: a chave Receber as atualizações assim que saem, em Ajustes do Windows (o valor de antes fica
-                # guardado). Invoke-WinForgeTweakSet já disse o que mudou.
-                $final = New-WinForgeResult -Kind Ok -Detail "desligada; o valor de antes foi guardado" -Title $title
-            }
-            elseif ($null -ne $result) {
-                $final = New-WinForgeResult -Kind $(if ($result.Kind -eq "Failed") { "Failed" } else { "Warning" }) -Detail ([string]$result.Detail) -Title $title
-            }
-            else {
-                $final = New-WinForgeResult -Kind Failed -Detail "o ajuste não devolveu resultado" -Title $title
-            }
-        }
-    }
-    catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível desligar a opção: $($_.Exception.Message.TrimEnd('.'))."
-        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
-    }
-
-    if ($PassThru) { $final }
-    Exit-WinForgeAction -Embedded:$Embedded -Result $final
-}
-
-
-function Get-WinForgeTweakReviewSkipped {
-    # Os ajustes que a revisão do Otimizar deixa de fora: os segundos no relógio e o agendamento da placa de vídeo, que
-    # são gosto e hardware e não manutenção, e as atualizações antecipadas, que o Otimizar desliga numa etapa própria.
-    return @("show-seconds", "gpu-scheduling", "early-updates")
+    return (-not $Tweak.Cosmetic -and [string]$Tweak.Id -ne "gpu-scheduling")
 }
 
 
@@ -3109,13 +3148,14 @@ function Get-WinForgeTweakReviewText {
     )
 
     $parts = @([string]$Tweak.Category)
-    $parts += $(if ($Status -eq "Aplicado") { "em uso" } elseif ($Status -eq "Padrão") { "não está em uso" } else { "estado não identificado" })
+    $parts += $(if ($Status -eq "Aplicado") { (Get-WinForgeText 'em uso') } elseif ($Status -eq "Padrão") { (Get-WinForgeText 'não está em uso') } else { (Get-WinForgeText 'estado não identificado') })
 
     if ($IsLaptop -and $Tweak.LaptopRisk -and $Status -ne "Aplicado" -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.Warning)) {
-        $parts += "notebook: $($Tweak.Warning)"
+        # O aviso já começa com "Em notebook" (e vem no idioma da tela).
+        $parts += ([string]$Tweak.Warning).Trim().TrimEnd(".")
     }
 
-    if ($Tweak.Advanced) { $parts += "avançado" }
+    if ($Tweak.Advanced) { $parts += (Get-WinForgeText 'avançado') }
 
     return ($parts -join " · ")
 }
@@ -3123,9 +3163,9 @@ function Get-WinForgeTweakReviewText {
 
 function Invoke-WinForgeTweakReview {
     <#
-    A última etapa do Otimizar: os ajustes das páginas Ajustes do Windows e Personalização (menos os de
-    Get-WinForgeTweakReviewSkipped), cada um marcado se já está em uso no Windows agora. Marcar aplica; desmarcar um que
-    está em uso o desfaz (com o valor de antes guardado ou, sem ele, os padrões do Windows), como a chave da página.
+    A última etapa do Otimizar: os ajustes das páginas Ajustes do Windows e Personalização que não são gosto
+    (Test-WinForgeTweakInReview), cada um marcado se já está em uso no Windows agora; os de fora ficam como estão. Marcar
+    aplica; desmarcar um que está em uso o desfaz (com o valor de antes guardado ou, sem ele, os padrões do Windows), como a chave da página.
     Antes de mudar, a tela mostra o que vai ser aplicado e desfeito e pergunta. Data.ExplorerRestart: algum ajuste mudado
     só aparece depois de reiniciar o Explorador; Data.RebootRequired: algum só vale depois de reiniciar o PC.
     #>
@@ -3134,7 +3174,7 @@ function Invoke-WinForgeTweakReview {
         [switch]$PassThru
     )
 
-    $title = "Revisar os ajustes do Windows"
+    $title = (Get-WinForgeText 'Revisar os ajustes do Windows')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
@@ -3143,20 +3183,18 @@ function Invoke-WinForgeTweakReview {
     try {
         $session = Get-WinForgeSessionInfo
         $isLaptop = [bool](Get-WinForgeTweakField -Entry $session -Name "IsLaptop" -Default $false)
-        $skipped = @(Get-WinForgeTweakReviewSkipped)
-        $catalog = @(Get-WinForgeTweakCatalog | Where-Object { $skipped -notcontains [string]$_.Id -and (Test-WinForgeTweakAvailable -Tweak $_) })
+        $catalog = @(Get-WinForgeTweakCatalog | Where-Object { (Test-WinForgeTweakInReview -Tweak $_) -and (Test-WinForgeTweakAvailable -Tweak $_) })
 
-        # Elevado com outra conta, os ajustes do perfil do usuário mudariam o perfil dessa conta: ficam de fora, com aviso.
-        if ([bool](Get-WinForgeTweakField -Entry $session -Name "UserMismatch" -Default $false)) {
-            $hidden = @($catalog | Where-Object { $_.UserScope }).Count
-            $catalog = @($catalog | Where-Object { -not $_.UserScope })
-
-            if ($hidden -gt 0) {
-                Write-WinForgeStatus -Type Warning -Message "O WinForge está elevado com outra conta ($([string](Get-WinForgeTweakField -Entry $session -Name 'User' -Default ''))): $(Format-WinForgeCount -Count $hidden -One 'ajuste do perfil do usuário ficou' -Many 'ajustes do perfil do usuário ficaram') de fora, para não mudar o perfil dessa conta."
-            }
+        # Com a política de conteúdo opcional do Windows Update (a da empresa), quem decide as atualizações antecipadas é
+        # ela, e a chave da tela fica travada: marcar ou desmarcar não teria efeito, e a lista diria o que não é.
+        if ([string](Get-WinForgeRegistryValueOrNull -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" -Name "SetAllowOptionalContent") -eq "1") {
+            $catalog = @($catalog | Where-Object { [string]$_.Id -ne "early-updates" })
         }
 
-        Write-Progress -Activity $title -Status "lendo como o Windows está agora"
+        # Elevado com outra conta, os ajustes do perfil do usuário mudariam o perfil dessa conta: ficam de fora, com aviso.
+        $catalog = @(Get-WinForgeTweaksForSession -Tweaks $catalog)
+
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'lendo como o Windows está agora')
 
         try {
             $rows = @(foreach ($tweak in $catalog) { [PSCustomObject]@{ Tweak = $tweak; Status = [string](Get-WinForgeTweakStatus -Tweak $tweak) } })
@@ -3165,14 +3203,13 @@ function Invoke-WinForgeTweakReview {
             Write-Progress -Activity $title -Completed
         }
 
-        # No menu de texto não há o que desmarcar: os números digitados são a lista inteira do que fica em uso.
-        # Ficam de fora os segundos no relógio e o agendamento de GPU (gosto e hardware, não manutenção) e as atualizações
-        # antecipadas (a etapa delas já cuidou): Get-WinForgeTweakReviewSkipped.
+        # No menu de texto não há o que desmarcar: os números digitados são a lista inteira do que fica em uso (entre os da
+        # lista; o que ela não traz, como a aparência, fica como está).
         if (Test-WinForgeGuiPrompts) {
-            Write-WinForgeStatus -Type Info -Message "Marcado fica em uso. Desmarcar o que está em uso desfaz."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Marcado fica em uso. Desmarcar o que está em uso desfaz.')
         }
         else {
-            Write-WinForgeStatus -Type Info -Message "Com * é o que está em uso. Digite os números de tudo o que deve ficar em uso; o resto é desfeito. P deixa como está."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Com * é o que está em uso. Digite os números de tudo o que deve ficar em uso; o resto é desfeito. P deixa como está.')
         }
 
         $options = @(
@@ -3183,7 +3220,7 @@ function Invoke-WinForgeTweakReview {
 
         # Sem "Marcar todos": aplicaria de uma vez até os ajustes de energia que gastam a bateria do notebook. Desmarcar
         # tudo é uma resposta (desfazer todos os que estão em uso). Dentro do Otimizar, desistir da lista pula a etapa.
-        $picked = Read-WinForgeMultiSelect -Message "Ajustes do Windows: marcado fica em uso" -Options $options -NoSelectAll -AllowNone -CancelLabel $(if ($Embedded) { "Pular" } else { "" })
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Ajustes do Windows: marcado fica em uso') -Options $options -NoSelectAll -AllowNone -CancelLabel $(if ($Embedded) { (Get-WinForgeText 'Pular') } else { "" })
         $toApply = @()
         $toRevert = @()
 
@@ -3193,22 +3230,23 @@ function Invoke-WinForgeTweakReview {
         }
 
         if ($toApply.Count -eq 0 -and $toRevert.Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Nada foi mudado: os ajustes ficaram como estavam."
-            $final = New-WinForgeResult -Kind Skipped -Detail "você não mudou nada" -Title $title
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada foi mudado: os ajustes ficaram como estavam.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'você não mudou nada') -Title $title
         }
         else {
             Write-Host ""
-            if ($toApply.Count -gt 0) { Write-WinForgeKeyValue -Label "Aplicar" -Value (Join-WinForgeList -Items @($toApply | ForEach-Object { [string]$_.Tweak.Name })) }
-            if ($toRevert.Count -gt 0) { Write-WinForgeKeyValue -Label "Desfazer" -Value (Join-WinForgeList -Items @($toRevert | ForEach-Object { [string]$_.Tweak.Name })) }
+            if ($toApply.Count -gt 0) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Aplicar') -Value (Join-WinForgeList -Items @($toApply | ForEach-Object { [string]$_.Tweak.Name })) }
+            if ($toRevert.Count -gt 0) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Desfazer') -Value (Join-WinForgeList -Items @($toRevert | ForEach-Object { [string]$_.Tweak.Name })) }
             Write-Host ""
 
-            $these = { param ([int]$Count) if ($Count -eq 1) { "este ajuste" } else { "estes $Count ajustes" } }
-            $question = $(if ($toRevert.Count -eq 0) { "Aplicar $(& $these $toApply.Count)?" } elseif ($toApply.Count -eq 0) { "Desfazer $(& $these $toRevert.Count)?" } else { "Aplicar $($toApply.Count) e desfazer $($toRevert.Count) $(if ($toRevert.Count -eq 1) { 'ajuste' } else { 'ajustes' })?" })
+            $these = { param ([int]$Count) if ($Count -eq 1) { (Get-WinForgeText 'este ajuste') } else { (Get-WinForgeText 'estes {0} ajustes' "$Count") } }
+            $question = $(if ($toRevert.Count -eq 0) { (Get-WinForgeText 'Aplicar {0}?' "$(& $these $toApply.Count)") } elseif ($toApply.Count -eq 0) { (Get-WinForgeText 'Desfazer {0}?' "$(& $these $toRevert.Count)") } elseif ($toRevert.Count -eq 1) { (Get-WinForgeText 'Aplicar {0} e desfazer 1 ajuste?' "$($toApply.Count)") } else { (Get-WinForgeText 'Aplicar {0} e desfazer {1} ajustes?' "$($toApply.Count)" "$($toRevert.Count)") })
+            $verb = $(if ($toRevert.Count -eq 0) { (Get-WinForgeText 'Aplicar') } elseif ($toApply.Count -eq 0) { (Get-WinForgeText 'Desfazer') } else { (Get-WinForgeText 'Aplicar e desfazer') })
 
             # Com algo a desfazer, a resposta padrão é Não: um número trocado no menu de texto não desfaz a lista.
-            if (-not (Confirm-WinForgeAction $question -DefaultKey $(if ($toRevert.Count -gt 0) { "N" } else { "S" }))) {
-                Write-WinForgeStatus -Type Info -Message "Nada foi mudado: os ajustes ficaram como estavam."
-                $final = New-WinForgeResult -Kind Skipped -Detail "você não mudou nada" -Title $title
+            if (-not (Confirm-WinForgeAction $question -DefaultKey $(if ($toRevert.Count -gt 0) { "N" } else { "S" }) -YesLabel $verb -NoLabel (Get-WinForgeText 'Deixar como está'))) {
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada foi mudado: os ajustes ficaram como estavam.')
+                $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'você não mudou nada') -Title $title
             }
             else {
                 $final = Invoke-WinForgeTweakReviewChanges -Apply @($toApply | ForEach-Object { $_.Tweak }) -Revert @($toRevert | ForEach-Object { $_.Tweak }) -Title $title
@@ -3216,7 +3254,7 @@ function Invoke-WinForgeTweakReview {
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível revisar os ajustes: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível revisar os ajustes: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
@@ -3230,7 +3268,7 @@ function Invoke-WinForgeTweakReviewChanges {
     param (
         [AllowEmptyCollection()][object[]]$Apply = @(),
         [AllowEmptyCollection()][object[]]$Revert = @(),
-        [string]$Title = "Revisar os ajustes do Windows"
+        [string]$Title = (Get-WinForgeText 'Revisar os ajustes do Windows')
     )
 
     $applied = 0
@@ -3257,11 +3295,11 @@ function Invoke-WinForgeTweakReviewChanges {
 
             if ((Get-WinForgeTweakStatus -Tweak $tweak) -eq "Aplicado") {
                 $problems++
-                Write-WinForgeStatus -Type Warning -Message "$($tweak.Name): continua em uso. Uma política ou outro programa pode estar impondo o valor."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: continua em uso. Uma política ou outro programa pode estar impondo o valor.' "$($tweak.Name)")
             }
             else {
                 $reverted++
-                Write-WinForgeStatus -Type Success -Message "$($tweak.Name): desfeito."
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: desfeito.' "$($tweak.Name)")
                 if ($tweak.RestartExplorer) { $explorer = $true }
                 if ([bool](Get-WinForgeTweakField -Entry $tweak -Name "NeedsReboot" -Default $false)) { $reboot = $true }
             }
@@ -3273,9 +3311,9 @@ function Invoke-WinForgeTweakReviewChanges {
     }
 
     $parts = @()
-    if ($applied -gt 0) { $parts += Format-WinForgeCount -Count $applied -One "aplicado" -Many "aplicados" }
-    if ($reverted -gt 0) { $parts += Format-WinForgeCount -Count $reverted -One "desfeito" -Many "desfeitos" }
-    if ($problems -gt 0) { $parts += Format-WinForgeCount -Count $problems -One "com problema" -Many "com problema" }
+    if ($applied -gt 0) { $parts += Format-WinForgeCount -Count $applied -One (Get-WinForgeText 'aplicado') -Many (Get-WinForgeText 'aplicados') }
+    if ($reverted -gt 0) { $parts += Format-WinForgeCount -Count $reverted -One (Get-WinForgeText 'desfeito') -Many (Get-WinForgeText 'desfeitos') }
+    if ($problems -gt 0) { $parts += Format-WinForgeCount -Count $problems -One (Get-WinForgeText 'com problema') -Many (Get-WinForgeText 'com problema') }
 
     $detail = $parts -join ", "
     $data = @{}
@@ -3301,36 +3339,38 @@ function Get-WinForgeTweakProfiles {
         [PSCustomObject]@{
             Id          = "essential"
             Key         = "E"
-            Label       = "Essencial"
-            Description = "Extensões de arquivos visíveis e sem dicas, sugestões nem ID de publicidade"
+            Label       = (Get-WinForgeText 'Essencial')
+            Description = (Get-WinForgeText 'Extensões de arquivos visíveis e sem dicas, sugestões nem ID de publicidade')
             Ids         = @("file-extensions", "tips-suggestions", "lock-screen-tips", "advertising-id")
         },
         [PSCustomObject]@{
             Id          = "work"
             Key         = "T"
-            Label       = "Trabalho"
-            Description = "O Essencial e menos distrações: sem Widgets e sem web na busca, menu de contexto clássico, relógio com segundos e, onde existe, sem o botão do Copilot"
-            Ids         = @("file-extensions", "tips-suggestions", "lock-screen-tips", "advertising-id", "bing-start", "hide-widgets", "hide-copilot", "classic-context-menu", "show-seconds")
+            Label       = (Get-WinForgeText 'Trabalho')
+            # Os segundos no relógio não entram: são gosto, e o relógio que muda a cada segundo distrai e não deixa o
+            # processador descansar.
+            Description = (Get-WinForgeText 'O Essencial e menos distrações: sem Widgets e sem web na busca, menu de contexto clássico e, onde existe, sem o botão do Copilot')
+            Ids         = @("file-extensions", "tips-suggestions", "lock-screen-tips", "advertising-id", "bing-start", "hide-widgets", "hide-copilot", "classic-context-menu")
         },
         [PSCustomObject]@{
             Id          = "gaming"
             Key         = "J"
-            Label       = "Jogos"
-            Description = "O Essencial e mais: Modo de Jogo, sem Game Bar, transparência, aceleração do mouse nem atalho das Teclas de Aderência, Alto desempenho e desligamento completo (em notebook, o Alto desempenho vem desmarcado)"
+            Label       = (Get-WinForgeText 'Jogos')
+            Description = (Get-WinForgeText 'O Essencial e mais: Modo de Jogo, sem Game Bar, transparência, aceleração do mouse nem atalho das Teclas de Aderência, Alto desempenho e desligamento completo (em notebook, o Alto desempenho vem desmarcado)')
             Ids         = @("file-extensions", "tips-suggestions", "lock-screen-tips", "advertising-id", "game-bar", "game-mode", "mouse-acceleration", "sticky-keys-shortcut", "no-transparency", "fast-startup", "high-performance")
         },
         [PSCustomObject]@{
             Id          = "privacy"
             Key         = "P"
-            Label       = "Privacidade"
-            Description = "O Essencial e o mínimo de dados enviados: sem histórico de atividades, rastreamento, fala online, web na busca nem Recall"
+            Label       = (Get-WinForgeText 'Privacidade')
+            Description = (Get-WinForgeText 'O Essencial e o mínimo de dados enviados: sem histórico de atividades, rastreamento, fala online, web na busca nem Recall')
             Ids         = @("file-extensions", "tips-suggestions", "lock-screen-tips", "advertising-id", "start-recommendations", "tailored-experiences", "feedback-requests", "activity-history", "diagnostic-data", "app-tracking", "online-speech", "inking-typing", "delivery-peers", "bing-start", "recall")
         },
         [PSCustomObject]@{
             Id          = "laptop"
             Key         = "N"
-            Label       = "Notebook"
-            Description = "O Essencial e mais: sem Widgets, sem transparência e sem web na busca; não mexe nos planos de energia"
+            Label       = (Get-WinForgeText 'Notebook')
+            Description = (Get-WinForgeText 'O Essencial e mais: sem Widgets, sem transparência e sem web na busca; não mexe nos planos de energia')
             Ids         = @("file-extensions", "tips-suggestions", "lock-screen-tips", "advertising-id", "bing-start", "hide-widgets", "no-transparency")
         }
     )
@@ -3338,15 +3378,15 @@ function Get-WinForgeTweakProfiles {
 
 
 function Invoke-WinForgeTweakProfile {
-    $title = "Perfis de ajustes"
+    $title = (Get-WinForgeText 'Perfis de ajustes')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        if (-not (Test-WinForgeElevation -Reason "Os ajustes de sistema exigem privilégios de Administrador.")) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $title)
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Os ajustes de sistema exigem privilégios de Administrador.'))) {
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title)
             return
         }
 
@@ -3357,30 +3397,39 @@ function Invoke-WinForgeTweakProfile {
                 @{ Key = $entry.Key; Label = $entry.Label; Description = $entry.Description }
             }
         )
-        $options += @{ Key = "X"; Label = "Cancelar"; Exit = $true }
+        $options += @{ Key = "X"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
 
-        $answer = Read-WinForgeChoice -Message "Qual perfil de ajustes?" -Options $options -DefaultKey "X" -ShowMenu `
-            -TextPrompt "Perfil (E, T, J, P, N ou X; ENTER = cancelar)"
+        $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'Qual perfil de ajustes?') -Options $options -DefaultKey "X" -ShowMenu `
+            -TextPrompt (Get-WinForgeText 'Perfil (E, T, J, P, N ou X; ENTER = cancelar)')
 
         $chosen = @($profiles | Where-Object { $_.Key -ieq $answer }) | Select-Object -First 1
 
         if ($null -eq $chosen) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            $final = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
         }
         else {
-            $pending = @(Get-WinForgePendingTweaks -Ids $chosen.Ids)
+            $chosenTweaks = @(foreach ($id in @($chosen.Ids)) { $tweak = Get-WinForgeTweakById -Id $id; if ($null -ne $tweak -and (Test-WinForgeTweakAvailable -Tweak $tweak)) { $tweak } })
+            $mine = @(Get-WinForgeTweaksForSession -Tweaks $chosenTweaks)
+            $pending = @(Get-WinForgePendingTweaks -Ids @($mine | ForEach-Object { [string]$_.Id }))
 
-            if ($pending.Count -eq 0) {
-                Write-WinForgeStatus -Type Success -Message "Os ajustes do perfil $($chosen.Label) já estão aplicados (ou não valem para este Windows)."
-                $final = New-WinForgeResult -Kind Skipped -Detail "nada a aplicar" -Title $title
+            if ($chosenTweaks.Count -gt 0 -and $mine.Count -eq 0) {
+                # Elevado com outra conta e só com ajustes do perfil do usuário (o Essencial): nada aqui é desta sessão.
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'valem para o perfil do usuário, e o WinForge está elevado com outra conta') -Title $title) `
+                    -Headline (Get-WinForgeText 'Os ajustes do perfil {0} valem para a sua conta' "$($chosen.Label)") `
+                    -Note (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}). Para aplicá-los, abra o WinForge de novo e recuse o pedido de Administrador: Aplicar ajustes recomendados e as chaves não o pedem.' "$([string](Get-WinForgeTweakField -Entry (Get-WinForgeSessionInfo) -Name 'User' -Default ''))")
+            }
+            elseif ($pending.Count -eq 0) {
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Os ajustes do perfil {0} já estão aplicados (ou não valem para este Windows).' "$($chosen.Label)")
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada a aplicar') -Title $title) `
+                    -Headline (Get-WinForgeText 'O perfil {0} já está aplicado' "$($chosen.Label)")
             }
             else {
-                $picked = Read-WinForgeTweakSelection -Tweaks $pending -Message "Perfil $($chosen.Label): escolha os ajustes que deseja aplicar"
+                $picked = Read-WinForgeTweakSelection -Tweaks $pending -Message (Get-WinForgeText 'Perfil {0}: escolha os ajustes que deseja aplicar' "$($chosen.Label)")
 
                 if ($null -eq $picked -or @($picked).Count -eq 0) {
-                    Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                    $final = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                    $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
                 }
                 else {
                     $final = Invoke-WinForgeTweakBatch -Ids @($picked) -Title $title
@@ -3389,7 +3438,7 @@ function Invoke-WinForgeTweakProfile {
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Falha ao aplicar o perfil: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Falha ao aplicar o perfil: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
     }
 
@@ -3409,6 +3458,22 @@ function Get-WinForgeTweakExportFolder {
     }
 
     return (Join-Path $documents "WinForge")
+}
+
+
+function Format-WinForgeTweakExportFolder {
+    # A pasta da exportação como a pessoa a reconhece: "Documentos\WinForge", com o nome da pasta Documentos no idioma da
+    # tela, quando é a pasta de sempre; senão, o caminho inteiro.
+    param (
+        [Parameter(Mandatory)][string]$Folder,
+        [string]$Documents = [Environment]::GetFolderPath("MyDocuments")
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($Documents) -and $Folder -eq [System.IO.Path]::Combine($Documents, "WinForge")) {
+        return "$(Get-WinForgeText 'Documentos')\WinForge"
+    }
+
+    return $Folder
 }
 
 
@@ -3439,23 +3504,23 @@ function Read-WinForgeTweakExport {
     )
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "O arquivo não foi encontrado: $Path"
+        throw (Get-WinForgeText 'O arquivo não foi encontrado: {0}' "$Path")
     }
 
     # Uma exportação tem poucos KB: um arquivo grande (escolhido por engano) não é lido inteiro para a memória.
     if ((Get-Item -LiteralPath $Path -ErrorAction Stop).Length -gt 1MB) {
-        throw "O arquivo não é uma exportação de ajustes do WinForge (é grande demais)."
+        throw (Get-WinForgeText 'O arquivo não é uma exportação de ajustes do WinForge (é grande demais).')
     }
 
     try {
         $document = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
-        throw "O arquivo não é um JSON válido."
+        throw (Get-WinForgeText 'O arquivo não é um JSON válido.')
     }
 
     if ($null -eq $document -or [string](Get-WinForgeJsonValue -Object $document -Name "Format") -ne "WinForge.Tweaks") {
-        throw "O arquivo não é uma exportação de ajustes do WinForge."
+        throw (Get-WinForgeText 'O arquivo não é uma exportação de ajustes do WinForge.')
     }
 
     $applied = @(Get-WinForgeJsonValue -Object $document -Name "Applied" -Default @() | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -3468,10 +3533,10 @@ function Read-WinForgeTweakExport {
 
     if ($exportedAt -is [datetime]) {
         if ($exportedAt.Kind -eq [System.DateTimeKind]::Utc) { $exportedAt = $exportedAt.ToLocalTime() }
-        $exportedText = $exportedAt.ToString("dd/MM/yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+        $exportedText = Format-WinForgeDateTime -When $exportedAt
     }
     elseif ([DateTimeOffset]::TryParse([string]$exportedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsed)) {
-        $exportedText = $parsed.LocalDateTime.ToString("dd/MM/yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+        $exportedText = Format-WinForgeDateTime -When $parsed.LocalDateTime
     }
     else {
         $exportedText = [string]$exportedAt
@@ -3498,12 +3563,14 @@ function Get-WinForgeTweakBackupIds {
 function Get-WinForgeAppliedTweakIds {
     # Os Ids dos ajustes do WinForge que estão aplicados neste PC e valem para esta versão do Windows. Um ajuste que já é o
     # padrão do Windows (OnByDefault: o Modo de Jogo vem ativado) só conta quando foi o WinForge que o aplicou (há backup).
+    # Elevado com outra conta, os do perfil do usuário ficam de fora, com aviso: o que se leria é o perfil dessa conta
+    # (Exportar ajustes aplicados e o Backup antes de formatar levariam os ajustes dela).
     $backup = Read-WinForgeTweakBackup -Status
     $saved = $(if ($backup.Status -ne "Unreadable") { $backup.Backup } else { @{} })
 
     return @(
-        Get-WinForgeTweakCatalog |
-            Where-Object { (Test-WinForgeTweakAvailable -Tweak $_) -and (Get-WinForgeTweakStatus -Tweak $_) -eq "Aplicado" } |
+        Get-WinForgeTweaksForSession -Tweaks @(Get-WinForgeTweakCatalog | Where-Object { Test-WinForgeTweakAvailable -Tweak $_ }) |
+            Where-Object { (Get-WinForgeTweakStatus -Tweak $_) -eq "Aplicado" } |
             Where-Object { -not [bool](Get-WinForgeTweakField -Entry $_ -Name "OnByDefault" -Default $false) -or $saved.Contains([string]$_.Id) } |
             ForEach-Object { $_.Id }
     )
@@ -3511,7 +3578,7 @@ function Get-WinForgeAppliedTweakIds {
 
 
 function Export-WinForgeTweaks {
-    $title = "Exportar ajustes aplicados"
+    $title = (Get-WinForgeText 'Exportar ajustes aplicados')
 
     Enter-WinForgeAction -Title $title
 
@@ -3521,42 +3588,42 @@ function Export-WinForgeTweaks {
         $applied = @(Get-WinForgeAppliedTweakIds)
 
         if ($applied.Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Nenhum ajuste do WinForge está aplicado neste PC; não há o que exportar."
-            $final = New-WinForgeResult -Kind Skipped -Detail "nada a exportar" -Title $title
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhum ajuste do WinForge está aplicado neste PC; não há o que exportar.')
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada a exportar') -Title $title) `
+                -Headline (Get-WinForgeText 'Nenhum ajuste para exportar') -Note (Get-WinForgeText 'Nenhum ajuste do WinForge está aplicado neste PC.')
         }
         else {
             $folder = Get-WinForgeTweakExportFolder
             [void](New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop)
 
-            $name = "WinForge-ajustes-$((Get-Date).ToString('yyyy-MM-dd-HHmm', [System.Globalization.CultureInfo]::InvariantCulture)).json"
+            $name = (Get-WinForgeText 'WinForge-ajustes-{0}.json' "$((Get-Date).ToString('yyyy-MM-dd-HHmm', [System.Globalization.CultureInfo]::InvariantCulture))")
             $path = Join-Path $folder $name
 
             Set-Content -LiteralPath $path -Value (New-WinForgeTweakExport -Ids $applied | ConvertTo-Json -Depth 4) -Encoding UTF8 -ErrorAction Stop
 
-            $exported = Format-WinForgeCount -Count $applied.Count -One 'ajuste exportado' -Many 'ajustes exportados'
+            $exported = Format-WinForgeCount -Count $applied.Count -One (Get-WinForgeText 'ajuste exportado') -Many (Get-WinForgeText 'ajustes exportados')
             Write-WinForgeStatus -Type Success -Message "$exported."
-            Write-WinForgeKeyValue -Label "Arquivo" -Value $path
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Arquivo') -Value $path
             Write-Host ""
-            Write-WinForgeStatus -Type Info -Message "Copie o arquivo para o outro PC e, nele, use Ajustes do Windows > Importar ajustes."
-            $documents = [Environment]::GetFolderPath("MyDocuments")
-            $where = $(if ($documents -and $folder -eq [System.IO.Path]::Combine($documents, "WinForge")) { "Documentos\WinForge" } else { $folder })
-            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "$exported para $where" -Title $title) -Headline $exported `
-                -Note "Salvo em $where. No outro PC, use Ajustes do Windows > Importar ajustes."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Copie o arquivo para o outro PC e, nele, use Ajustes do Windows > Importar ajustes.')
+            $where = Format-WinForgeTweakExportFolder -Folder $folder
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText '{0} para {1}' "$exported" "$where") -Title $title) -Headline $exported `
+                -Note (Get-WinForgeText 'Salvo em {0}. No outro PC, use Ajustes do Windows > Importar ajustes.' "$where")
             Write-Host ""
 
             # Como em Verificar nova versão: a pasta abre com o arquivo já selecionado, pronto para copiar.
-            if (Confirm-WinForgeAction -Message "Mostrar o arquivo na pasta?" -DefaultKey S) {
+            if (Confirm-WinForgeAction -Message (Get-WinForgeText 'Mostrar o arquivo na pasta?') -DefaultKey S -YesLabel (Get-WinForgeText 'Mostrar') -NoLabel (Get-WinForgeText 'Agora não')) {
                 try {
                     Start-Process -FilePath "explorer.exe" -ArgumentList "/select,`"$path`"" -ErrorAction Stop
                 }
                 catch {
-                    Write-WinForgeStatus -Type Warning -Notice -Message "Não foi possível abrir a pasta: $($_.Exception.Message)"
+                    Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'Não foi possível abrir a pasta: {0}' "$($_.Exception.Message)")
                 }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível exportar: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível exportar: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
     }
 
@@ -3571,41 +3638,42 @@ function Invoke-WinForgeTweakImportFile {
         [Parameter(Mandatory)]
         [string]$Path,
 
-        [string]$Title = "Importar ajustes"
+        [string]$Title = (Get-WinForgeText 'Importar ajustes')
     )
 
     $final = New-WinForgeResult -Kind Ok -Title $Title
 
     $export = Read-WinForgeTweakExport -Path $Path
 
-    Write-WinForgeKeyValue -Label "Arquivo" -Value $Path
-    Write-WinForgeKeyValue -Label "Exportado em" -Value $(if ($export.ExportedAt) { $export.ExportedAt } else { $null })
-    Write-WinForgeKeyValue -Label "Computador de origem" -Value $(if ($export.Computer) { $export.Computer } else { $null })
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Arquivo') -Value $Path
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Exportado em') -Value $(if ($export.ExportedAt) { $export.ExportedAt } else { $null })
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Computador de origem') -Value $(if ($export.Computer) { $export.Computer } else { $null })
 
     if ($export.Unknown.Count -gt 0) {
         Write-Host ""
-        Write-WinForgeStatus -Type Warning -Message "$(Format-WinForgeCount -Count $export.Unknown.Count -One 'ajuste de outra versão do WinForge será ignorado' -Many 'ajustes de outra versão do WinForge serão ignorados')."
+        Write-WinForgeStatus -Type Warning -Message "$(Format-WinForgeCount -Count $export.Unknown.Count -One (Get-WinForgeText 'ajuste de outra versão do WinForge será ignorado') -Many (Get-WinForgeText 'ajustes de outra versão do WinForge serão ignorados'))."
     }
-
-    $pending = @(Get-WinForgePendingTweaks -Ids $export.Ids)
 
     Write-Host ""
 
+    $fileTweaks = @(foreach ($id in @($export.Ids)) { $tweak = Get-WinForgeTweakById -Id $id; if ($null -ne $tweak -and (Test-WinForgeTweakAvailable -Tweak $tweak)) { $tweak } })
+    $pending = @(Get-WinForgePendingTweaks -Ids @(Get-WinForgeTweaksForSession -Tweaks $fileTweaks | ForEach-Object { [string]$_.Id }))
+
     if ($export.Ids.Count -eq 0) {
         # Arquivo sem ajustes (exportado sem nenhum aplicado) ou só com ajustes de outra versão: não é "já aplicado".
-        Write-WinForgeStatus -Type Info -Message "O arquivo não traz nenhum ajuste que esta versão do WinForge conheça."
-        $final = New-WinForgeResult -Kind Skipped -Detail "o arquivo não traz ajustes conhecidos" -Title $Title
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O arquivo não traz nenhum ajuste que esta versão do WinForge conheça.')
+        $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'o arquivo não traz ajustes conhecidos') -Title $Title
     }
     elseif ($pending.Count -eq 0) {
-        Write-WinForgeStatus -Type Success -Message "Nada a aplicar: os ajustes do arquivo já estão aplicados (ou não valem para este Windows)."
-        $final = New-WinForgeResult -Kind Skipped -Detail "nada a aplicar" -Title $Title
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nada a aplicar: os ajustes do arquivo já estão aplicados (ou não valem para este Windows).')
+        $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada a aplicar') -Title $Title
     }
     else {
-        $picked = Read-WinForgeTweakSelection -Tweaks $pending -Message "Escolha os ajustes do arquivo que deseja aplicar"
+        $picked = Read-WinForgeTweakSelection -Tweaks $pending -Message (Get-WinForgeText 'Escolha os ajustes do arquivo que deseja aplicar')
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            $final = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $Title
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $Title
         }
         else {
             $final = Invoke-WinForgeTweakBatch -Ids @($picked) -Title $Title
@@ -3617,15 +3685,15 @@ function Invoke-WinForgeTweakImportFile {
 
 
 function Import-WinForgeTweaks {
-    $title = "Importar ajustes"
+    $title = (Get-WinForgeText 'Importar ajustes')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        if (-not (Test-WinForgeElevation -Reason "Os ajustes de sistema exigem privilégios de Administrador.")) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $title)
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Os ajustes de sistema exigem privilégios de Administrador.'))) {
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title)
             return
         }
 
@@ -3633,7 +3701,8 @@ function Import-WinForgeTweaks {
         $files = @()
 
         if (Test-Path -LiteralPath $folder -PathType Container) {
-            $files = @(Get-ChildItem -LiteralPath $folder -Filter "WinForge-ajustes-*.json" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 6)
+            # O nome do arquivo segue o idioma de quem exportou ("WinForge-ajustes-..." ou "WinForge-tweaks-...").
+            $files = @(Get-ChildItem -LiteralPath $folder -Filter "WinForge-*.json" -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^WinForge-(ajustes|tweaks)-' } | Sort-Object LastWriteTime -Descending | Select-Object -First 6)
         }
 
         $options = @()
@@ -3644,13 +3713,13 @@ function Import-WinForgeTweaks {
         foreach ($file in $files) {
             $position++
             $label = $file.Name
-            $description = $file.LastWriteTime.ToString("dd/MM/yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+            $description = Format-WinForgeDateTime -When $file.LastWriteTime
 
             try {
                 $content = Read-WinForgeTweakExport -Path $file.FullName
-                if ($content.ExportedAt) { $label = "Exportado em $($content.ExportedAt)" }
+                if ($content.ExportedAt) { $label = (Get-WinForgeText 'Exportado em {0}' "$($content.ExportedAt)") }
                 $count = @($content.Ids).Count + @($content.Unknown).Count
-                $description = (@((Format-WinForgeCount -Count $count -One "ajuste" -Many "ajustes"), $content.Computer) | Where-Object { $_ }) -join " · "
+                $description = (@((Format-WinForgeCount -Count $count -One (Get-WinForgeText 'ajuste') -Many (Get-WinForgeText 'ajustes')), $content.Computer) | Where-Object { $_ }) -join " · "
             }
             catch {
                 $label = $file.Name
@@ -3659,33 +3728,39 @@ function Import-WinForgeTweaks {
             $options += @{ Key = [string]$position; Label = $label; Description = $description }
         }
 
-        $options += @{ Key = "O"; Label = "Outro arquivo"; Description = "Informar o caminho completo de um arquivo exportado" }
-        $options += @{ Key = "X"; Label = "Cancelar"; Exit = $true }
+        $options += @{ Key = "O"; Label = (Get-WinForgeText 'Outro arquivo'); Description = (Get-WinForgeText 'Informar o caminho completo de um arquivo exportado') }
+        $options += @{ Key = "X"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
 
-        $answer = Read-WinForgeChoice -Message "Qual arquivo importar?" -Options $options -DefaultKey "X" -ShowMenu `
-            -TextPrompt "Arquivo (número, O = outro, X = cancelar; ENTER = cancelar)"
+        $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'Qual arquivo importar?') -Options $options -DefaultKey "X" -ShowMenu `
+            -TextPrompt (Get-WinForgeText 'Arquivo (número, O = outro, X = cancelar; ENTER = cancelar)')
 
         $path = ""
 
         if ($answer -ieq "O") {
             # Colado do Explorador ("Copiar como caminho") vem entre aspas; %USERPROFILE% e afins valem.
-            $path = [Environment]::ExpandEnvironmentVariables((Read-WinForgeText -Message "Caminho completo do arquivo .json").Trim().Trim('"', "'"))
+            $path = [Environment]::ExpandEnvironmentVariables((Read-WinForgeText -Message (Get-WinForgeText 'Caminho completo do arquivo .json')).Trim().Trim('"', "'"))
         }
         elseif ($answer -match "^[0-9]+$" -and [int]$answer -ge 1 -and [int]$answer -le $files.Count) {
             $path = $files[[int]$answer - 1].FullName
         }
 
         if ([string]::IsNullOrWhiteSpace($path)) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
         $final = Invoke-WinForgeTweakImportFile -Path $path -Title $title
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível importar: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível importar: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
+
+        # O título da faixa diz o que aconteceu; o motivo (um JSON inválido, outro tipo de arquivo) vem embaixo, legível
+        # como no resumo (sem o embrulho do PowerShell, a recusa de acesso no idioma da tela).
+        $why = (ConvertTo-WinForgeReadableError -Text ([string]$_.Exception.Message)).Trim()
+        if ($why -and $why -notmatch '[.!?]$') { $why = "$why." }
+        [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O arquivo não foi importado') -Note $why)
     }
 
     Exit-WinForgeAction -Result $final
@@ -3721,8 +3796,8 @@ function Invoke-WinForgeTweakToggle {
 
     $current = Get-WinForgeTweakSwitchState -Status $status -Inverted $inverted
 
-    Write-WinForgeKeyValue -Label "Recurso" -Value $feature
-    Write-WinForgeKeyValue -Label "Estado atual" -Value $current.Caption
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Recurso') -Value $feature
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Estado atual') -Value $current.Caption
     Write-WinForgeStatus -Type Info -Notice -Message $about
 
     if ($session.IsLaptop -and $Tweak.LaptopRisk -and -not [string]::IsNullOrWhiteSpace($Tweak.Warning)) {
@@ -3734,15 +3809,15 @@ function Invoke-WinForgeTweakToggle {
         # Elevado com outra conta, o HKCU é o dessa conta: a chave mudaria o perfil errado (e o estado lido também é o dela).
         # Como nos perfis, na importação e nos recomendados, o ajuste fica de fora; antes, a chave aplicava e dizia "Tudo certo".
         Write-Host ""
-        Write-WinForgeStatus -Type Warning -Message "O WinForge está elevado com outra conta ($($session.User)): este ajuste vale para o perfil do usuário e mudaria o perfil dessa conta, não o seu. Para usá-lo, abra o WinForge sem trocar de conta no pedido de Administrador."
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "vale para o perfil do usuário, e o WinForge está elevado com outra conta" -Title $feature)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}): este ajuste vale para o perfil do usuário e mudaria o perfil dessa conta, não o seu. Para usá-lo, abra o WinForge sem trocar de conta no pedido de Administrador.' "$($session.User)")
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'vale para o perfil do usuário, e o WinForge está elevado com outra conta') -Title $feature)
         return
     }
 
     if ($Tweak.RequiresAdmin -and -not (Test-WinForgeAdministrator)) {
         Write-Host ""
-        [void](Test-WinForgeElevation -Reason "'$feature' exige privilégios de Administrador.")
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $feature)
+        [void](Test-WinForgeElevation -Reason (Get-WinForgeText '''{0}'' exige privilégios de Administrador.' "$feature"))
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $feature)
         return
     }
 
@@ -3752,21 +3827,22 @@ function Invoke-WinForgeTweakToggle {
     # do ajuste (num ajuste que desativa o recurso, aplicar desativa e desfazer ativa).
     $reverting = ($status -eq "Aplicado")
     $turnsOn = $(if ($reverting) { $inverted } else { -not $inverted })
-    $verb = $(if ($turnsOn) { "ativar" } else { "desativar" })
-    $done = $(if ($turnsOn) { "ativado" } else { "desativado" })
+    $verb = $(if ($turnsOn) { (Get-WinForgeText 'ativar') } else { (Get-WinForgeText 'desativar') })
+    $done = $(if ($turnsOn) { (Get-WinForgeText 'ativado') } else { (Get-WinForgeText 'desativado') })
 
-    $question = "Deseja $verb `"$feature`"?"
+    $question = (Get-WinForgeText "Deseja {0} `"{1}`"?" "$verb" "$feature")
+    $yesLabel = $(if ($turnsOn) { (Get-WinForgeText 'Ativar') } else { (Get-WinForgeText 'Desativar') })
 
     # Sem o estado lido, a chave não diz nada: a pergunta diz o que vai acontecer, mesmo vinda da janela.
     $unknown = ($status -notin @("Aplicado", "Padrão"))
 
     if ($unknown) {
-        $question = "Não foi possível ler o estado atual. Deseja $verb `"$feature`"?"
+        $question = (Get-WinForgeText "Não foi possível ler o estado atual. Deseja {0} `"{1}`"?" "$verb" "$feature")
     }
     elseif ($Want -and (($Want -eq "On") -eq $current.IsOn)) {
         # A página estava velha: o Windows já está como a pessoa pediu. Nada muda; a lista é lida de novo ao voltar.
-        Write-WinForgeStatus -Type Info -Message "$($feature): já está $($current.Caption.ToLowerInvariant()) no Windows (mudou depois que a página foi aberta). Nada foi alterado."
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "já estava $($current.Caption.ToLowerInvariant())" -Title $feature)
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0}: já está {1} no Windows (mudou depois que a página foi aberta). Nada foi alterado.' "$($feature)" "$($current.Caption.ToLowerInvariant())")
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'já estava {0}' "$($current.Caption.ToLowerInvariant())") -Title $feature)
         return
     }
 
@@ -3777,14 +3853,15 @@ function Invoke-WinForgeTweakToggle {
     $defaultKey = "S"
 
     if ($needsExtraConfirmation) {
-        $question = "No notebook, isto afeta a bateria (veja o aviso acima). Deseja $verb `"$feature`" mesmo assim?"
+        $question = (Get-WinForgeText "No notebook, isto afeta a bateria (veja o aviso acima). Deseja {0} `"{1}`" mesmo assim?" "$verb" "$feature")
+        $yesLabel = $(if ($turnsOn) { (Get-WinForgeText 'Ativar mesmo assim') } else { (Get-WinForgeText 'Desativar mesmo assim') })
         $defaultKey = "N"
     }
 
-    if ((-not $skipQuestion) -and -not (Confirm-WinForgeAction $question -DefaultKey $defaultKey)) {
+    if ((-not $skipQuestion) -and -not (Confirm-WinForgeAction $question -DefaultKey $defaultKey -YesLabel $yesLabel -NoLabel (Get-WinForgeText 'Cancelar'))) {
         Write-Host ""
-        Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $feature)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $feature)
         return
     }
 
@@ -3793,6 +3870,10 @@ function Invoke-WinForgeTweakToggle {
 
     # A frase da faixa: como voltar, ou a que valor voltou; e, sem o Explorador reiniciado, quando a mudança aparece.
     $note = ""
+
+    # Quiet: além do novo estado, não há nada a ler, e a janela mostra o resultado na própria linha da chave. Algo a mais
+    # (o que ficou como estava, a hibernação ligada junto, o que falta para aparecer) leva à tela de execução.
+    $quiet = $true
 
     try {
         Write-Host ""
@@ -3808,74 +3889,86 @@ function Invoke-WinForgeTweakToggle {
 
             if ($report.Restored -eq 0) {
                 # O que está agora foi escolhido depois do WinForge (outro plano de alto desempenho, por exemplo): fica.
-                Write-WinForgeStatus -Type Info -Message "Nada a desfazer: o que o WinForge mudou já foi alterado depois, e a escolha de agora foi mantida."
-                $final = New-WinForgeResult -Kind Skipped -Detail "nada a desfazer; foi alterado depois" -Title $feature
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada a desfazer: o que o WinForge mudou já foi alterado depois, e a escolha de agora foi mantida.')
+                $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nada a desfazer; foi alterado depois') -Title $feature
             }
             elseif ((Get-WinForgeTweakStatus -Tweak $Tweak) -eq "Aplicado") {
                 # A leitura de agora é a que vale: o Windows não aceitou a mudança.
                 $still = (Get-WinForgeTweakSwitchState -Status "Aplicado" -Inverted $inverted).Caption.ToLowerInvariant()
-                Write-WinForgeStatus -Type Warning -Message "$($feature): continua $still. Uma política ou outro programa pode estar impondo o valor."
-                $final = New-WinForgeResult -Kind Warning -Detail "continua $still" -Title $feature
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: continua {1}. Uma política ou outro programa pode estar impondo o valor.' "$($feature)" "$still")
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'continua {0}' "$still") -Title $feature) `
+                    -Headline (Get-WinForgeText '{0}: nada mudou' "$feature") -Note (Get-WinForgeText 'Continua {0}. Uma política ou outro programa pode estar impondo o valor.' "$still")
             }
             elseif ($report.Kept -gt 0) {
-                Write-WinForgeStatus -Type Success -Message "$($feature): $done; o que foi alterado depois foi mantido."
-                $note = "O que foi alterado depois do WinForge foi mantido."
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: {1}; o que foi alterado depois foi mantido.' "$($feature)" "$done")
+                $note = (Get-WinForgeText 'O que foi alterado depois do WinForge foi mantido.')
+                $quiet = $false
             }
             else {
                 Write-WinForgeStatus -Type Success -Message "$($feature): $done."
-                $note = "Voltou ao valor de antes do WinForge."
+                $note = (Get-WinForgeText 'Voltou ao valor de antes do WinForge.')
             }
 
             # O valor de antes do WinForge não estava guardado (o ajuste já estava assim, ou foi feito fora do WinForge):
             # valem os padrões do Windows. O Modo de Jogo não tem padrão a usar: desfazer é desativá-lo.
             if (-not $hadBackup -and -not [bool](Get-WinForgeTweakField -Entry $Tweak -Name "OnByDefault" -Default $false)) {
-                Write-WinForgeStatus -Type Info -Message "Não havia o valor de antes guardado; foram usados os padrões do Windows."
-                if ($report.Kept -eq 0) { $note = "Não havia o valor de antes guardado; foram usados os padrões do Windows." }
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Não havia o valor de antes guardado; foram usados os padrões do Windows.')
+                if ($report.Kept -eq 0) { $note = (Get-WinForgeText 'Não havia o valor de antes guardado; foram usados os padrões do Windows.') }
             }
+
+            # O desfazer fez algo a mais que a pessoa precisa saber (a hibernação ligada junto com a Inicialização Rápida).
+            $extra = [string](Get-WinForgeTweakField -Entry $report -Name "Note" -Default "")
+            if ($extra -and $final.Kind -eq "Ok") { $note = "$note $extra".Trim(); $quiet = $false }
         }
         else {
             # Só um estado lido com certeza poupa a nova leitura: "Desconhecido" pede que a aplicação leia de novo.
             Invoke-WinForgeTweakApply -Tweak $Tweak -Status $(if ($status -in @("Aplicado", "Padrão")) { $status } else { "" })
 
             if ((Get-WinForgeTweakStatus -Tweak $Tweak) -eq "Aplicado") {
-                $howToUndo = $(if (Test-WinForgeGuiMode) { "use a chave de novo" } else { "escolha este item de novo" })
-                Write-WinForgeStatus -Type Success -Message "$($feature): $done. O valor de antes foi guardado; para voltar, $howToUndo."
-                $note = "O valor de antes foi guardado; para voltar, $howToUndo."
+                $howToUndo = $(if (Test-WinForgeGuiMode) { (Get-WinForgeText 'use a chave de novo') } else { (Get-WinForgeText 'escolha este item de novo') })
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: {1}. O valor de antes foi guardado; para voltar, {2}.' "$($feature)" "$done" "$howToUndo")
+                $note = (Get-WinForgeText 'O valor de antes foi guardado; para voltar, {0}.' "$howToUndo")
 
                 $hint = Get-WinForgeTweakApplyHint -Tweak $Tweak
                 if ($hint) {
                     Write-WinForgeStatus -Type Info -Message $hint
                     $note = "$note $hint"
+                    $quiet = $false
                 }
             }
             else {
-                Write-WinForgeStatus -Type Warning -Message "O valor foi gravado, mas o Windows não o manteve. Uma política da organização pode estar impondo outro valor."
-                $final = New-WinForgeResult -Kind Warning -Detail "o Windows não manteve o valor" -Title $feature
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O valor foi gravado, mas o Windows não o manteve. Uma política da organização pode estar impondo outro valor.')
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows não manteve o valor') -Title $feature) `
+                    -Headline (Get-WinForgeText '{0}: nada mudou' "$feature") -Note (Get-WinForgeText 'O valor foi gravado, mas o Windows não o manteve. Uma política da organização pode estar impondo outro valor.')
             }
         }
 
-        if ($Tweak.RestartExplorer) {
+        # O Explorador só é reiniciado quando algo mudou: com o valor que o Windows não manteve, ou com nada a desfazer,
+        # fechar as janelas de pastas não mostraria nada novo.
+        if ($Tweak.RestartExplorer -and $final.Kind -eq "Ok") {
             Write-Host ""
-            $restart = Request-WinForgeExplorerRestart -Question "Reiniciar o Explorador de Arquivos agora para ver a mudança?"
+            $restart = Request-WinForgeExplorerRestart -Question (Get-WinForgeText 'Reiniciar o Explorador de Arquivos agora para ver a mudança?')
 
-            if ($restart -eq "Failed" -and $final.Kind -eq "Ok") {
-                $final = New-WinForgeResult -Kind Warning -Detail "o Explorador não reiniciou" -Title $feature
+            if ($restart -eq "Failed") {
+                # A mudança foi feita; só o Explorador não reiniciou: o título diz como o recurso ficou, e a frase, quando aparece.
+                $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Explorador não reiniciou') -Title $feature) `
+                    -Headline "$($feature): $done" -Note (Get-WinForgeText 'O Explorador não reiniciou; a mudança aparece quando você sair e entrar de novo no Windows.')
             }
             elseif ($restart -eq "Declined") {
-                $note = "$note A mudança aparece quando você sair e entrar de novo no Windows.".Trim()
+                $note = (Get-WinForgeText '{0} A mudança aparece quando você sair e entrar de novo no Windows.' "$note").Trim()
             }
-        }
-
-        # Na janela, o título diz o recurso e como ele ficou ("Modo escuro: ativado"); a frase, o resto.
-        if ($final.Kind -eq "Ok") {
-            [void](Set-WinForgeResultView -Result $final -Headline "$($feature): $done" -Note $note)
         }
 
         # Um ajuste que só vale depois de reiniciar o PC (o agendamento da placa de vídeo), ao aplicar e ao desfazer: a
-        # faixa pede o reinício.
-        if ((Get-WinForgeTweakField -Entry $Tweak -Name "NeedsReboot" -Default $false) -and $final.Kind -eq "Ok") {
-            $final.Data["RebootRequired"] = $true
+        # faixa pede o reinício, e ele não termina na própria linha.
+        $reboot = ([bool](Get-WinForgeTweakField -Entry $Tweak -Name "NeedsReboot" -Default $false) -and $final.Kind -eq "Ok")
+
+        # Na janela, o título diz o recurso e como ele ficou ("Modo escuro: ativado"); a frase, o resto.
+        if ($final.Kind -eq "Ok") {
+            [void](Set-WinForgeResultView -Result $final -Headline "$($feature): $done" -Note $note -Quiet:($quiet -and -not $reboot))
         }
+
+        if ($reboot) { $final.Data["RebootRequired"] = $true }
     }
     catch {
         $help = Get-WinForgeTweakProtectedHelp -Tweak $Tweak -Undo:$reverting
@@ -3884,16 +3977,23 @@ function Invoke-WinForgeTweakToggle {
         if ($null -ne $help -and (Test-WinForgeAccessDenied -Exception $_.Exception)) {
             # A recusa é de propósito (UCPD): repetir não adianta; a dica diz onde a mudança é feita.
             Write-WinForgeStatus -Type Warning -Message (Get-WinForgeTweakProtectedText -Help $help)
-            $final = New-WinForgeResult -Kind Warning -Detail "o Windows protege esta configuração e não deixa o WinForge mudá-la" -Title $feature
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows protege esta configuração e não deixa o WinForge mudá-la') -Title $feature) `
+                -Headline (Get-WinForgeText '{0}: nada mudou' "$feature") -Note (Get-WinForgeTweakProtectedText -Help $help)
 
             if ($help.Shortcut) {
                 Write-Host ""
-                if (Confirm-WinForgeAction "Abrir as Configurações da barra de tarefas agora?" -DefaultKey S) { [void](Open-WinForgeShortcut -Name $help.Shortcut) }
+                if (Confirm-WinForgeAction (Get-WinForgeText 'Abrir as Configurações da barra de tarefas agora?') -DefaultKey S -YesLabel (Get-WinForgeText 'Abrir') -NoLabel (Get-WinForgeText 'Agora não')) { [void](Open-WinForgeShortcut -Name $help.Shortcut) }
             }
         }
         else {
-            Write-WinForgeStatus -Type Error -Message "Falha ao alterar o ajuste: $($_.Exception.Message)"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Falha ao alterar o ajuste: {0}' "$($_.Exception.Message)")
             $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $feature
+
+            # O título diz que o recurso ficou como estava; a frase, o motivo, legível como no resumo.
+            $why = (ConvertTo-WinForgeReadableError -Text ([string]$_.Exception.Message)).Trim()
+            if ($why) { $why = "$($why.Substring(0, 1).ToUpperInvariant())$($why.Substring(1))" }
+            if ($why -and $why -notmatch '[.!?]$') { $why = "$why." }
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText '{0}: nada mudou' "$feature") -Note $why)
         }
     }
 
@@ -3910,10 +4010,10 @@ function Format-WinForgeTweakAppliedAt {
     $when = [datetime]::MinValue
 
     # O PowerShell 7 já lê do JSON uma data; o Windows PowerShell 5.1, o texto ("2026-11-01T14:30:00").
-    if ($value -is [datetime]) { return $value.ToString("dd/MM/yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture) }
+    if ($value -is [datetime]) { return (Format-WinForgeDateTime -When $value) }
 
     if ([datetime]::TryParse([string]$value, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$when)) {
-        return $when.ToString("dd/MM/yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+        return (Format-WinForgeDateTime -When $when)
     }
 
     return ""
@@ -3921,12 +4021,12 @@ function Format-WinForgeTweakAppliedAt {
 
 
 function Invoke-WinForgeRevertAllTweaks {
-    $title = "Desfazer ajustes do WinForge"
+    $title = (Get-WinForgeText 'Desfazer ajustes do WinForge')
 
     Enter-WinForgeAction -Title $title
 
-    if (-not (Test-WinForgeElevation -Reason "Desfazer ajustes de sistema exige privilégios de Administrador.")) {
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $title)
+    if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Desfazer ajustes de sistema exige privilégios de Administrador.'))) {
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title)
         return
     }
 
@@ -3934,15 +4034,16 @@ function Invoke-WinForgeRevertAllTweaks {
 
     if ($read.Status -eq "Unreadable") {
         Write-WinForgeStatus -Type Error -Message (Get-WinForgeTweakBackupUnreadableText)
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "não foi possível ler o backup dos ajustes" -Title $title)
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível ler o backup dos ajustes') -Title $title)
         return
     }
 
     $ids = @($read.Backup.Keys)
 
     if ($ids.Count -eq 0) {
-        Write-WinForgeStatus -Type Info -Message "Não há ajustes do WinForge com backup para desfazer."
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "não há ajustes com backup para desfazer" -Title $title)
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Não há ajustes do WinForge com backup para desfazer.')
+        Exit-WinForgeAction -Result (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'não há ajustes com backup para desfazer') -Title $title) `
+                -Headline (Get-WinForgeText 'Nenhum ajuste do WinForge para desfazer'))
         return
     }
 
@@ -3953,14 +4054,14 @@ function Invoke-WinForgeRevertAllTweaks {
     $unknown = @($ids | Where-Object { $catalogOrder -notcontains $_ })
 
     if ($known.Count -eq 0) {
-        Write-WinForgeStatus -Type Warning -Message "Os backups encontrados são de ajustes que esta versão do WinForge não conhece ($($unknown -join ', ')). Nada foi desfeito."
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "os backups são de ajustes que esta versão não conhece" -Title $title)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Os backups encontrados são de ajustes que esta versão do WinForge não conhece ({0}). Nada foi desfeito.' "$($unknown -join ', ')")
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'os backups são de ajustes que esta versão não conhece') -Title $title)
         return
     }
 
     # A lista do que vai ser desfeito, com a data de cada um. O que mudou depois só se sabe ao desfazer (a leitura de
     # agora vê o plano de energia ativo, não o plano em que o ajuste foi feito), e o resultado de cada um diz.
-    Write-WinForgeSection -Title "Serão desfeitos"
+    Write-WinForgeSection -Title (Get-WinForgeText 'Serão desfeitos')
 
     # A coluna dos nomes cabe o maior deles, até 48 caracteres.
     $longest = [int](@($known | ForEach-Object { (Get-WinForgeTweakById -Id $_).Name.Length }) | Measure-Object -Maximum).Maximum
@@ -3968,20 +4069,20 @@ function Invoke-WinForgeRevertAllTweaks {
 
     foreach ($id in $known) {
         $when = Format-WinForgeTweakAppliedAt -Entry $read.Backup[$id]
-        Write-WinForgeKeyValue -Label (Get-WinForgeTweakById -Id $id).Name -Value $(if ($when) { "aplicado em $when" } else { "aplicado pelo WinForge" }) -LabelWidth $width
+        Write-WinForgeKeyValue -Label (Get-WinForgeTweakById -Id $id).Name -Value $(if ($when) { (Get-WinForgeText 'aplicado em {0}' "$when") } else { (Get-WinForgeText 'aplicado pelo WinForge') }) -LabelWidth $width
     }
 
     Write-Host ""
 
     if ($unknown.Count -gt 0) {
-        Write-WinForgeStatus -Type Warning -Message "Backups de ajustes desconhecidos serão mantidos (versão diferente do WinForge?): $($unknown -join ', ')"
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Backups de ajustes desconhecidos serão mantidos (versão diferente do WinForge?): {0}' "$($unknown -join ', ')")
         Write-Host ""
     }
 
-    if (-not (Confirm-WinForgeAction "Desfazer todos agora?" -DefaultKey N)) {
+    if (-not (Confirm-WinForgeAction (Get-WinForgeText 'Desfazer todos agora?') -DefaultKey N -YesLabel (Get-WinForgeText 'Desfazer todos') -NoLabel (Get-WinForgeText 'Cancelar'))) {
         Write-Host ""
-        Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
         return
     }
 
@@ -3996,7 +4097,7 @@ function Invoke-WinForgeRevertAllTweaks {
         foreach ($id in $known) {
             $tweak = Get-WinForgeTweakById -Id $id
             $position++
-            Write-Progress -Activity "Desfazendo os ajustes" -Status "$position de $($known.Count): $($tweak.Name)" -PercentComplete ([int](100 * ($position - 1) / $known.Count))
+            Write-Progress -Activity (Get-WinForgeText 'Desfazendo os ajustes') -Status (Get-WinForgeText '{0} de {1}: {2}' "$position" "$($known.Count)" "$($tweak.Name)") -PercentComplete ([int](100 * ($position - 1) / $known.Count))
 
             try {
                 $report = Invoke-WinForgeTweakRevert -Tweak $tweak -Detailed
@@ -4004,14 +4105,14 @@ function Invoke-WinForgeRevertAllTweaks {
                 if ($report.Restored -eq 0) {
                     # Tudo dele foi alterado depois: nada voltou, e o backup saiu (não há mais o que desfazer).
                     $untouched++
-                    Write-WinForgeStatus -Type Info -Message "$($tweak.Name): nada a desfazer; foi alterado depois."
+                    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0}: nada a desfazer; foi alterado depois.' "$($tweak.Name)")
                 }
                 elseif ($report.Kept -gt 0) {
-                    Write-WinForgeStatus -Type Success -Message "$($tweak.Name): desfeito; o que foi alterado depois foi mantido."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: desfeito; o que foi alterado depois foi mantido.' "$($tweak.Name)")
                     $doneNames += [string]$tweak.Name
                 }
                 else {
-                    Write-WinForgeStatus -Type Success -Message "$($tweak.Name): desfeito."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: desfeito.' "$($tweak.Name)")
                     $doneNames += [string]$tweak.Name
                 }
 
@@ -4032,7 +4133,7 @@ function Invoke-WinForgeRevertAllTweaks {
         }
     }
     finally {
-        Write-Progress -Activity "Desfazendo os ajustes" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Desfazendo os ajustes') -Completed
     }
 
     Write-Host ""
@@ -4040,21 +4141,21 @@ function Invoke-WinForgeRevertAllTweaks {
     $done = $known.Count - $failures - $untouched
 
     if ($failures -gt 0) {
-        Write-WinForgeStatus -Type Warning -Message $(if ($failures -eq 1) { "1 ajuste não pôde ser desfeito; o backup dele foi mantido para uma nova tentativa." } else { "$failures ajustes não puderam ser desfeitos; o backup deles foi mantido para uma nova tentativa." })
+        Write-WinForgeStatus -Type Warning -Message $(if ($failures -eq 1) { (Get-WinForgeText '1 ajuste não pôde ser desfeito; o backup dele foi mantido para uma nova tentativa.') } else { (Get-WinForgeText '{0} ajustes não puderam ser desfeitos; o backup deles foi mantido para uma nova tentativa.' "$failures") })
 
         if ($done -eq 0) {
-            $final = New-WinForgeResult -Kind Failed -Detail "nenhum ajuste pôde ser desfeito" -Title $title
+            $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhum ajuste pôde ser desfeito') -Title $title
         }
         else {
-            $final = New-WinForgeResult -Kind Warning -Detail "$failures de $($known.Count) não puderam ser desfeitos" -Title $title
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} não puderam ser desfeitos' "$failures" "$($known.Count)") -Title $title
         }
     }
     elseif ($done -eq 0) {
-        Write-WinForgeStatus -Type Info -Message "Nada foi desfeito: os ajustes já tinham sido alterados depois."
-        $final = New-WinForgeResult -Kind Skipped -Detail "os ajustes já tinham sido alterados depois" -Title $title
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada foi desfeito: os ajustes já tinham sido alterados depois.')
+        $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'os ajustes já tinham sido alterados depois') -Title $title
     }
     else {
-        $doneText = Format-WinForgeCount -Count $done -One "ajuste desfeito" -Many "ajustes desfeitos"
+        $doneText = Format-WinForgeCount -Count $done -One (Get-WinForgeText 'ajuste desfeito') -Many (Get-WinForgeText 'ajustes desfeitos')
         Write-WinForgeStatus -Type Success -Message "$doneText."
         $final = New-WinForgeResult -Kind Ok -Detail $doneText -Title $title
     }
@@ -4062,24 +4163,34 @@ function Invoke-WinForgeRevertAllTweaks {
     $restart = ""
 
     if ($needsExplorerRestart) {
-        $restart = Request-WinForgeExplorerRestart -Question "Reiniciar o Explorador de Arquivos agora?"
+        $restart = Request-WinForgeExplorerRestart -Question (Get-WinForgeText 'Reiniciar o Explorador de Arquivos agora?')
 
         if ($restart -eq "Failed" -and $final.Kind -eq "Ok") {
-            $final = New-WinForgeResult -Kind Warning -Detail "o Explorador não reiniciou" -Title $title
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Explorador não reiniciou') -Title $title
         }
     }
 
     # Na janela, o título diz quantos foram desfeitos; a frase, quais (ou, com falhas, quais ficaram, com o backup mantido) e,
     # sem o Explorador reiniciado, quando a mudança aparece.
-    $later = $(if ($restart -eq "Declined") { " $(if ($done -eq 1) { 'A mudança aparece' } else { 'As mudanças aparecem' }) quando você sair e entrar de novo no Windows." } else { "" })
+    $later = $(if ($restart -eq "Declined") { (Get-WinForgeText ' {0} quando você sair e entrar de novo no Windows.' "$(if ($done -eq 1) { (Get-WinForgeText 'A mudança aparece') } else { (Get-WinForgeText 'As mudanças aparecem') })") } else { "" })
 
     if ($final.Kind -eq "Ok" -and $done -gt 0) {
-        [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $done -One "ajuste desfeito" -Many "ajustes desfeitos") `
+        [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $done -One (Get-WinForgeText 'ajuste desfeito') -Many (Get-WinForgeText 'ajustes desfeitos')) `
                 -Note "$(Join-WinForgeShortList -Items $doneNames).$later")
     }
     elseif ($final.Kind -eq "Warning" -and $done -gt 0 -and $failedNames.Count -gt 0) {
-        $kept = $(if ($failedNames.Count -eq 1) { "não pôde ser desfeito; o backup dele foi mantido para uma nova tentativa" } else { "não puderam ser desfeitos; o backup deles foi mantido para uma nova tentativa" })
-        [void](Set-WinForgeResultView -Result $final -Headline "$done de $($known.Count) ajustes desfeitos" -Note "$(Join-WinForgeShortList -Items $failedNames) $kept.$later")
+        $kept = $(if ($failedNames.Count -eq 1) { (Get-WinForgeText 'não pôde ser desfeito; o backup dele foi mantido para uma nova tentativa') } else { (Get-WinForgeText 'não puderam ser desfeitos; o backup deles foi mantido para uma nova tentativa') })
+        [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText '{0} de {1} ajustes desfeitos' "$done" "$($known.Count)") -Note "$(Join-WinForgeShortList -Items $failedNames) $kept.$later")
+    }
+    elseif ($final.Kind -eq "Failed" -and $done -eq 0 -and $failedNames.Count -gt 0) {
+        # Nenhum voltou: o título diz isso, e a frase, que o backup ficou e onde está o motivo.
+        [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'Nenhum ajuste foi desfeito') `
+                -Note $(if ($failedNames.Count -eq 1) { (Get-WinForgeText 'O backup foi mantido para uma nova tentativa; o motivo está no resumo.') } else { (Get-WinForgeText 'O backup foi mantido para uma nova tentativa; o motivo de cada um está no resumo.') }))
+    }
+    elseif ($final.Kind -eq "Warning" -and $restart -eq "Failed" -and $done -gt 0) {
+        # Os ajustes voltaram; só o Explorador não reiniciou.
+        [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $done -One (Get-WinForgeText 'ajuste desfeito') -Many (Get-WinForgeText 'ajustes desfeitos')) `
+                -Note $(if ($done -eq 1) { (Get-WinForgeText 'O Explorador não reiniciou; a mudança aparece quando você sair e entrar de novo no Windows.') } else { (Get-WinForgeText 'O Explorador não reiniciou; as mudanças aparecem quando você sair e entrar de novo no Windows.') }))
     }
 
     Exit-WinForgeAction -Result $final
@@ -4087,139 +4198,138 @@ function Invoke-WinForgeRevertAllTweaks {
 
 
 # ---------------------------------------------------------------------------
-# Personalização: a cor de destaque e as teclas que trocam o idioma do teclado
+# O desfazer das teclas que trocam o idioma do teclado
 # ---------------------------------------------------------------------------
 
-function Get-WinForgeAccentColors {
-    # As cores de destaque oferecidas: as principais da paleta do Windows (o azul é o padrão do Windows 11).
-    return @(
-        [PSCustomObject]@{ Key = "1"; Label = "Azul"; Hex = "#0078D4"; Description = "a cor padrão do Windows 11" }
-        [PSCustomObject]@{ Key = "2"; Label = "Azul-petróleo"; Hex = "#038387"; Description = "" }
-        [PSCustomObject]@{ Key = "3"; Label = "Verde"; Hex = "#107C10"; Description = "" }
-        [PSCustomObject]@{ Key = "4"; Label = "Roxo"; Hex = "#744DA9"; Description = "" }
-        [PSCustomObject]@{ Key = "5"; Label = "Rosa"; Hex = "#E3008C"; Description = "" }
-        [PSCustomObject]@{ Key = "6"; Label = "Vermelho"; Hex = "#E81123"; Description = "" }
-        [PSCustomObject]@{ Key = "7"; Label = "Laranja"; Hex = "#CA5010"; Description = "" }
-        [PSCustomObject]@{ Key = "8"; Label = "Cinza-grafite"; Hex = "#69797E"; Description = "" }
-    )
-}
-
-
-function ConvertTo-WinForgeShade {
-    # A cor (#RRGGBB) com a luminosidade (HSL) mudada em Delta (-1 a 1), o tom e a saturação mantidos. Devolve R, G e B.
-    param (
-        [Parameter(Mandatory)][string]$Hex,
-        [double]$Delta = 0.0
-    )
-
-    $red = [Convert]::ToInt32($Hex.Substring(1, 2), 16)
-    $green = [Convert]::ToInt32($Hex.Substring(3, 2), 16)
-    $blue = [Convert]::ToInt32($Hex.Substring(5, 2), 16)
-
-    # Sem mudança, a cor exata (a conta de ida e volta pelo HSL pode errar uma unidade no arredondamento).
-    if ($Delta -eq 0.0) { return , @($red, $green, $blue) }
-
-    $r = $red / 255.0
-    $g = $green / 255.0
-    $b = $blue / 255.0
-
-    $max = [Math]::Max($r, [Math]::Max($g, $b))
-    $min = [Math]::Min($r, [Math]::Min($g, $b))
-    $light = ($max + $min) / 2.0
-    $hue = 0.0
-    $sat = 0.0
-
-    if ($max -ne $min) {
-        $d = $max - $min
-        $sat = $(if ($light -gt 0.5) { $d / (2.0 - $max - $min) } else { $d / ($max + $min) })
-        if ($max -eq $r) { $hue = (($g - $b) / $d) + $(if ($g -lt $b) { 6.0 } else { 0.0 }) }
-        elseif ($max -eq $g) { $hue = (($b - $r) / $d) + 2.0 }
-        else { $hue = (($r - $g) / $d) + 4.0 }
-        $hue = $hue / 6.0
-    }
-
-    $light = [Math]::Max(0.04, [Math]::Min(0.96, $light + $Delta))
-
-    if ($sat -eq 0.0) {
-        $v = [int][Math]::Round($light * 255.0)
-        return , @($v, $v, $v)
-    }
-
-    $q = $(if ($light -lt 0.5) { $light * (1.0 + $sat) } else { $light + $sat - $light * $sat })
-    $p = 2.0 * $light - $q
-    $channels = foreach ($t in @(($hue + 1.0 / 3.0), $hue, ($hue - 1.0 / 3.0))) {
-        if ($t -lt 0.0) { $t += 1.0 }
-        if ($t -gt 1.0) { $t -= 1.0 }
-        if ($t -lt 1.0 / 6.0) { $c = $p + ($q - $p) * 6.0 * $t }
-        elseif ($t -lt 0.5) { $c = $q }
-        elseif ($t -lt 2.0 / 3.0) { $c = $p + ($q - $p) * (2.0 / 3.0 - $t) * 6.0 }
-        else { $c = $p }
-        [int][Math]::Round($c * 255.0)
-    }
-
-    return , @($channels)
-}
-
-
-function Get-WinForgeAccentPalette {
+function Get-WinForgeChoiceSpec {
     <#
-    Os 32 bytes de AccentPalette (Explorer\Accent): oito cores, cada uma R, G, B e um zero, das mais claras para as mais
-    escuras, com a cor escolhida na quarta posição, como o Windows grava ao escolher a cor nas Configurações. As variações
-    seguem a distância de luminosidade da paleta do azul padrão do Windows 11.
+    Os valores que uma escolha grava, na ordem em que o Windows os grava: as teclas que trocam o idioma do teclado (Ajustes
+    do Windows), todos de texto. O desfazer só devolve estes valores, com os caminhos daqui: o diário fica onde qualquer
+    programa da conta grava, e dele só vêm os dados, conferidos pelo formato (Pattern). Identity marca os valores que
+    dizem qual é a escolha de agora: se mudaram depois, o desfazer não passa por cima.
     #>
-    param ([Parameter(Mandatory)][string]$Hex)
+    param ([Parameter(Mandatory)][ValidateSet("keyboard-hotkeys")][string]$Kind)
 
-    $bytes = New-Object System.Collections.Generic.List[byte]
+    $toggle = "HKCU:\Keyboard Layout\Toggle"
 
-    foreach ($delta in @(0.38, 0.23, 0.07, 0.0, -0.04, -0.13, -0.21, 0.0)) {
-        $rgb = ConvertTo-WinForgeShade -Hex $Hex -Delta $delta
-        foreach ($channel in $rgb) { $bytes.Add([byte]$channel) }
-        $bytes.Add([byte]0)
-    }
-
-    return , $bytes.ToArray()
+    return @(
+        [PSCustomObject]@{ Key = "Language"; Path = $toggle; Name = "Language Hotkey"; Pattern = '^[1-4]$'; Identity = $true }
+        [PSCustomObject]@{ Key = "Hotkey"; Path = $toggle; Name = "Hotkey"; Pattern = '^[1-4]$'; Identity = $false }
+        [PSCustomObject]@{ Key = "Layout"; Path = $toggle; Name = "Layout Hotkey"; Pattern = '^[1-4]$'; Identity = $true }
+    )
 }
 
 
-function ConvertTo-WinForgeColorDWord {
-    # Um DWORD de cor do registro: "ABGR" (Explorer\Accent e AccentColor do DWM) ou "ARGB" (ColorizationColor do DWM).
+function Read-WinForgeChoiceValues {
+    # Os valores de uma escolha como estão agora (Key -> texto; $null quando não existe), para o diário.
+    param ([Parameter(Mandatory)][ValidateSet("keyboard-hotkeys")][string]$Kind)
+
+    $values = [ordered]@{}
+
+    foreach ($spec in @(Get-WinForgeChoiceSpec -Kind $Kind)) {
+        $value = Get-WinForgeRegistryValueOrNull -Path $spec.Path -Name $spec.Name
+        $values[$spec.Key] = $(if ($null -eq $value) { $null } else { [string]$value })
+    }
+
+    return $values
+}
+
+
+function ConvertFrom-WinForgeChoiceValues {
+    <#
+    Os valores de uma escolha vindos do diário, conferidos pelo formato de cada um (Pattern). Só as chaves do Kind contam;
+    uma ausente fica fora (Required: todas precisam estar, mesmo com $null). Devolve $null se algum valor não confere: o
+    desfazer inteiro é recusado.
+    #>
     param (
-        [Parameter(Mandatory)][int[]]$Rgb,
-        [ValidateSet("ABGR", "ARGB")][string]$Order = "ABGR",
-        [int]$Alpha = 255
+        [Parameter(Mandatory)][ValidateSet("keyboard-hotkeys")][string]$Kind,
+        $Object,
+        [switch]$Required
     )
 
-    # BitConverter lê os bytes do menos para o mais significativo: R, G, B, A dá 0xAABBGGRR.
-    if ($Order -eq "ABGR") {
-        return [BitConverter]::ToInt32([byte[]]@($Rgb[0], $Rgb[1], $Rgb[2], $Alpha), 0)
+    if ($null -eq $Object) { return $null }
+
+    $values = [ordered]@{}
+
+    foreach ($spec in @(Get-WinForgeChoiceSpec -Kind $Kind)) {
+        $property = $Object.PSObject.Properties[$spec.Key]
+        if ($Object -is [System.Collections.IDictionary]) { $property = $(if ($Object.Contains($spec.Key)) { @{ Value = $Object[$spec.Key] } } else { $null }) }
+
+        if ($null -eq $property) {
+            if ($Required) { return $null }
+            continue
+        }
+
+        $value = $property.Value
+
+        if ($null -eq $value) {
+            $values[$spec.Key] = $null
+            continue
+        }
+
+        if ([string]$value -notmatch $spec.Pattern) { return $null }
+        $values[$spec.Key] = [string]$value
     }
 
-    return [BitConverter]::ToInt32([byte[]]@($Rgb[2], $Rgb[1], $Rgb[0], $Alpha), 0)
+    return $values
 }
 
 
-function Get-WinForgeAccentColorState {
-    # A cor de destaque de agora: "Automática" (o Windows tira do papel de parede), o nome da cor oferecida que é igual
-    # ou quase igual (o azul do Windows 10, #0078D7, é Azul), ou "outra cor". Vazio se não deu para ler.
-    $auto = Get-WinForgeRegistryValueOrNull -Path "HKCU:\Control Panel\Desktop" -Name "AutoColorization"
-    if ($null -ne $auto -and [int]$auto -eq 1) { return "Automática" }
+function Write-WinForgeChoiceValues {
+    # Grava os valores dados de uma escolha (só os que vierem em Values), na ordem do Windows; $null remove o valor (ele não
+    # existia antes).
+    param (
+        [Parameter(Mandatory)][ValidateSet("keyboard-hotkeys")][string]$Kind,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Values
+    )
 
-    $menu = Get-WinForgeRegistryValueOrNull -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" -Name "AccentColorMenu"
-    if ($null -eq $menu) { return "" }
+    foreach ($spec in @(Get-WinForgeChoiceSpec -Kind $Kind)) {
+        if (-not $Values.Contains($spec.Key)) { continue }
 
-    $bytes = [BitConverter]::GetBytes([int]$menu)
-    $best = $null
-    $bestDistance = [double]::MaxValue
+        $value = $Values[$spec.Key]
 
-    foreach ($color in @(Get-WinForgeAccentColors)) {
-        $rgb = ConvertTo-WinForgeShade -Hex $color.Hex -Delta 0.0
-        $distance = [Math]::Abs($rgb[0] - [int]$bytes[0]) + [Math]::Abs($rgb[1] - [int]$bytes[1]) + [Math]::Abs($rgb[2] - [int]$bytes[2])
-        if ($distance -lt $bestDistance) { $best = $color; $bestDistance = $distance }
+        if ($null -eq $value) { Remove-WinForgeRegistryValue -Path $spec.Path -Name $spec.Name }
+        else { Set-WinForgeRegistryValue -Path $spec.Path -Name $spec.Name -Kind "String" -Value ([string]$value) }
+    }
+}
+
+
+function Undo-WinForgeChoiceChange {
+    <#
+    Desfaz uma escolha anotada no Histórico de mudanças (Kind keyboard-hotkeys, com Before e After): volta o que a escolha
+    gravou ao que era antes. Se a escolha de agora não é mais a que o WinForge gravou (a pessoa mudou nas Configurações,
+    ou escolheu de novo), nada é gravado por cima. Devolve um WinForge.Result.
+    #>
+    param (
+        [Parameter(Mandatory)][ValidateSet("keyboard-hotkeys")][string]$Kind,
+        [Parameter(Mandatory)]$Undo
+    )
+
+    # Os valores ficam no perfil da conta: elevado com outra conta, o desfazer mudaria o perfil dela.
+    if (Test-WinForgeUserContextMismatch) {
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o WinForge está elevado com outra conta; desfaça com a conta de quem usa o PC'))
     }
 
-    # Até 24 de diferença somando os três canais, a cor é a mesma a olho nu.
-    if ($null -ne $best -and $bestDistance -le 24) { return [string]$best.Label }
-    return "outra cor (escolhida nas Configurações do Windows)"
+    $before = ConvertFrom-WinForgeChoiceValues -Kind $Kind -Object (Get-WinForgeJsonValue -Object $Undo -Name "Before" -Default $null) -Required
+    $after = ConvertFrom-WinForgeChoiceValues -Kind $Kind -Object (Get-WinForgeJsonValue -Object $Undo -Name "After" -Default $null)
+
+    if ($null -eq $before -or $null -eq $after -or $after.Count -eq 0) {
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'esta mudança não tem como ser desfeita'))
+    }
+
+    $now = Read-WinForgeChoiceValues -Kind $Kind
+
+    foreach ($spec in @(Get-WinForgeChoiceSpec -Kind $Kind | Where-Object { $_.Identity -and $after.Contains($_.Key) })) {
+        if ([string]$now[$spec.Key] -cne [string]$after[$spec.Key]) {
+            return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'as teclas foram trocadas depois e ficaram como estão'))
+        }
+    }
+
+    # Tudo volta ao que era antes, e não só o que a escolha gravou.
+    Write-WinForgeChoiceValues -Kind $Kind -Values $before
+    Sync-WinForgeLanguageHotkey
+
+    return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'as teclas de antes voltaram'))
 }
 
 
@@ -4235,12 +4345,12 @@ function Get-WinForgeAccentTaskbarGaps {
     # Sem o valor, o Windows está no modo claro.
     $system = Get-WinForgeRegistryValueOrNull -Path $personalize -Name "SystemUsesLightTheme"
     if ($null -eq $system -or [int]$system -ne 0) {
-        $gaps += [string](Get-WinForgeTweakField -Entry (Get-WinForgeTweakById -Id "dark-mode") -Name "Feature" -Default "Modo escuro")
+        $gaps += [string](Get-WinForgeTweakField -Entry (Get-WinForgeTweakById -Id "dark-mode") -Name "Feature" -Default (Get-WinForgeText 'Modo escuro'))
     }
 
     $prevalence = Get-WinForgeRegistryValueOrNull -Path $personalize -Name "ColorPrevalence"
     if ($null -eq $prevalence -or [int]$prevalence -ne 1) {
-        $gaps += [string](Get-WinForgeTweakField -Entry (Get-WinForgeTweakById -Id "accent-taskbar") -Name "Feature" -Default "Cor de destaque no Iniciar e na barra de tarefas")
+        $gaps += [string](Get-WinForgeTweakField -Entry (Get-WinForgeTweakById -Id "accent-taskbar") -Name "Feature" -Default (Get-WinForgeText 'Cor de destaque no Iniciar e na barra de tarefas'))
     }
 
     return @($gaps)
@@ -4254,114 +4364,10 @@ function Get-WinForgeTweakApplyHint {
 
     if ([string]$Tweak.Id -ne "accent-taskbar") { return "" }
 
-    $dark = [string](Get-WinForgeTweakField -Entry (Get-WinForgeTweakById -Id "dark-mode") -Name "Feature" -Default "Modo escuro")
-    if (@(Get-WinForgeAccentTaskbarGaps) -contains $dark) { return "Só aparece com o $($dark): ative-o também, aqui na Personalização." }
+    $dark = [string](Get-WinForgeTweakField -Entry (Get-WinForgeTweakById -Id "dark-mode") -Name "Feature" -Default (Get-WinForgeText 'Modo escuro'))
+    if (@(Get-WinForgeAccentTaskbarGaps) -contains $dark) { return (Get-WinForgeText 'Só aparece com o {0}: ative-o também, aqui na Personalização.' "$($dark)") }
 
     return ""
-}
-
-
-function Set-WinForgeAccentColor {
-    # Personalização > Cor de destaque: uma das cores principais do Windows, ou a automática (a do papel de parede).
-    $title = "Cor de destaque"
-    Enter-WinForgeAction -Title $title
-
-    if (Test-WinForgeTweakOtherAccount) {
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "vale para o perfil do usuário, e o WinForge está elevado com outra conta" -Title $title)
-        return
-    }
-
-    $final = New-WinForgeResult -Kind Ok -Title $title
-
-    try {
-        $current = Get-WinForgeAccentColorState
-        if ($current) { Write-WinForgeKeyValue -Label "Cor de agora" -Value $current }
-
-        $colors = @(Get-WinForgeAccentColors)
-        $options = @(
-            foreach ($color in $colors) {
-                @{ Key = $color.Key; Label = $color.Label; Description = $color.Description }
-            }
-        )
-        $options += @{ Key = "A"; Label = "Automática"; Description = "o Windows escolhe a cor a partir do papel de parede" }
-        $options += @{ Key = "X"; Label = "Cancelar"; Exit = $true }
-
-        $answer = Read-WinForgeChoice -Message "Qual cor de destaque?" -Options $options -DefaultKey "X" -ShowMenu `
-            -TextPrompt "Cor (1 a 8, A = automática, X = cancelar; ENTER = cancelar)"
-
-        $chosen = @($colors | Where-Object { $_.Key -eq $answer }) | Select-Object -First 1
-        $desktop = "HKCU:\Control Panel\Desktop"
-
-        if ($answer -ieq "A") {
-            Set-WinForgeRegistryDWord -Path $desktop -Name "AutoColorization" -Value 1
-            Write-WinForgeStatus -Type Success -Message "Cor de destaque automática: o Windows passa a tirá-la do papel de parede."
-            # O Windows calcula a cor quando o papel de parede muda; até lá, fica a cor de antes.
-            Write-WinForgeStatus -Type Info -Message "A cor nova aparece quando o papel de parede mudar. Para ver agora, escolha o papel de parede de novo em Personalização > Personalização do Windows."
-            $final = New-WinForgeResult -Kind Ok -Detail "cor de destaque automática" -Title $title
-        }
-        elseif ($null -ne $chosen) {
-            $palette = Get-WinForgeAccentPalette -Hex $chosen.Hex
-            $base = ConvertTo-WinForgeShade -Hex $chosen.Hex -Delta 0.0
-            $dark = ConvertTo-WinForgeShade -Hex $chosen.Hex -Delta -0.04
-            $accent = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent"
-            $dwm = "HKCU:\Software\Microsoft\Windows\DWM"
-
-            # O mesmo que o Windows grava ao escolher a cor nas Configurações: a paleta e as cores do Iniciar no
-            # Explorador, a cor das janelas no DWM, e a escolha automática desligada, por último: uma gravação que falha
-            # no meio não desliga a cor automática de quem a usava.
-            Set-WinForgeRegistryBinary -Path $accent -Name "AccentPalette" -Value $palette
-            Set-WinForgeRegistryDWord -Path $accent -Name "AccentColorMenu" -Value (ConvertTo-WinForgeColorDWord -Rgb $base -Order ABGR)
-            Set-WinForgeRegistryDWord -Path $accent -Name "StartColorMenu" -Value (ConvertTo-WinForgeColorDWord -Rgb $dark -Order ABGR)
-            Set-WinForgeRegistryDWord -Path $dwm -Name "AccentColor" -Value (ConvertTo-WinForgeColorDWord -Rgb $base -Order ABGR)
-            Set-WinForgeRegistryDWord -Path $dwm -Name "ColorizationColor" -Value (ConvertTo-WinForgeColorDWord -Rgb $base -Order ARGB -Alpha 0xC4)
-            Set-WinForgeRegistryDWord -Path $dwm -Name "ColorizationAfterglow" -Value (ConvertTo-WinForgeColorDWord -Rgb $base -Order ARGB -Alpha 0xC4)
-            Set-WinForgeRegistryDWord -Path $desktop -Name "AutoColorization" -Value 0
-
-            Write-WinForgeStatus -Type Success -Message "Cor de destaque: $($chosen.Label)."
-            $final = New-WinForgeResult -Kind Ok -Detail "cor de destaque: $($chosen.Label.ToLowerInvariant())" -Title $title
-        }
-        else {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
-            return
-        }
-
-        Send-WinForgeSettingChange -Section "ImmersiveColorSet"
-
-        # A cor pinta o Iniciar e a barra de tarefas só com o modo escuro do Windows e a opção da Personalização ligados;
-        # faltando um deles, nada mudaria ali com o Explorador reiniciado: a tela diz só o que falta.
-        $gaps = @(Get-WinForgeAccentTaskbarGaps)
-        $note = ""
-
-        if ($gaps.Count -eq 0) {
-            $restart = Request-WinForgeExplorerRestart -Question "Reiniciar o Explorador agora para a barra de tarefas e o Iniciar mudarem de cor?"
-
-            if ($restart -eq "Failed") { $final = New-WinForgeResult -Kind Warning -Detail "o Explorador não reiniciou" -Title $title }
-            elseif ($restart -eq "Declined") { $note = "O Iniciar e a barra de tarefas mudam de cor quando você sair e entrar de novo no Windows." }
-            else { $note = "O Iniciar e a barra de tarefas também mudaram de cor." }
-        }
-        else {
-            $note = "Para pintar também o Iniciar e a barra de tarefas, ative aqui na Personalização: $(Join-WinForgeList -Items $gaps)."
-            Write-WinForgeStatus -Type Info -Message $note
-        }
-
-        # Na janela, o título diz a cor; a frase, o Iniciar e a barra de tarefas. Na automática, quando a cor nova aparece, e
-        # o botão abre as Configurações, onde se escolhe o papel de parede.
-        if ($final.Kind -eq "Ok" -and $answer -ieq "A") {
-            [void](Set-WinForgeResultView -Result $final -Headline "Cor de destaque automática" `
-                    -Note "A cor nova aparece quando o papel de parede mudar; para ver agora, escolha o papel de parede de novo." `
-                    -Next "personalize.settings" -NextLabel "Abrir a Personalização do Windows")
-        }
-        elseif ($final.Kind -eq "Ok") {
-            [void](Set-WinForgeResultView -Result $final -Headline "Cor de destaque: $($chosen.Label)" -Note $note)
-        }
-    }
-    catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível trocar a cor de destaque: $($_.Exception.Message)"
-        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
-    }
-
-    Exit-WinForgeAction -Result $final
 }
 
 
@@ -4372,10 +4378,10 @@ function Get-WinForgeLanguageHotkeys {
     antigo da primeira. 1 = Alt esquerdo + Shift, 2 = Ctrl + Shift, 3 = nenhuma. O Windows + Espaço troca sempre.
     #>
     return @(
-        [PSCustomObject]@{ Key = "A"; Label = "Alt + Shift e Ctrl + Shift"; Description = "o padrão do Windows: Alt + Shift troca o idioma e Ctrl + Shift, o teclado do mesmo idioma"; Language = "1"; Layout = "2" }
-        [PSCustomObject]@{ Key = "S"; Label = "Só Alt + Shift"; Description = "troca o idioma; o Ctrl + Shift deixa de trocar o teclado (ABNT2 e Internacional, por exemplo)"; Language = "1"; Layout = "3" }
-        [PSCustomObject]@{ Key = "C"; Label = "Só Ctrl + Shift"; Description = "troca o idioma; o Alt + Shift deixa de trocar"; Language = "2"; Layout = "3" }
-        [PSCustomObject]@{ Key = "N"; Label = "Nenhuma"; Description = "só o Windows + Espaço e o ícone do idioma na barra de tarefas trocam"; Language = "3"; Layout = "3" }
+        [PSCustomObject]@{ Key = "A"; Label = (Get-WinForgeText 'Alt + Shift e Ctrl + Shift'); Description = (Get-WinForgeText 'o padrão do Windows: Alt + Shift troca o idioma e Ctrl + Shift, o teclado do mesmo idioma'); Language = "1"; Layout = "2" }
+        [PSCustomObject]@{ Key = "S"; Label = (Get-WinForgeText 'Só Alt + Shift'); Description = (Get-WinForgeText 'troca o idioma; o Ctrl + Shift deixa de trocar o teclado (ABNT2 e Internacional, por exemplo)'); Language = "1"; Layout = "3" }
+        [PSCustomObject]@{ Key = "C"; Label = (Get-WinForgeText 'Só Ctrl + Shift'); Description = (Get-WinForgeText 'troca o idioma; o Alt + Shift deixa de trocar'); Language = "2"; Layout = "3" }
+        [PSCustomObject]@{ Key = "N"; Label = (Get-WinForgeText 'Nenhuma'); Description = (Get-WinForgeText 'só o Windows + Espaço e o ícone do idioma na barra de tarefas trocam'); Language = "3"; Layout = "3" }
     )
 }
 
@@ -4385,11 +4391,11 @@ function Get-WinForgeHotkeyKeysText {
     param ([string]$Value)
 
     switch ($Value) {
-        "1" { return "Alt + Shift" }
-        "2" { return "Ctrl + Shift" }
-        "3" { return "nenhuma" }
-        "4" { return 'acento grave (`)' }
-        default { return "não identificada" }
+        "1" { return (Get-WinForgeText 'Alt + Shift') }
+        "2" { return (Get-WinForgeText 'Ctrl + Shift') }
+        "3" { return (Get-WinForgeText 'nenhuma') }
+        "4" { return (Get-WinForgeText 'acento grave (`)') }
+        default { return (Get-WinForgeText 'não identificada') }
     }
 }
 
@@ -4407,7 +4413,83 @@ function Get-WinForgeLanguageHotkeyState {
     $known = @(Get-WinForgeLanguageHotkeys | Where-Object { $_.Language -eq [string]$language -and $_.Layout -eq [string]$layout }) | Select-Object -First 1
     if ($null -ne $known) { return [string]$known.Label }
 
-    return "idioma: $(Get-WinForgeHotkeyKeysText -Value ([string]$language)); teclado: $(Get-WinForgeHotkeyKeysText -Value ([string]$layout))"
+    return (Get-WinForgeText 'idioma: {0}; teclado: {1}' "$(Get-WinForgeHotkeyKeysText -Value ([string]$language))" "$(Get-WinForgeHotkeyKeysText -Value ([string]$layout))")
+}
+
+
+function Get-WinForgeTweakActionState {
+    <#
+    O que a linha de uma ação da página mostra embaixo do nome, como as chaves mostram o estado: as teclas que trocam o
+    idioma de agora ("Agora: Alt + Shift e Ctrl + Shift"). Vazio para as outras ações e quando não deu para ler.
+    #>
+    param ([Parameter(Mandatory)][string]$Id)
+
+    # Lê o perfil do usuário: elevado com outra conta, seria o dessa conta.
+    if ([bool](Get-WinForgeTweakField -Entry (Get-WinForgeSessionInfo) -Name "UserMismatch" -Default $false)) { return "" }
+
+    $state = switch ($Id) {
+        "tweaks.keyboard-language" { Get-WinForgeLanguageHotkeyState }
+        default { "" }
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$state)) { return "" }
+    return (Get-WinForgeText 'Agora: {0}' "$state")
+}
+
+
+function Get-WinForgeTweaksPageStatus {
+    <#
+    O resumo no alto das páginas de ajustes (Ajustes do Windows e Personalização), como o das outras páginas
+    (New-GuiPageStatus), feito da lista que a página acabou de ler (Overview, de Get-WinForgeTweakOverview): em Ajustes do
+    Windows, quantos recomendados estão em uso (a linha leva a Aplicar ajustes recomendados enquanto falta algum); nas
+    duas, quantos ajustes da página o WinForge mudou e continuam como ele deixou (a linha leva ao Histórico de mudanças,
+    onde cada um se desfaz). Elevado com outra conta, só uma linha, que diz que os do perfil do usuário ficam de fora: o
+    perfil e o backup lidos seriam os dessa conta. Cada linha tem Label, Text, Level (Normal | Warn | Muted) e Opens.
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Page,
+        [AllowEmptyCollection()][object[]]$Overview = @()
+    )
+
+    $session = Get-WinForgeSessionInfo
+
+    if ([bool](Get-WinForgeTweakField -Entry $session -Name "UserMismatch" -Default $false)) {
+        $user = [string](Get-WinForgeTweakField -Entry $session -Name "User" -Default "")
+        return @([PSCustomObject]@{ Label = (Get-WinForgeText 'Outra conta'); Text = (Get-WinForgeText '{0}: os ajustes do perfil do usuário ficam de fora' "$user"); Level = "Warn"; Opens = "" })
+    }
+
+    $rows = @()
+
+    if ($Page -eq "tweaks") {
+        # O estado que a página leu; o recomendado de outra página (a Personalização) é lido aqui.
+        $read = @{}
+        foreach ($item in @($Overview)) { $read[[string]$item.Id] = [string]$item.Status }
+
+        $recommended = @(Get-WinForgeTweakCatalog | Where-Object { $_.Recommended -and (Test-WinForgeTweakAvailable -Tweak $_) })
+        $inUse = @($recommended | Where-Object { $(if ($read.ContainsKey([string]$_.Id)) { $read[[string]$_.Id] } else { Get-WinForgeTweakStatus -Tweak $_ }) -eq "Aplicado" }).Count
+
+        if ($recommended.Count -gt 0) {
+            $all = ($inUse -ge $recommended.Count)
+            $rows += [PSCustomObject]@{
+                Label = (Get-WinForgeText 'Recomendados')
+                Text  = $(if ($all) { (Get-WinForgeText 'todos em uso') } else { (Get-WinForgeText '{0} de {1} em uso' "$inUse" "$($recommended.Count)") })
+                Level = "Normal"
+                Opens = $(if ($all) { "" } else { "tweaks.recommended" })
+            }
+        }
+    }
+
+    $saved = @(Get-WinForgeTweakBackupIds)
+    $changed = @(@($Overview) | Where-Object { $_.Status -eq "Aplicado" -and $saved -contains [string]$_.Id }).Count
+
+    $rows += [PSCustomObject]@{
+        Label = (Get-WinForgeText 'Mudanças')
+        Text  = $(if ($changed -gt 0) { (Format-WinForgeCount -Count $changed -One (Get-WinForgeText 'ajuste desta página mudado pelo WinForge') -Many (Get-WinForgeText 'ajustes desta página mudados pelo WinForge')) } else { (Get-WinForgeText 'nenhum ajuste desta página mudado pelo WinForge') })
+        Level = $(if ($changed -gt 0) { "Normal" } else { "Muted" })
+        Opens = $(if ($changed -gt 0) { "maintenance.changes" } else { "" })
+    }
+
+    return $rows
 }
 
 
@@ -4418,58 +4500,58 @@ function Test-WinForgeTweakOtherAccount {
     if (-not [bool](Get-WinForgeTweakField -Entry $session -Name "UserMismatch" -Default $false)) { return $false }
 
     $user = [string](Get-WinForgeTweakField -Entry $session -Name "User" -Default "")
-    Write-WinForgeStatus -Type Warning -Message "O WinForge está elevado com outra conta ($user): esta opção vale para o perfil do usuário e mudaria o perfil dessa conta, não o seu. Para usá-la, abra o WinForge sem trocar de conta no pedido de Administrador."
+    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta ({0}): esta opção vale para o perfil do usuário e mudaria o perfil dessa conta, não o seu. Para usá-la, abra o WinForge sem trocar de conta no pedido de Administrador.' "$user")
     return $true
 }
 
 
 function Set-WinForgeKeyboardLanguageHotkey {
     # Ajustes do Windows > Teclas que trocam o idioma do teclado: as teclas que trocam o idioma e o teclado.
-    $title = "Teclas que trocam o idioma do teclado"
+    $title = (Get-WinForgeText 'Teclas que trocam o idioma do teclado')
     Enter-WinForgeAction -Title $title
 
     if (Test-WinForgeTweakOtherAccount) {
-        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "vale para o perfil do usuário, e o WinForge está elevado com outra conta" -Title $title)
+        Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'vale para o perfil do usuário, e o WinForge está elevado com outra conta') -Title $title)
         return
     }
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-WinForgeKeyValue -Label "Teclas de agora" -Value (Get-WinForgeLanguageHotkeyState)
-        Write-WinForgeStatus -Type Info -Notice -Message "As teclas só fazem algo com mais de um idioma ou teclado instalado; o Windows + Espaço troca sempre."
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Teclas de agora') -Value (Get-WinForgeLanguageHotkeyState)
+        Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'As teclas só fazem algo com mais de um idioma ou teclado instalado; o Windows + Espaço troca sempre.')
 
         $hotkeys = @(Get-WinForgeLanguageHotkeys)
         $options = @(foreach ($entry in $hotkeys) { @{ Key = $entry.Key; Label = $entry.Label; Description = $entry.Description } })
-        $options += @{ Key = "X"; Label = "Cancelar"; Exit = $true }
+        $options += @{ Key = "X"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
 
-        $answer = Read-WinForgeChoice -Message "Quais teclas trocam o idioma do teclado?" -Options $options -DefaultKey "X" -ShowMenu `
-            -TextPrompt "Opção (A, S, C, N ou X; ENTER = cancelar)"
+        $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'Quais teclas trocam o idioma do teclado?') -Options $options -DefaultKey "X" -ShowMenu `
+            -TextPrompt (Get-WinForgeText 'Opção (A, S, C, N ou X; ENTER = cancelar)')
         $chosen = @($hotkeys | Where-Object { $_.Key -ieq $answer }) | Select-Object -First 1
 
         if ($null -eq $chosen) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            $final = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
         }
         else {
-            $toggle = "HKCU:\Keyboard Layout\Toggle"
-            Set-WinForgeRegistryValue -Path $toggle -Name "Language Hotkey" -Kind "String" -Value $chosen.Language
-            Set-WinForgeRegistryValue -Path $toggle -Name "Hotkey" -Kind "String" -Value $chosen.Language
-            Set-WinForgeRegistryValue -Path $toggle -Name "Layout Hotkey" -Kind "String" -Value $chosen.Layout
+            $before = Read-WinForgeChoiceValues -Kind "keyboard-hotkeys"
+            $after = [ordered]@{ Language = [string]$chosen.Language; Hotkey = [string]$chosen.Language; Layout = [string]$chosen.Layout }
+            Write-WinForgeChoiceValues -Kind "keyboard-hotkeys" -Values $after
             Sync-WinForgeLanguageHotkey
 
-            Write-WinForgeStatus -Type Success -Message "Teclas que trocam o idioma do teclado: $($chosen.Label)."
-            Write-WinForgeStatus -Type Info -Message "Se não mudar em algum programa já aberto, ele passa a valer quando você sair e entrar de novo no Windows."
-            $final = New-WinForgeResult -Kind Ok -Detail "teclas que trocam o idioma: $($chosen.Label)" -Title $title
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Teclas que trocam o idioma do teclado: {0}.' "$($chosen.Label)")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Se não mudar em algum programa já aberto, ele passa a valer quando você sair e entrar de novo no Windows.')
+            $final = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'teclas que trocam o idioma: {0}' "$($chosen.Label)") -Title $title
+            [void](Add-WinForgeChange -Action $title -Text ([string]$chosen.Label) -Undo @{ Kind = "keyboard-hotkeys"; Before = $before; After = $after })
 
             # Na janela, o título diz a escolha ("Nenhuma", sozinho, não diria nada); a frase, o que ela faz.
             $what = [string]$chosen.Description
-            [void](Set-WinForgeResultView -Result $final -Headline $(if ($chosen.Language -eq "3") { "Nenhuma tecla troca o idioma" } else { [string]$chosen.Label }) `
+            [void](Set-WinForgeResultView -Result $final -Headline $(if ($chosen.Language -eq "3") { (Get-WinForgeText 'Nenhuma tecla troca o idioma') } else { [string]$chosen.Label }) `
                     -Note "$($what.Substring(0, 1).ToUpperInvariant())$($what.Substring(1)).")
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível trocar as teclas: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível trocar as teclas: {0}' "$($_.Exception.Message)")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message -Title $title
     }
 

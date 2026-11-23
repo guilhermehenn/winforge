@@ -36,7 +36,7 @@ function Get-WinForgeOtherAntivirus {
     antivírus": com o Defender desligado, a diferença é entre "não foi possível ler" e "PC desprotegido".
     #>
     try {
-        $products = @(Get-CimInstance -Namespace "root\SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction Stop)
+        $products = @(Get-CimInstance -Namespace "root\SecurityCenter2" -ClassName "AntiVirusProduct" -OperationTimeoutSec 15 -ErrorAction Stop)
     }
     catch {
         return $null
@@ -68,7 +68,8 @@ function Get-WinForgeAntivirusStatus {
     $computerStatus = $null
 
     try {
-        $computerStatus = Get-MpComputerStatus -ErrorAction Stop
+        # Com prazo (Invoke-WinForgeCimCommand): o serviço do Defender travado deixava a tela, o Início e o monitor parados.
+        $computerStatus = @(Invoke-WinForgeCimCommand -Name "Get-MpComputerStatus")[0]
     }
     catch {
         $computerStatus = $null
@@ -159,7 +160,7 @@ function Get-WinForgeOtherFirewall {
     firewall do Windows e se registram ali, e a própria Segurança do Windows mostra o PC protegido.
     #>
     try {
-        $products = @(Get-CimInstance -Namespace "root\SecurityCenter2" -ClassName "FirewallProduct" -ErrorAction Stop)
+        $products = @(Get-CimInstance -Namespace "root\SecurityCenter2" -ClassName "FirewallProduct" -OperationTimeoutSec 15 -ErrorAction Stop)
     }
     catch {
         return $null
@@ -170,7 +171,7 @@ function Get-WinForgeOtherFirewall {
         $products |
             Where-Object { ([int64](Get-WinForgeJsonValue -Object $_ -Name "productState" -Default 0) -band 0x1000) -ne 0 } |
             ForEach-Object { [string](Get-WinForgeJsonValue -Object $_ -Name "displayName" -Default "") } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '(?i)^(windows|microsoft)( defender)? firewall|firewall do windows' } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '(?i)^(windows|microsoft)( defender)? firewall|firewall do windows|firewall de (windows|microsoft)' } |
             Select-Object -Unique
     )
 }
@@ -183,11 +184,14 @@ function Get-WinForgeFirewallStatus {
     # ela, o Get-NetFirewallProfile lê só a local, que pode dizer "desligado" num PC em que a política liga o firewall (ou
     # o contrário). Se o parâmetro não for aceito, fica a leitura local, melhor que nenhuma.
     try {
-        $profiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop)
+        $profiles = @(Invoke-WinForgeCimCommand -Name "Get-NetFirewallProfile" -Parameters @{ PolicyStore = "ActiveStore" })
     }
     catch {
+        # Sem resposta no prazo, a segunda consulta travaria igual.
+        if ($_.Exception -is [System.TimeoutException]) { return $null }
+
         try {
-            $profiles = @(Get-NetFirewallProfile -ErrorAction Stop)
+            $profiles = @(Invoke-WinForgeCimCommand -Name "Get-NetFirewallProfile")
         }
         catch {
             return $null
@@ -270,38 +274,18 @@ function Get-WinForgeFirewallProfileName {
     param ([string]$Name)
 
     switch ($Name) {
-        "Domain"  { return "Domínio" }
-        "Private" { return "Rede privada" }
-        "Public"  { return "Rede pública" }
+        "Domain"  { return (Get-WinForgeText 'Domínio') }
+        "Private" { return (Get-WinForgeText 'Rede privada') }
+        "Public"  { return (Get-WinForgeText 'Rede pública') }
         default   { return $Name }
     }
-}
-
-
-function Get-WinForgeThreatName {
-    # Nome legível de uma ameaça pelo Id; se o Windows não souber, "ameaça <Id>".
-    param ($ThreatId)
-
-    try {
-        $threat = Get-MpThreat -ThreatID $ThreatId -ErrorAction Stop | Select-Object -First 1
-        $name = [string](Get-WinForgeJsonValue -Object $threat -Name "ThreatName" -Default "")
-
-        if (-not [string]::IsNullOrWhiteSpace($name)) {
-            return $name
-        }
-    }
-    catch {
-        # Cai no texto genérico abaixo.
-    }
-
-    return "ameaça $ThreatId"
 }
 
 
 function Get-WinForgeActiveThreats {
     # Ameaças que o Defender ainda considera ativas. $null quando não foi possível ler.
     try {
-        $threats = @(Get-MpThreat -ErrorAction Stop)
+        $threats = @(Invoke-WinForgeCimCommand -Name "Get-MpThreat")
     }
     catch {
         return $null
@@ -313,11 +297,20 @@ function Get-WinForgeActiveThreats {
             Where-Object { [bool](Get-WinForgeJsonValue -Object $_ -Name "IsActive" -Default $false) } |
             ForEach-Object {
                 $name = [string](Get-WinForgeJsonValue -Object $_ -Name "ThreatName" -Default "")
-                if ([string]::IsNullOrWhiteSpace($name)) { $name = "ameaça $(Get-WinForgeJsonValue -Object $_ -Name 'ThreatID' -Default '?')" }
+                if ([string]::IsNullOrWhiteSpace($name)) { $name = (Get-WinForgeText 'ameaça {0}' "$(Get-WinForgeJsonValue -Object $_ -Name 'ThreatID' -Default '?')") }
                 $name
             } |
             Select-Object -Unique
     )
+}
+
+
+function Get-WinForgeThreatListText {
+    # As ameaças numa lista para ler: o nome curto de cada uma ("Wacatac (trojan)", como no resultado da verificação), sem
+    # repetir. O nome completo do Windows Defender, o que se procura na internet, fica nos detalhes técnicos.
+    param ([AllowNull()][AllowEmptyCollection()][object[]]$Threats = @())
+
+    return (Join-WinForgeList -Items @(@($Threats) | Where-Object { $_ } | ForEach-Object { Get-WinForgeThreatShortName -Name ([string]$_) } | Select-Object -Unique))
 }
 
 
@@ -351,16 +344,16 @@ function Get-WinForgeSecurityNextStep {
     #>
     param ([AllowEmptyString()][string]$Id)
 
-    $open = "Abrir a Segurança do Windows"
+    $open = (Get-WinForgeText 'Abrir a Segurança do Windows')
 
     switch -Regex ($Id) {
         '^(antivirus|realtime|tamper|threats)'  { return [PSCustomObject]@{ Next = "WindowsSecurityThreats"; Label = $open } }
         '^firewall'                             { return [PSCustomObject]@{ Next = "WindowsSecurityFirewall"; Label = $open } }
         '^smartscreen$'                         { return [PSCustomObject]@{ Next = "WindowsSecurity"; Label = $open } }
-        '^signatures'                           { return [PSCustomObject]@{ Next = "security.signatures"; Label = "Atualizar as assinaturas" } }
-        '^updates$'                             { return [PSCustomObject]@{ Next = "updates.install"; Label = "Instalar as atualizações" } }
-        '^windows-support$'                     { return [PSCustomObject]@{ Next = "diagnostics.windows-support"; Label = "Ver o suporte do Windows" } }
-        '^smb1$'                                { return [PSCustomObject]@{ Next = "software.features"; Label = "Abrir os recursos do Windows" } }
+        '^signatures'                           { return [PSCustomObject]@{ Next = "security.signatures"; Label = (Get-WinForgeText 'Atualizar as assinaturas') } }
+        '^updates$'                             { return [PSCustomObject]@{ Next = "updates.install"; Label = (Get-WinForgeText 'Instalar as atualizações') } }
+        '^windows-support$'                     { return [PSCustomObject]@{ Next = "diagnostics.windows-support"; Label = (Get-WinForgeText 'Ver o suporte do Windows') } }
+        '^smb1$'                                { return [PSCustomObject]@{ Next = "software.features"; Label = (Get-WinForgeText 'Abrir os recursos do Windows') } }
     }
 
     return $null
@@ -395,54 +388,58 @@ function Get-WinForgeSecurityFindings {
     $findings = @()
 
     switch ($Antivirus.Mode) {
-        "Off"         { $findings += New-WinForgeSecurityFinding -Id "antivirus-off" -Level Warning -Short "antivírus desligado" -Text "O antivírus do Windows está desligado e nenhum outro está ligado. Ligue-o em Segurança > Segurança do Windows." }
-        "Unavailable" { $findings += New-WinForgeSecurityFinding -Id "antivirus-unreadable" -Level Warning -Short "antivírus sem leitura" -Text "Não foi possível ler o estado do antivírus. Confira em Segurança > Segurança do Windows." }
-        "Passive"     { $findings += New-WinForgeSecurityFinding -Id "antivirus-passive" -Level Warning -Short "Defender em modo passivo" -Text "O Windows Defender está em modo passivo e nenhum outro antivírus ligado foi identificado: o PC pode estar desprotegido. Confira em Segurança > Segurança do Windows." }
-        "Other"       { $findings += New-WinForgeSecurityFinding -Id "antivirus-other" -Level Info -Text "Outro antivírus protege este PC ($(Join-WinForgeList -Items @($Antivirus.Others))); o Windows Defender fica de reserva." }
+        "Off"         { $findings += New-WinForgeSecurityFinding -Id "antivirus-off" -Level Warning -Short (Get-WinForgeText 'antivírus desligado') -Text (Get-WinForgeText 'O antivírus do Windows está desligado e nenhum outro está ligado. Ligue-o em Segurança > Segurança do Windows.') }
+        "Unavailable" { $findings += New-WinForgeSecurityFinding -Id "antivirus-unreadable" -Level Warning -Short (Get-WinForgeText 'antivírus sem leitura') -Text (Get-WinForgeText 'Não foi possível ler o estado do antivírus. Confira em Segurança > Segurança do Windows.') }
+        "Passive"     { $findings += New-WinForgeSecurityFinding -Id "antivirus-passive" -Level Warning -Short (Get-WinForgeText 'Defender em modo passivo') -Text (Get-WinForgeText 'O Windows Defender está em modo passivo e nenhum outro antivírus ligado foi identificado: o PC pode estar desprotegido. Confira em Segurança > Segurança do Windows.') }
+        "Other"       { $findings += New-WinForgeSecurityFinding -Id "antivirus-other" -Level Info -Text (Get-WinForgeText 'Outro antivírus protege este PC ({0}); o Windows Defender fica de reserva.' "$(Join-WinForgeList -Items @($Antivirus.Others))") }
         "Active" {
             if ($Antivirus.RealTime -eq $false) {
-                $findings += New-WinForgeSecurityFinding -Id "realtime-off" -Level Warning -Short "proteção em tempo real desligada" -Text "A proteção em tempo real está desligada. Ligue-a em Segurança > Segurança do Windows."
+                $findings += New-WinForgeSecurityFinding -Id "realtime-off" -Level Warning -Short (Get-WinForgeText 'proteção em tempo real desligada') -Text (Get-WinForgeText 'A proteção em tempo real está desligada. Ligue-a em Segurança > Segurança do Windows.')
             }
         }
     }
 
-    if ($Antivirus.Mode -eq "Active" -and $null -ne $Antivirus.SignatureAgeDays) {
+    # Assinaturas que nunca foram atualizadas (as que vêm com o Windows, de meses atrás): o mesmo ponto do Início.
+    if ($Antivirus.Mode -eq "Active" -and [bool](Get-WinForgeJsonValue -Object $Antivirus -Name "SignaturesNeverUpdated" -Default $false)) {
+        $findings += New-WinForgeSecurityFinding -Id "signatures-old" -Level Warning -Short (Get-WinForgeText 'assinaturas nunca atualizadas') -Text (Get-WinForgeText 'O antivírus nunca foi atualizado. Use Segurança > Atualizar assinaturas do antivírus.')
+    }
+    elseif ($Antivirus.Mode -eq "Active" -and $null -ne $Antivirus.SignatureAgeDays) {
         $days = [int]$Antivirus.SignatureAgeDays
 
         if ($days -gt 7) {
-            $findings += New-WinForgeSecurityFinding -Id "signatures-old" -Level Warning -Short "assinaturas com $days dias" -Text "As assinaturas do antivírus têm $days dias. Use Segurança > Atualizar assinaturas do antivírus."
+            $findings += New-WinForgeSecurityFinding -Id "signatures-old" -Level Warning -Short (Get-WinForgeText 'assinaturas com {0} dias' "$days") -Text (Get-WinForgeText 'As assinaturas do antivírus têm {0} dias. Use Segurança > Atualizar assinaturas do antivírus.' "$days")
         }
         elseif ($days -gt 3) {
-            $findings += New-WinForgeSecurityFinding -Id "signatures-aging" -Level Info -Text "As assinaturas do antivírus têm $days dias; o normal é atualizarem todo dia."
+            $findings += New-WinForgeSecurityFinding -Id "signatures-aging" -Level Info -Text (Get-WinForgeText 'As assinaturas do antivírus têm {0} dias; o normal é atualizarem todo dia.' "$days")
         }
     }
 
     if ($null -ne $Threats -and @($Threats).Count -gt 0) {
-        $count = Format-WinForgeCount -Count @($Threats).Count -One "ameaça ativa" -Many "ameaças ativas"
-        $findings += New-WinForgeSecurityFinding -Id "threats" -Level Warning -Short $count -Text "${count}: $(Join-WinForgeList -Items @($Threats)). Abra Segurança > Segurança do Windows para ver as ações."
+        $count = Format-WinForgeCount -Count @($Threats).Count -One (Get-WinForgeText 'ameaça ativa') -Many (Get-WinForgeText 'ameaças ativas')
+        $findings += New-WinForgeSecurityFinding -Id "threats" -Level Warning -Short $count -Text (Get-WinForgeText '{0}: {1}. Abra Segurança > Segurança do Windows para ver as ações.' "${count}" "$(Get-WinForgeThreatListText -Threats @($Threats))")
     }
 
     if ($null -eq $Firewall) {
-        $findings += New-WinForgeSecurityFinding -Id "firewall-unreadable" -Level Info -Text "Não foi possível ler o estado do firewall."
+        $findings += New-WinForgeSecurityFinding -Id "firewall-unreadable" -Level Info -Text (Get-WinForgeText 'Não foi possível ler o estado do firewall.')
     }
     else {
         $off = @(Get-WinForgeFirewallGaps -Firewall $Firewall | ForEach-Object { Get-WinForgeFirewallProfileName -Name $_.Name })
 
         if ($off.Count -gt 0) {
             $where = Join-WinForgeList -Items $off
-            $findings += New-WinForgeSecurityFinding -Id "firewall-off" -Level Warning -Short "firewall desligado ($where)" -Text "O firewall está desligado em: $where. Ligue-o em Segurança > Segurança do Windows."
+            $findings += New-WinForgeSecurityFinding -Id "firewall-off" -Level Warning -Short (Get-WinForgeText 'firewall desligado ({0})' "$where") -Text (Get-WinForgeText 'O firewall está desligado em: {0}. Ligue-o em Segurança > Segurança do Windows.' "$where")
         }
 
         $otherFirewall = Get-WinForgeFirewallOtherProduct -Firewall $Firewall
 
         if ($otherFirewall) {
-            $findings += New-WinForgeSecurityFinding -Id "firewall-other" -Level Info -Text "Outro firewall protege este PC ($otherFirewall); o firewall do Windows fica desligado."
+            $findings += New-WinForgeSecurityFinding -Id "firewall-other" -Level Info -Text (Get-WinForgeText 'Outro firewall protege este PC ({0}); o firewall do Windows fica desligado.' "$otherFirewall")
         }
     }
 
     if ($null -ne $Updates -and $Updates.Count -gt 0) {
-        $findings += New-WinForgeSecurityFinding -Id "updates" -Level Warning -Short (Format-WinForgeCount -Count $Updates.Count -One "atualização pendente" -Many "atualizações pendentes") `
-            -Text "$(Format-WinForgeCount -Count $Updates.Count -One 'atualização do Windows pendente' -Many 'atualizações do Windows pendentes'). Use Atualizações > Instalar atualizações do Windows."
+        $findings += New-WinForgeSecurityFinding -Id "updates" -Level Warning -Short (Format-WinForgeCount -Count $Updates.Count -One (Get-WinForgeText 'atualização pendente') -Many (Get-WinForgeText 'atualizações pendentes')) `
+            -Text (Get-WinForgeText '{0}. Use Atualizações > Instalar atualizações do Windows.' "$(Format-WinForgeCount -Count $Updates.Count -One (Get-WinForgeText 'atualização do Windows pendente') -Many (Get-WinForgeText 'atualizações do Windows pendentes'))")
     }
 
     # Avisos primeiro, mantendo a ordem em que foram encontrados dentro de cada grupo.
@@ -471,11 +468,11 @@ function Get-WinForgeAntivirusModeText {
     param ([Parameter(Mandatory)]$Antivirus)
 
     switch ($Antivirus.Mode) {
-        "Active"      { return $(if ($Antivirus.RealTime -eq $false) { "Windows Defender ligado, sem proteção em tempo real" } else { "Windows Defender ativo, com proteção em tempo real" }) }
-        "Other"       { return "Outro antivírus em uso: $(Join-WinForgeList -Items @($Antivirus.Others))" }
-        "Passive"     { return "Windows Defender em modo passivo" }
-        "Off"         { return "Desligado" }
-        default       { return "Não foi possível ler" }
+        "Active"      { return $(if ($Antivirus.RealTime -eq $false) { (Get-WinForgeText 'Windows Defender ligado, sem proteção em tempo real') } else { (Get-WinForgeText 'Windows Defender ativo, com proteção em tempo real') }) }
+        "Other"       { return (Get-WinForgeText 'Outro antivírus em uso: {0}' "$(Join-WinForgeList -Items @($Antivirus.Others))") }
+        "Passive"     { return (Get-WinForgeText 'Windows Defender em modo passivo') }
+        "Off"         { return (Get-WinForgeText 'Desligado') }
+        default       { return (Get-WinForgeText 'Não foi possível ler') }
     }
 }
 
@@ -490,7 +487,7 @@ function Get-WinForgeSignatureText {
     $text = "$(Format-WinForgeDateTime -When $Antivirus.SignaturesUpdated) ($(Format-WinForgeRelativeTime -When $Antivirus.SignaturesUpdated))"
 
     if ($Antivirus.SignatureVersion) {
-        $text += ", versão $($Antivirus.SignatureVersion)"
+        $text += (Get-WinForgeText ', versão {0}' "$($Antivirus.SignatureVersion)")
     }
 
     return $text
@@ -501,7 +498,7 @@ function Get-WinForgeScanDateText {
     param ($When)
 
     if ($null -eq $When) {
-        return "Nunca"
+        return (Get-WinForgeText 'Nunca')
     }
 
     return "$(Format-WinForgeDateTime -When ([datetime]$When)) ($(Format-WinForgeRelativeTime -When ([datetime]$When)))"
@@ -527,19 +524,20 @@ function Get-WinForgeAntivirusRows {
     $rows = New-Object System.Collections.Generic.List[object]
     # Level pinta o valor na tela (verde, amarelo, vermelho); o relatório usa só o texto.
     $modeLevel = switch ($Antivirus.Mode) { "Active" { $(if ($Antivirus.RealTime -eq $false) { "Warn" } else { "Ok" }) } "Other" { "Ok" } "Passive" { "Warn" } "Off" { "Bad" } default { "Normal" } }
-    $rows.Add([PSCustomObject]@{ Label = "Situação"; Value = (Get-WinForgeAntivirusModeText -Antivirus $Antivirus); Level = $modeLevel })
+    $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Situação'); Value = (Get-WinForgeAntivirusModeText -Antivirus $Antivirus); Level = $modeLevel })
 
     if ($Antivirus.Mode -in "Active", "Passive") {
         $signatures = Get-WinForgeSignatureText -Antivirus $Antivirus
         $age = Get-WinForgeJsonValue -Object $Antivirus -Name "SignatureAgeDays" -Default $null
-        $rows.Add([PSCustomObject]@{ Label = "Assinaturas"; Value = $(if ($signatures) { $signatures } else { "Não foi possível ler" }); Level = $(if ($null -ne $age -and [int]$age -gt 7) { "Warn" } else { "Normal" }) })
+        $never = [bool](Get-WinForgeJsonValue -Object $Antivirus -Name "SignaturesNeverUpdated" -Default $false)
+        $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Assinaturas'); Value = $(if ($signatures) { $signatures } elseif ($never) { (Get-WinForgeText 'Nunca atualizadas') } else { (Get-WinForgeText 'Não foi possível ler') }); Level = $(if ($never -or ($null -ne $age -and [int]$age -gt 7)) { "Warn" } else { "Normal" }) })
     }
 
     if ($Antivirus.Mode -eq "Active") {
-        $rows.Add([PSCustomObject]@{ Label = "Última verificação rápida"; Value = (Get-WinForgeScanDateText -When $Antivirus.LastQuickScan); Level = "Normal" })
+        $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Última verificação rápida'); Value = (Get-WinForgeScanDateText -When $Antivirus.LastQuickScan); Level = "Normal" })
 
         if (-not $Brief) {
-            $rows.Add([PSCustomObject]@{ Label = "Última verificação completa"; Value = (Get-WinForgeScanDateText -When $Antivirus.LastFullScan); Level = "Normal" })
+            $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Última verificação completa'); Value = (Get-WinForgeScanDateText -When $Antivirus.LastFullScan); Level = "Normal" })
         }
     }
 
@@ -550,16 +548,16 @@ function Get-WinForgeAntivirusRows {
             # "Nenhuma" em verde só com o Defender examinando: desligado (ou sem tempo real, em modo passivo, sem leitura),
             # a lista vazia não quer dizer que o PC está limpo, só que nada foi registrado.
             $watching = ($Antivirus.Mode -eq "Active" -and $Antivirus.RealTime -ne $false)
-            $none = $(if ($watching) { "Nenhuma" } elseif ($Antivirus.Mode -eq "Off") { "Nenhuma registrada (com o antivírus desligado, nada está sendo examinado)" } else { "Nenhuma registrada" })
-            $rows.Add([PSCustomObject]@{ Label = "Ameaças ativas"; Value = $(if ($list.Count -eq 0) { $none } else { Join-WinForgeList -Items $list }); Level = $(if ($list.Count -gt 0) { "Bad" } elseif ($watching) { "Ok" } else { "Normal" }) })
+            $none = $(if ($watching) { (Get-WinForgeText 'Nenhuma') } elseif ($Antivirus.Mode -eq "Off") { (Get-WinForgeText 'Nenhuma registrada (com o antivírus desligado, nada está sendo examinado)') } else { (Get-WinForgeText 'Nenhuma registrada') })
+            $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Ameaças ativas'); Value = $(if ($list.Count -eq 0) { $none } else { Get-WinForgeThreatListText -Threats $list }); Level = $(if ($list.Count -gt 0) { "Bad" } elseif ($watching) { "Ok" } else { "Normal" }) })
         }
         elseif ($list.Count -gt 0) {
-            $rows.Add([PSCustomObject]@{ Label = "Ameaças no Defender"; Value = (Join-WinForgeList -Items $list); Level = "Warn" })
+            $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Ameaças no Defender'); Value = (Get-WinForgeThreatListText -Threats $list); Level = "Warn" })
         }
     }
     elseif ($Antivirus.Mode -eq "Active") {
         # Com outro antivírus no lugar, o Defender não responder é esperado; com ele ativo, é uma lacuna a dizer.
-        $rows.Add([PSCustomObject]@{ Label = "Ameaças ativas"; Value = "Não foi possível consultar"; Level = "Normal" })
+        $rows.Add([PSCustomObject]@{ Label = (Get-WinForgeText 'Ameaças ativas'); Value = (Get-WinForgeText 'Não foi possível consultar'); Level = "Normal" })
     }
 
     return $rows.ToArray()
@@ -567,18 +565,22 @@ function Get-WinForgeAntivirusRows {
 
 
 function Show-WinForgeSecurityStatus {
-    $title = "Estado da proteção"
+    $title = (Get-WinForgeText 'Estado da proteção')
 
     Enter-WinForgeAction -Title $title
 
     $result = $null
+    $search = $null
 
     try {
         # "Última verificação completa" tem 27 letras: com o tamanho padrão da coluna (24), os dois pontos saíam tortos.
         $labelWidth = 28
 
+        # A consulta ao Windows Update, a mais demorada, começa antes e corre enquanto o antivírus e o firewall são lidos.
+        $search = Start-WinForgePendingUpdatesSearch
+
         # O andamento vai na barra: uma linha "Consultando..." ficaria no resumo como se a consulta continuasse.
-        Write-Progress -Activity $title -Status "consultando o antivírus e o firewall"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'consultando o antivírus e o firewall')
 
         try {
             $status = Get-WinForgeSecurityStatus
@@ -589,47 +591,53 @@ function Show-WinForgeSecurityStatus {
 
         $antivirus = $status.Antivirus
 
-        Write-WinForgeSection -Title "Antivírus"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Antivírus')
 
         foreach ($row in @(Get-WinForgeAntivirusRows -Antivirus $antivirus -Threats $status.Threats)) {
             Write-WinForgeKeyValue -LabelWidth $labelWidth -Label $row.Label -Value $row.Value -Level $row.Level
         }
 
-        Write-WinForgeSection -Title "Firewall"
+        # Os nomes completos das ameaças, os que se procuram na internet, ficam nos detalhes técnicos.
+        $threatNames = @(@($status.Threats) | Where-Object { $_ })
+        if (@($threatNames | Where-Object { (Get-WinForgeThreatShortName -Name ([string]$_)) -ne [string]$_ }).Count -gt 0) {
+            Write-Host "      $($threatNames -join '; ')" -ForegroundColor DarkGray
+        }
+
+        Write-WinForgeSection -Title (Get-WinForgeText 'Firewall')
 
         if ($null -eq $status.Firewall) {
-            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label "Situação" -Value "Não foi possível ler"
+            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label (Get-WinForgeText 'Situação') -Value (Get-WinForgeText 'Não foi possível ler')
         }
         else {
             foreach ($firewallProfile in @($status.Firewall)) {
                 $product = [string](Get-WinForgeJsonValue -Object $firewallProfile -Name "Product" -Default "")
                 $applies = [bool](Get-WinForgeJsonValue -Object $firewallProfile -Name "Applies" -Default $true)
                 # O perfil Domínio só vale para um PC num domínio de empresa.
-                $value = $(if ($product) { "Protegido por $product" } elseif ($firewallProfile.Enabled) { "Ligado" } elseif (-not $applies) { "Desligado (não vale para este PC)" } else { "Desligado" })
+                $value = $(if ($product) { (Get-WinForgeText 'Protegido por {0}' "$product") } elseif ($firewallProfile.Enabled) { (Get-WinForgeText 'Ligado') } elseif (-not $applies) { (Get-WinForgeText 'Desligado (não vale para este PC)') } else { (Get-WinForgeText 'Desligado') })
                 $level = $(if ($firewallProfile.Enabled) { "Ok" } elseif (-not $applies) { "Normal" } else { "Bad" })
                 Write-WinForgeKeyValue -LabelWidth $labelWidth -Label (Get-WinForgeFirewallProfileName -Name $firewallProfile.Name) -Value $value -Level $level
             }
         }
 
         # O que já se sabe aparece antes; a consulta ao Windows Update, que pode demorar, vem por último.
-        Write-WinForgeSection -Title "Windows Update"
-        Write-Progress -Activity "Windows Update" -Status "procurando atualizações pendentes (pode levar até um minuto e meio)"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Windows Update')
+        Write-Progress -Activity (Get-WinForgeText 'Windows Update') -Status (Get-WinForgeText 'procurando atualizações pendentes (pode levar até um minuto e meio)')
 
         try {
-            $updates = Get-WinForgePendingWindowsUpdates
+            $updates = Get-WinForgePendingWindowsUpdates -Search $search
         }
         finally {
-            Write-Progress -Activity "Windows Update" -Completed
+            Write-Progress -Activity (Get-WinForgeText 'Windows Update') -Completed
         }
 
         if ($null -eq $updates) {
-            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label "Atualizações pendentes" -Value "Não foi possível consultar (o Windows Update demorou ou está indisponível)"
+            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label (Get-WinForgeText 'Atualizações pendentes') -Value (Get-WinForgeText 'Não foi possível consultar (o Windows Update demorou ou está indisponível)')
         }
         elseif ($updates.Count -eq 0) {
-            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label "Atualizações pendentes" -Value "Nenhuma" -Level Ok
+            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label (Get-WinForgeText 'Atualizações pendentes') -Value (Get-WinForgeText 'Nenhuma') -Level Ok
         }
         else {
-            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label "Atualizações pendentes" -Value $updates.Count -Level Warn
+            Write-WinForgeKeyValue -LabelWidth $labelWidth -Label (Get-WinForgeText 'Atualizações pendentes') -Value $updates.Count -Level Warn
 
             # Os nomes como mensagens: na janela, entram no resumo (linhas soltas só apareceriam nos detalhes técnicos).
             foreach ($updateTitle in @($updates.Titles | Select-Object -First 5)) {
@@ -637,11 +645,11 @@ function Show-WinForgeSecurityStatus {
             }
 
             if ($updates.Count -gt 5) {
-                Write-WinForgeStatus -Type Info -Message "E mais $(Format-WinForgeCount -Count ($updates.Count - 5) -One 'atualização' -Many 'atualizações')."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'E mais {0}.' "$(Format-WinForgeCount -Count ($updates.Count - 5) -One (Get-WinForgeText 'atualização') -Many (Get-WinForgeText 'atualizações'))")
             }
         }
 
-        Write-WinForgeSection -Title "Resumo"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Resumo')
 
         $findings = @(Get-WinForgeSecurityFindings -Antivirus $antivirus -Firewall $status.Firewall -Updates $updates -Threats $status.Threats)
 
@@ -650,19 +658,19 @@ function Show-WinForgeSecurityStatus {
         # leitura tem a própria mensagem (sem ele, nem se sabe se o PC está protegido); o resto vai numa frase só.
         $antivirusUnread = ($antivirus.Mode -eq "Unavailable")
         $unread = @()
-        if ($null -eq $status.Firewall) { $unread += "o firewall" }
-        if ($null -eq $status.Threats -and $antivirus.Mode -eq "Active") { $unread += "as ameaças ativas" }
-        if ($null -eq $updates) { $unread += "o Windows Update" }
+        if ($null -eq $status.Firewall) { $unread += (Get-WinForgeText 'o firewall') }
+        if ($null -eq $status.Threats -and $antivirus.Mode -eq "Active") { $unread += (Get-WinForgeText 'as ameaças ativas') }
+        if ($null -eq $updates) { $unread += (Get-WinForgeText 'o Windows Update') }
 
         $problems = @($findings | Where-Object { $_.Level -eq "Warning" -and $_.Id -ne "antivirus-unreadable" })
         $unreadText = Join-WinForgeList -Items $unread
-        $check = $(if ($null -eq $status.Firewall) { " Confira em Segurança > Segurança do Windows." } else { "" })
+        $check = $(if ($null -eq $status.Firewall) { (Get-WinForgeText ' Confira em Segurança > Segurança do Windows.') } else { "" })
 
         if ($problems.Count -eq 0 -and -not $antivirusUnread -and $unread.Count -eq 0) {
-            Write-WinForgeStatus -Type Success -Message "Nenhum ponto de atenção na proteção do PC."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhum ponto de atenção na proteção do PC.')
         }
         elseif ($problems.Count -eq 0 -and -not $antivirusUnread) {
-            Write-WinForgeStatus -Type Warning -Message "Nenhum ponto de atenção no que foi lido, mas não foi possível consultar $unreadText.$check"
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nenhum ponto de atenção no que foi lido, mas não foi possível consultar {0}.{1}' "$unreadText" "$check")
         }
 
         # A falta de leitura do firewall já está na frase acima (ou na abaixo): não repete.
@@ -671,26 +679,26 @@ function Show-WinForgeSecurityStatus {
         }
 
         if (($problems.Count -gt 0 -or $antivirusUnread) -and $unread.Count -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "Também não foi possível consultar $unreadText.$check"
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Também não foi possível consultar {0}.{1}' "$unreadText" "$check")
         }
 
         if ($antivirusUnread) {
-            $unread = @("o antivírus") + $unread
+            $unread = @((Get-WinForgeText 'o antivírus')) + $unread
             $unreadText = Join-WinForgeList -Items $unread
         }
 
         # A faixa diz o que foi encontrado, e não só a última mensagem.
         if ($problems.Count -gt 0) {
-            $detail = "$(Format-WinForgeCount -Count $problems.Count -One 'ponto de atenção' -Many 'pontos de atenção'): $(Join-WinForgeList -Items @($problems | ForEach-Object { $_.Short }))"
-            if ($unread.Count -gt 0) { $detail += "; não foi possível consultar $unreadText" }
+            $detail = "$(Format-WinForgeCount -Count $problems.Count -One (Get-WinForgeText 'ponto de atenção') -Many (Get-WinForgeText 'pontos de atenção')): $(Join-WinForgeList -Items @($problems | ForEach-Object { $_.Short }))"
+            if ($unread.Count -gt 0) { $detail += (Get-WinForgeText '; não foi possível consultar {0}' "$unreadText") }
 
             $result = New-WinForgeResult -Kind Warning -Detail $detail
         }
         elseif ($unread.Count -gt 0) {
-            $result = New-WinForgeResult -Kind Warning -Detail "nenhum ponto de atenção no que foi lido; não foi possível consultar $unreadText"
+            $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'nenhum ponto de atenção no que foi lido; não foi possível consultar {0}' "$unreadText")
         }
         else {
-            $result = New-WinForgeResult -Kind Ok -Detail "nenhum ponto de atenção"
+            $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum ponto de atenção')
         }
 
         # A faixa da janela: o título diz o que pede ação (um ponto pelo nome, vários pela conta), em vermelho quando o PC
@@ -703,31 +711,45 @@ function Show-WinForgeSecurityStatus {
         # Select-Object em vez de [0]: sem nenhum ponto, a lista vem vazia (e, com Set-StrictMode, o índice dá erro).
         $first = @(@($severe) + @($problems) + @($findings | Where-Object { $_.Id -eq "antivirus-unreadable" })) | Select-Object -First 1
         $step = $(if ($null -ne $first) { Get-WinForgeSecurityNextStep -Id $first.Id } else { $null })
-        $unreadNote = $(if ($unread.Count -gt 0) { "Não foi possível consultar $unreadText." } else { "" })
+        # Com a primeira letra em maiúscula: em inglês a frase começa pelo que faltou ("The antivirus could not be queried.").
+        $unreadNote = $(if ($unread.Count -gt 0) { ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'Não foi possível consultar {0}.' "$unreadText") } else { "" })
+
+        # Sem nenhum ponto pedindo ação, o firewall sem leitura também tem o botão para conferir.
+        if ($null -eq $step -and $null -eq $status.Firewall) { $step = Get-WinForgeSecurityNextStep -Id "firewall-unreadable" }
 
         if ($problems.Count -eq 1) {
             $headline = ConvertTo-WinForgeHeadline -Text $problems[0].Short
             $note = (@([string]$problems[0].Text, $unreadNote) | Where-Object { $_ }) -join " "
         }
         elseif ($problems.Count -gt 1) {
-            $headline = Format-WinForgeCount -Count $problems.Count -One "ponto de atenção" -Many "pontos de atenção"
+            $headline = Format-WinForgeCount -Count $problems.Count -One (Get-WinForgeText 'ponto de atenção') -Many (Get-WinForgeText 'pontos de atenção')
             $note = (@("$(ConvertTo-WinForgeHeadline -Text (Join-WinForgeList -Items @($problems | ForEach-Object { $_.Short }))).", $unreadNote) | Where-Object { $_ }) -join " "
         }
+        elseif ($antivirusUnread) {
+            # Sem saber se há um antivírus protegendo, "nenhum ponto de atenção" não é o que importa: o título diz o que faltou.
+            $others = @($unread | Select-Object -Skip 1)
+            $headline = ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'antivírus sem leitura')
+            $note = (@((Get-WinForgeText 'Não foi possível ler o estado do antivírus. Confira em Segurança > Segurança do Windows.'), $(if ($others.Count -gt 0) { ConvertTo-WinForgeHeadline -Text (Get-WinForgeText 'Não foi possível consultar {0}.' "$(Join-WinForgeList -Items $others)") })) | Where-Object { $_ }) -join " "
+        }
         elseif ($unread.Count -gt 0) {
-            $headline = "Nenhum ponto de atenção no que foi lido"
+            $headline = (Get-WinForgeText 'Nenhum ponto de atenção no que foi lido')
             $note = $unreadNote
         }
         else {
-            $headline = "Nenhum ponto de atenção"
-            $note = "Antivírus, firewall e atualizações do Windows em ordem."
+            $headline = (Get-WinForgeText 'Nenhum ponto de atenção')
+            $note = (Get-WinForgeText 'Antivírus, firewall e atualizações do Windows em ordem.')
         }
 
         $tone = $(if ($severe.Count -gt 0) { "Bad" } elseif ($problems.Count -gt 0 -or $unread.Count -gt 0) { "Warn" } else { "" })
         [void](Set-WinForgeResultView -Result $result -Headline $headline -Note $note -Tone $tone -Next $(if ($null -ne $step) { $step.Next } else { "" }) -NextLabel $(if ($null -ne $step) { $step.Label } else { "" }))
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao consultar a proteção do PC: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro ao consultar a proteção do PC: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
+    }
+    finally {
+        # Sem chegar a pedir a resposta (um erro antes dela, ou o Parar), a consulta não fica rodando.
+        Stop-WinForgeInBackground -Task $search
     }
 
     $result.Etapa = $title
@@ -749,12 +771,12 @@ function Test-WinForgeDefenderReady {
     é "Ignorado" (é com ele); o Defender desligado é falha (o PC está sem antivírus); em modo passivo ou sem resposta é
     ressalva (o PC pode estar desprotegido).
     #>
-    if (-not (Test-WinForgeElevation -Reason "Esta ação exige privilégios de Administrador.")) {
-        return [PSCustomObject]@{ Ready = $false; Result = (New-WinForgeResult -Kind Failed -Detail "requer Administrador"); Antivirus = $null }
+    if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Esta ação exige privilégios de Administrador.'))) {
+        return [PSCustomObject]@{ Ready = $false; Result = (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador')); Antivirus = $null }
     }
 
     $antivirus = Get-WinForgeAntivirusStatus
-    $open = "Abrir a Segurança do Windows"
+    $open = (Get-WinForgeText 'Abrir a Segurança do Windows')
     $result = $null
 
     switch ([string]$antivirus.Mode) {
@@ -767,49 +789,49 @@ function Test-WinForgeDefenderReady {
             $list = Join-WinForgeList -Items $names
 
             if ($names.Count -gt 1) {
-                Write-WinForgeStatus -Type Info -Message "Outros antivírus protegem este PC ($list): use um deles para verificar o PC."
-                $headline = "Outros antivírus protegem este PC"
-                $note = "Use um deles para verificar o PC: $list."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Outros antivírus protegem este PC ({0}): use um deles para verificar o PC.' "$list")
+                $headline = (Get-WinForgeText 'Outros antivírus protegem este PC')
+                $note = (Get-WinForgeText 'Use um deles para verificar o PC: {0}.' "$list")
             }
             elseif ($names.Count -eq 1) {
-                Write-WinForgeStatus -Type Info -Message "Outro antivírus protege este PC ($list): use-o para verificar o PC."
-                $headline = "Outro antivírus protege este PC"
-                $note = "Use o $list para verificar o PC."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Outro antivírus protege este PC ({0}): use-o para verificar o PC.' "$list")
+                $headline = (Get-WinForgeText 'Outro antivírus protege este PC')
+                $note = (Get-WinForgeText 'Use o {0} para verificar o PC.' "$list")
             }
             else {
-                Write-WinForgeStatus -Type Info -Message "Outro antivírus protege este PC: use-o para verificar o PC."
-                $headline = "Outro antivírus protege este PC"
-                $note = "Use-o para verificar o PC."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Outro antivírus protege este PC: use-o para verificar o PC.')
+                $headline = (Get-WinForgeText 'Outro antivírus protege este PC')
+                $note = (Get-WinForgeText 'Use-o para verificar o PC.')
             }
 
-            $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail "outro antivírus em uso") -Headline $headline -Note $note
+            $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'outro antivírus em uso')) -Headline $headline -Note $note
         }
         "Passive" {
-            Write-WinForgeStatus -Type Warning -Message "O Windows Defender está em modo passivo e nenhum outro antivírus ligado foi encontrado. Confira em Segurança > Segurança do Windows."
-            $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "o Windows Defender está em modo passivo") `
-                -Headline "O Windows Defender está em modo passivo" -Note "Nenhum outro antivírus ligado foi encontrado: o PC pode estar sem proteção." `
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows Defender está em modo passivo e nenhum outro antivírus ligado foi encontrado. Confira em Segurança > Segurança do Windows.')
+            $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows Defender está em modo passivo')) `
+                -Headline (Get-WinForgeText 'O Windows Defender está em modo passivo') -Note (Get-WinForgeText 'Nenhum outro antivírus ligado foi encontrado: o PC pode estar sem proteção.') `
                 -Tone Warn -Next "WindowsSecurityThreats" -NextLabel $open
         }
         "Off" {
-            Write-WinForgeStatus -Type Error -Message "O antivírus do Windows está desligado e nenhum outro está ligado. Ligue-o em Segurança > Segurança do Windows."
-            $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail "o antivírus está desligado") `
-                -Headline "Antivírus desligado" -Note "Nenhum antivírus protege o PC. Ligue o Windows Defender na Segurança do Windows." `
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'O antivírus do Windows está desligado e nenhum outro está ligado. Ligue-o em Segurança > Segurança do Windows.')
+            $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o antivírus está desligado')) `
+                -Headline (Get-WinForgeText 'Antivírus desligado') -Note (Get-WinForgeText 'Nenhum antivírus protege o PC. Ligue o Windows Defender na Segurança do Windows.') `
                 -Tone Bad -Next "WindowsSecurityThreats" -NextLabel $open
         }
         default {
             if ([bool](Get-WinForgeJsonValue -Object $antivirus -Name "DefenderRead" -Default $false)) {
                 # O Defender respondeu (desligado ou passivo), mas a Central de Segurança não: não dá para dizer se outro
                 # antivírus protege o PC, e "o serviço não respondeu" seria falso.
-                Write-WinForgeStatus -Type Warning -Message "O Windows Defender não está protegendo o PC, e não foi possível ver se outro antivírus está. Confira em Segurança > Segurança do Windows."
-                $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "não foi possível confirmar qual antivírus protege o PC") `
-                    -Headline "Não foi possível confirmar a proteção" -Note "O Windows Defender não está protegendo o PC, e não foi possível ver se outro antivírus está." `
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows Defender não está protegendo o PC, e não foi possível ver se outro antivírus está. Confira em Segurança > Segurança do Windows.')
+                $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não foi possível confirmar qual antivírus protege o PC')) `
+                    -Headline (Get-WinForgeText 'Não foi possível confirmar a proteção') -Note (Get-WinForgeText 'O Windows Defender não está protegendo o PC, e não foi possível ver se outro antivírus está.') `
                     -Tone Warn -Next "WindowsSecurityThreats" -NextLabel $open
             }
             else {
                 # Os comandos do Defender podem faltar neste Windows; o mais comum é o serviço parado.
-                Write-WinForgeStatus -Type Warning -Message "O Windows Defender não respondeu. Confira a proteção em Segurança > Segurança do Windows."
-                $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "o Windows Defender não respondeu") `
-                    -Headline "O Windows Defender não respondeu" -Note "Confira a proteção na Segurança do Windows." `
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows Defender não respondeu. Confira a proteção em Segurança > Segurança do Windows.')
+                $result = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows Defender não respondeu')) `
+                    -Headline (Get-WinForgeText 'O Windows Defender não respondeu') -Note (Get-WinForgeText 'Confira a proteção na Segurança do Windows.') `
                     -Tone Warn -Next "WindowsSecurityThreats" -NextLabel $open
             }
         }
@@ -856,11 +878,11 @@ function Invoke-WinForgeSignatureUpdate {
 
     $before = [string]$Current.SignatureVersion
 
-    Write-WinForgeSection -Title "Atualização do antivírus"
+    Write-WinForgeSection -Title (Get-WinForgeText 'Atualização do antivírus')
     Write-WinForgeCommand -Command "Update-MpSignature"
 
     # O andamento vai na barra: uma linha "Baixando..." ficaria no resumo depois de terminado.
-    Write-Progress -Activity "Windows Defender" -Status "baixando as assinaturas mais recentes"
+    Write-Progress -Activity (Get-WinForgeText 'Windows Defender') -Status (Get-WinForgeText 'baixando as assinaturas mais recentes')
 
     $failure = $null
     $after = $null
@@ -891,50 +913,50 @@ function Invoke-WinForgeSignatureUpdate {
                 $after = Get-WinForgeAntivirusStatus
             }
             catch {
-                Write-Host "      A segunda tentativa, direto da Microsoft, também falhou: $(Get-WinForgeDefenderErrorText -ErrorRecord $_)." -ForegroundColor DarkGray
+                Write-Host (Get-WinForgeText '      A segunda tentativa, direto da Microsoft, também falhou: {0}.' "$(Get-WinForgeDefenderErrorText -ErrorRecord $_)") -ForegroundColor DarkGray
             }
         }
     }
     finally {
-        Write-Progress -Activity "Windows Defender" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Windows Defender') -Completed
     }
 
     if ($null -ne $failure) {
         $info = Get-WinForgeDefenderErrorInfo -ErrorRecord $failure
-        Write-WinForgeStatus -Type Error -Message "O antivírus não foi atualizado: $($info.Full)."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'O antivírus não foi atualizado: {0}.' "$($info.Full)")
 
         # "Confira a internet" só quando o erro é de conexão: com outro motivo, despistaria.
         if ($info.Network) {
-            Write-WinForgeStatus -Type Info -Message "Confira a conexão com a internet e tente de novo."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Confira a conexão com a internet e tente de novo.')
         }
 
-        return (New-WinForgeResult -Kind Failed -Detail "o antivírus não foi atualizado: $($info.Text)" -Data @{ Caveat = "O antivírus não foi atualizado: $($info.Text)." })
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o antivírus não foi atualizado: {0}' "$($info.Text)") -Data @{ Caveat = (Get-WinForgeText 'O antivírus não foi atualizado: {0}.' "$($info.Text)") })
     }
 
     if ($null -eq $after.SignatureAgeDays) {
         # O Windows não devolveu a data das assinaturas: sem ela não dá para dizer "em dia".
-        Write-WinForgeStatus -Type Warning -Message "O Windows não informou a data das assinaturas; confira em Segurança > Segurança do Windows."
-        return (New-WinForgeResult -Kind Warning -Detail "não foi possível confirmar a data das assinaturas" -Data @{ SignatureVersion = $after.SignatureVersion; Caveat = "Não foi possível confirmar se o antivírus está atualizado." })
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows não informou a data das assinaturas; confira em Segurança > Segurança do Windows.')
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'não foi possível confirmar a data das assinaturas') -Data @{ SignatureVersion = $after.SignatureVersion; Caveat = (Get-WinForgeText 'Não foi possível confirmar se o antivírus está atualizado.') })
     }
 
     if ($after.SignatureAgeDays -gt 3) {
-        Write-WinForgeStatus -Type Warning -Message "O antivírus continua desatualizado: as assinaturas têm $($after.SignatureAgeDays) dias."
-        Write-Host "      Assinaturas: $(Get-WinForgeSignatureText -Antivirus $after)." -ForegroundColor DarkGray
-        return (New-WinForgeResult -Kind Warning -Detail "as assinaturas continuam com $($after.SignatureAgeDays) dias" -Data @{ SignatureVersion = $after.SignatureVersion; Caveat = "As assinaturas do antivírus continuam com $($after.SignatureAgeDays) dias." })
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O antivírus continua desatualizado: as assinaturas têm {0} dias.' "$($after.SignatureAgeDays)")
+        Write-Host (Get-WinForgeText '      Assinaturas: {0}.' "$(Get-WinForgeSignatureText -Antivirus $after)") -ForegroundColor DarkGray
+        return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'as assinaturas continuam com {0} dias' "$($after.SignatureAgeDays)") -Data @{ SignatureVersion = $after.SignatureVersion; Caveat = (Get-WinForgeText 'As assinaturas do antivírus continuam com {0} dias.' "$($after.SignatureAgeDays)") })
     }
 
     $changed = ($before -and $after.SignatureVersion -and $before -ne $after.SignatureVersion)
     $same = ($before -and $before -eq $after.SignatureVersion)
 
     # A linha do resumo é curta; a data e as versões ficam nos detalhes técnicos.
-    Write-WinForgeStatus -Type Success -Message $(if ($same) { "O antivírus já estava atualizado." } else { "Antivírus atualizado." })
-    Write-Host "      Assinaturas: $(Get-WinForgeSignatureText -Antivirus $after)$(if ($changed) { "; antes: $before" })." -ForegroundColor DarkGray
+    Write-WinForgeStatus -Type Success -Message $(if ($same) { (Get-WinForgeText 'O antivírus já estava atualizado.') } else { (Get-WinForgeText 'Antivírus atualizado.') })
+    Write-Host $(if ($changed) { (Get-WinForgeText '      Assinaturas: {0}; antes: {1}.' "$(Get-WinForgeSignatureText -Antivirus $after)" "$before") } else { (Get-WinForgeText '      Assinaturas: {0}.' "$(Get-WinForgeSignatureText -Antivirus $after)") }) -ForegroundColor DarkGray
 
     # A faixa diz se veio algo novo: com as assinaturas já em dia, o Windows não baixa nada, e isso também é "em dia".
     $detail = $(
-        if ($changed) { "assinaturas atualizadas agora" }
-        elseif ($same) { "as assinaturas já estavam em dia" }
-        else { "assinaturas em dia" }
+        if ($changed) { (Get-WinForgeText 'assinaturas atualizadas agora') }
+        elseif ($same) { (Get-WinForgeText 'as assinaturas já estavam em dia') }
+        else { (Get-WinForgeText 'assinaturas em dia') }
     )
 
     return (New-WinForgeResult -Kind Ok -Detail $detail -Data @{ SignatureVersion = $after.SignatureVersion })
@@ -953,14 +975,14 @@ function Get-WinForgeThreatStatusText {
     if ($null -ne $StatusId) { [void][int]::TryParse([string]$StatusId, [ref]$id) }
 
     switch ($id) {
-        2 { return [PSCustomObject]@{ Text = "limpa"; Resolved = $true } }
-        3 { return [PSCustomObject]@{ Text = "em quarentena"; Resolved = $true } }
-        4 { return [PSCustomObject]@{ Text = "removida"; Resolved = $true } }
-        6 { return [PSCustomObject]@{ Text = "bloqueada"; Resolved = $true } }
-        5 { return [PSCustomObject]@{ Text = "liberada por alguém"; Resolved = $false } }
-        { $_ -in 101, 102, 103, 104, 105, 107 } { return [PSCustomObject]@{ Text = "não resolvida"; Resolved = $false } }
-        1 { return [PSCustomObject]@{ Text = "pede ação"; Resolved = $false } }
-        default { return [PSCustomObject]@{ Text = "situação desconhecida"; Resolved = $false } }
+        2 { return [PSCustomObject]@{ Text = (Get-WinForgeText 'limpa'); Resolved = $true } }
+        3 { return [PSCustomObject]@{ Text = (Get-WinForgeText 'em quarentena'); Resolved = $true } }
+        4 { return [PSCustomObject]@{ Text = (Get-WinForgeText 'removida'); Resolved = $true } }
+        6 { return [PSCustomObject]@{ Text = (Get-WinForgeText 'bloqueada'); Resolved = $true } }
+        5 { return [PSCustomObject]@{ Text = (Get-WinForgeText 'liberada por alguém'); Resolved = $false } }
+        { $_ -in 101, 102, 103, 104, 105, 107 } { return [PSCustomObject]@{ Text = (Get-WinForgeText 'não resolvida'); Resolved = $false } }
+        1 { return [PSCustomObject]@{ Text = (Get-WinForgeText 'pede ação'); Resolved = $false } }
+        default { return [PSCustomObject]@{ Text = (Get-WinForgeText 'situação desconhecida'); Resolved = $false } }
     }
 }
 
@@ -996,10 +1018,10 @@ function Get-WinForgeDefenderNeedText {
     $texts = @(
         foreach ($need in @($Needs)) {
             switch ($need) {
-                "Reboot" { "para reiniciar o PC" }
-                "OfflineScan" { "a verificação offline" }
-                "FullScan" { "a verificação completa" }
-                default { "uma ação sua" }
+                "Reboot" { (Get-WinForgeText 'para reiniciar o PC') }
+                "OfflineScan" { (Get-WinForgeText 'a verificação offline') }
+                "FullScan" { (Get-WinForgeText 'a verificação completa') }
+                default { (Get-WinForgeText 'uma ação sua') }
             }
         }
     )
@@ -1021,15 +1043,15 @@ function Get-WinForgeThreatShortName {
     $category = $Matches["category"]
 
     $kind = switch -Regex ($category) {
-        '^(?i)ransom' { "ransomware"; break }
+        '^(?i)ransom' { (Get-WinForgeText 'ransomware'); break }
         '^(?i)(trojanspy|spyware|pws|keylogger)$' { "spyware"; break }
-        '^(?i)trojan' { "trojan"; break }
+        '^(?i)trojan' { (Get-WinForgeText 'trojan'); break }
         '^(?i)backdoor$' { "backdoor"; break }
         '^(?i)worm$' { "worm"; break }
-        '^(?i)virus$' { "vírus"; break }
-        '^(?i)(pua|softwarebundler|app$)' { "programa indesejado"; break }
-        '^(?i)behavior$' { "comportamento suspeito"; break }
-        '^(?i)(hacktool|virtool)$' { "ferramenta de invasão"; break }
+        '^(?i)virus$' { (Get-WinForgeText 'vírus'); break }
+        '^(?i)(pua|softwarebundler|app$)' { (Get-WinForgeText 'programa indesejado'); break }
+        '^(?i)behavior$' { (Get-WinForgeText 'comportamento suspeito'); break }
+        '^(?i)(hacktool|virtool)$' { (Get-WinForgeText 'ferramenta de invasão'); break }
         '^(?i)exploit$' { "exploit"; break }
         '^(?i)(adware|browsermodifier)$' { "adware"; break }
         default { "" }
@@ -1048,7 +1070,7 @@ function Get-WinForgeDetectionIds {
     foi possível ler.
     #>
     try {
-        $all = @(Get-MpThreatDetection -ErrorAction Stop)
+        $all = @(Invoke-WinForgeCimCommand -Name "Get-MpThreatDetection")
     }
     catch {
         return $null
@@ -1079,7 +1101,7 @@ function Get-WinForgeScanDetections {
     )
 
     try {
-        $detections = @(Get-MpThreatDetection -ErrorAction Stop)
+        $detections = @(Invoke-WinForgeCimCommand -Name "Get-MpThreatDetection")
     }
     catch {
         return $null
@@ -1098,13 +1120,14 @@ function Get-WinForgeScanDetections {
         }
     )
 
-    # Os nomes e as ameaças ainda ativas numa consulta só; sem ela, os nomes vêm um a um e as de antes ficam sem leitura.
+    # Os nomes e as ameaças ainda ativas numa consulta só. Sem ela (o Defender não respondeu), a ameaça fica com o Id e as
+    # de antes, sem leitura: perguntar o nome de uma em uma esperaria o mesmo prazo de novo a cada ameaça.
     $names = @{}
     $active = @()
     $threatsRead = $false
 
     try {
-        foreach ($threat in @(Get-MpThreat -ErrorAction Stop)) {
+        foreach ($threat in @(Invoke-WinForgeCimCommand -Name "Get-MpThreat")) {
             $id = [string](Get-WinForgeJsonValue -Object $threat -Name "ThreatID" -Default "")
             $name = [string](Get-WinForgeJsonValue -Object $threat -Name "ThreatName" -Default "")
             if ($id -and $name) { $names[$id] = $name }
@@ -1149,15 +1172,15 @@ function Get-WinForgeScanDetections {
         $waiting = $false
 
         if ($status.Resolved -and $actionOk -eq $false) {
-            $status = [PSCustomObject]@{ Text = "não resolvida"; Resolved = $false }
+            $status = [PSCustomObject]@{ Text = (Get-WinForgeText 'não resolvida'); Resolved = $false }
         }
         elseif ($status.Resolved -and $needs.Count -gt 0) {
             # O Defender agiu e só espera um passo do PC: reiniciar, a verificação completa ou a offline.
-            $status = [PSCustomObject]@{ Text = "pede $(Get-WinForgeDefenderNeedText -Needs $needs)"; Resolved = $false }
+            $status = [PSCustomObject]@{ Text = (Get-WinForgeText 'pede {0}' "$(Get-WinForgeDefenderNeedText -Needs $needs)"); Resolved = $false }
             $waiting = $true
         }
 
-        $name = $(if ($names.ContainsKey($threatId)) { $names[$threatId] } else { Get-WinForgeThreatName -ThreatId $threatId })
+        $name = $(if ($names.ContainsKey($threatId)) { $names[$threatId] } else { (Get-WinForgeText 'ameaça {0}' "$(if ($threatId) { $threatId } else { '?' })") })
 
         $found += [PSCustomObject]@{
             ThreatID  = $threatId
@@ -1182,14 +1205,14 @@ function Get-WinForgeScanDetections {
             if ($id -and $foundIds -contains $id) { continue }
 
             $name = [string](Get-WinForgeJsonValue -Object $threat -Name "ThreatName" -Default "")
-            if ([string]::IsNullOrWhiteSpace($name)) { $name = "ameaça $(if ($id) { $id } else { '?' })" }
+            if ([string]::IsNullOrWhiteSpace($name)) { $name = (Get-WinForgeText 'ameaça {0}' "$(if ($id) { $id } else { '?' })") }
 
             $leftover += [PSCustomObject]@{
                 ThreatID  = $id
                 Name      = $name
                 ShortName = (Get-WinForgeThreatShortName -Name $name)
                 Resources = @(Get-WinForgeJsonValue -Object $threat -Name "Resources" -Default @() | ForEach-Object { $_ })
-                Status    = "ativa desde antes"
+                Status    = (Get-WinForgeText 'ativa desde antes')
                 Resolved  = $false
                 Needs     = @()
                 Waiting   = $false
@@ -1212,7 +1235,7 @@ function ConvertTo-WinForgeThreatResourceText {
 
     $text = [string]$Resource
 
-    if ($text -match '^(?i)(process|behavior):_pid:([0-9]+)') { return "programa em execução (processo $($Matches[2]))" }
+    if ($text -match '^(?i)(process|behavior):_pid:([0-9]+)') { return (Get-WinForgeText 'programa em execução (processo {0})' "$($Matches[2])") }
 
     $text = ($text -replace '^(?i)[a-z]+:_', '')
     if ($text.Contains("|")) { $text = $text.Substring(0, $text.IndexOf("|")) }
@@ -1236,13 +1259,13 @@ function Write-WinForgeThreatLine {
         $first = [string]$places[0]
 
         # Só o nome do arquivo (as barras do Windows, também quando o texto vem de outro sistema).
-        if ($first -notmatch '^programa em execução') {
+        if ($first -notlike (Get-WinForgeText 'programa em execução (processo {0})' '*')) {
             $segments = @($first -split '[\\/]' | Where-Object { $_ })
             if ($segments.Count -gt 0) { $first = [string]$segments[$segments.Count - 1] }
         }
 
         $line += " · $first"
-        if ($places.Count -gt 1) { $line += " e mais $($places.Count - 1)" }
+        if ($places.Count -gt 1) { $line += (Get-WinForgeText ' e mais {0}' "$($places.Count - 1)") }
     }
 
     Write-WinForgeStatus -Type $(if ($Threat.Resolved) { "Success" } else { "Error" }) -Message $line
@@ -1269,14 +1292,15 @@ function Write-WinForgeScanIntro {
     # pedir ação.
     switch ($Type) {
         "Full" {
-            Write-WinForgeStatus -Type Info -Message "Examina todos os arquivos: leva horas e deixa o PC mais lento."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Examina todos os arquivos: leva horas e deixa o PC mais lento.')
 
-            # Por padrão, a completa não entra em pen drives e discos USB: quem espera que eles sejam examinados precisa saber.
+            # Com DisableRemovableDriveScanning, a completa não entra nas unidades removíveis (pendrives e cartões de memória),
+            # e a de uma pasta, sim: quem espera que elas sejam examinadas precisa saber.
             if ((Get-WinForgeDefenderPreference -Name "DisableRemovableDriveScanning") -eq $true) {
-                Write-WinForgeStatus -Type Info -Message "Pen drives e discos USB ficam de fora; para eles, use Segurança > Verificar uma pasta."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Pendrives e cartões de memória ficam de fora; para eles, use Segurança > Verificar uma pasta.')
             }
         }
-        "Custom" { Write-WinForgeStatus -Type Info -Message "Examina somente: $Path" }
+        "Custom" { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Examina somente: {0}' "$Path") }
     }
 }
 
@@ -1294,15 +1318,15 @@ function Get-WinForgeScanDurationText {
     )
 
     switch ($Type) {
-        "Full" { return "pode levar horas" }
-        "Custom" { return "examinando $Path" }
+        "Full" { return (Get-WinForgeText 'pode levar horas') }
+        "Custom" { return (Get-WinForgeText 'examinando {0}' "$Path") }
     }
 
     $minutes = Get-WinForgeJsonValue -Object $Antivirus -Name "QuickScanMinutes" -Default $null
 
-    if ($null -ne $minutes) { return "a última levou cerca de $minutes min" }
+    if ($null -ne $minutes) { return (Get-WinForgeText 'a última levou cerca de {0} min' "$minutes") }
 
-    return "costuma levar de 2 a 15 minutos"
+    return (Get-WinForgeText 'costuma levar de 2 a 15 minutos')
 }
 
 
@@ -1346,39 +1370,39 @@ function Get-WinForgeDefenderErrorInfo {
     $code = Get-WinForgeDefenderErrorCode -ErrorRecord $ErrorRecord
 
     $text = switch ($code) {
-        "0x80072EE7" { "o PC não encontrou o servidor, sem internet ou sem DNS" }
-        "0x8024402C" { "o PC não encontrou o servidor, sem internet, sem DNS ou com o proxy errado" }
-        "0x80072EFD" { "não foi possível conectar ao servidor, sem internet ou com um firewall ou proxy bloqueando" }
-        "0x80072EFE" { "a conexão com o servidor caiu" }
-        "0x80072EE2" { "a conexão com o servidor esgotou o tempo" }
-        "0x8024401C" { "o servidor de atualizações demorou demais para responder" }
-        "0x80244022" { "o servidor de atualizações está sobrecarregado; tente mais tarde" }
-        "0x8024401B" { "o proxy pede usuário e senha" }
-        "0x80072F8F" { "a conexão segura com o servidor falhou; confira a data e a hora do PC" }
-        "0x80072F78" { "o servidor respondeu com dados inválidos" }
-        "0x80070652" { "outra instalação está em andamento; tente de novo em alguns minutos" }
-        "0x80070422" { "um serviço de que a atualização precisa, geralmente o Windows Update, está desativado" }
-        "0x80240022" { "o Windows Update não conseguiu instalar a atualização" }
-        "0x8024402F" { "o Windows Update encontrou erros no pacote da atualização" }
-        "0x800106BA" { "o serviço do Windows Defender não iniciou" }
-        "0x8007139F" { "o Windows Defender não está pronto: desligado ou substituído por outro antivírus" }
-        "0x800704EC" { "uma política do Windows bloqueia o Windows Defender" }
-        "0x80070005" { "o Windows negou o acesso" }
-        "0x80508018" { "a verificação foi interrompida antes do fim" }
-        "0x80508007" { "faltou memória para o Windows Defender" }
-        "0x8050800C" { "o Windows Defender teve um erro interno; reinicie o PC e tente de novo" }
-        "0x80508023" { "a ameaça não está mais no lugar, ou algo impediu a verificação" }
-        "0x80508031" { "o Windows Defender está desatualizado; atualize o Windows" }
+        "0x80072EE7" { (Get-WinForgeText 'o PC não encontrou o servidor, sem internet ou sem DNS') }
+        "0x8024402C" { (Get-WinForgeText 'o PC não encontrou o servidor, sem internet, sem DNS ou com o proxy errado') }
+        "0x80072EFD" { (Get-WinForgeText 'não foi possível conectar ao servidor, sem internet ou com um firewall ou proxy bloqueando') }
+        "0x80072EFE" { (Get-WinForgeText 'a conexão com o servidor caiu') }
+        "0x80072EE2" { (Get-WinForgeText 'a conexão com o servidor esgotou o tempo') }
+        "0x8024401C" { (Get-WinForgeText 'o servidor de atualizações demorou demais para responder') }
+        "0x80244022" { (Get-WinForgeText 'o servidor de atualizações está sobrecarregado; tente mais tarde') }
+        "0x8024401B" { (Get-WinForgeText 'o proxy pede usuário e senha') }
+        "0x80072F8F" { (Get-WinForgeText 'a conexão segura com o servidor falhou; confira a data e a hora do PC') }
+        "0x80072F78" { (Get-WinForgeText 'o servidor respondeu com dados inválidos') }
+        "0x80070652" { (Get-WinForgeText 'outra instalação está em andamento; tente de novo em alguns minutos') }
+        "0x80070422" { (Get-WinForgeText 'um serviço de que a atualização precisa, geralmente o Windows Update, está desativado') }
+        "0x80240022" { (Get-WinForgeText 'o Windows Update não conseguiu instalar a atualização') }
+        "0x8024402F" { (Get-WinForgeText 'o Windows Update encontrou erros no pacote da atualização') }
+        "0x800106BA" { (Get-WinForgeText 'o serviço do Windows Defender não iniciou') }
+        "0x8007139F" { (Get-WinForgeText 'o Windows Defender não está pronto: desligado ou substituído por outro antivírus') }
+        "0x800704EC" { (Get-WinForgeText 'uma política do Windows bloqueia o Windows Defender') }
+        "0x80070005" { (Get-WinForgeText 'o Windows negou o acesso') }
+        "0x80508018" { (Get-WinForgeText 'a verificação foi interrompida antes do fim') }
+        "0x80508007" { (Get-WinForgeText 'faltou memória para o Windows Defender') }
+        "0x8050800C" { (Get-WinForgeText 'o Windows Defender teve um erro interno; reinicie o PC e tente de novo') }
+        "0x80508023" { (Get-WinForgeText 'a ameaça não está mais no lugar, ou algo impediu a verificação') }
+        "0x80508031" { (Get-WinForgeText 'o Windows Defender está desatualizado; atualize o Windows') }
         default { "" }
     }
 
     if ($text) {
-        return [PSCustomObject]@{ Text = $text; Full = "$text (erro $code)"; Code = $code; Network = (Test-WinForgeDefenderNetworkError -ErrorRecord $ErrorRecord) }
+        return [PSCustomObject]@{ Text = $text; Full = (Get-WinForgeText '{0} (erro {1})' "$text" "$code"); Code = $code; Network = (Test-WinForgeDefenderNetworkError -ErrorRecord $ErrorRecord) }
     }
 
     $message = (ConvertTo-WinForgeReadableError -Text $message).Trim().TrimEnd(".")
     $full = $message
-    if ($code -and $message -notmatch [regex]::Escape($code.Substring(2))) { $full += " (erro $code)" }
+    if ($code -and $message -notmatch [regex]::Escape($code.Substring(2))) { $full += (Get-WinForgeText ' (erro {0})' "$code") }
 
     return [PSCustomObject]@{ Text = $message; Full = $full; Code = $code; Network = (Test-WinForgeDefenderNetworkError -ErrorRecord $ErrorRecord) }
 }
@@ -1397,7 +1421,7 @@ function Get-WinForgeDefenderPreference {
     param ([Parameter(Mandatory)][string]$Name)
 
     try {
-        return (Get-WinForgeJsonValue -Object (Get-MpPreference -ErrorAction Stop) -Name $Name -Default $null)
+        return (Get-WinForgeJsonValue -Object (@(Invoke-WinForgeCimCommand -Name "Get-MpPreference")[0]) -Name $Name -Default $null)
     }
     catch {
         return $null
@@ -1488,15 +1512,15 @@ function Write-WinForgeScanStopped {
     param ([Parameter(Mandatory)][string]$Type)
 
     if ($Type -eq "Custom") {
-        Write-WinForgeStatus -Type Warning -Message "Verificação interrompida; o Windows Defender pode continuar examinando a pasta até o fim."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Verificação interrompida; o Windows Defender pode continuar examinando a pasta até o fim.')
         return
     }
 
     if (Stop-WinForgeDefenderScan) {
-        Write-WinForgeStatus -Type Warning -Message "Verificação cancelada."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Verificação cancelada.')
     }
     else {
-        Write-WinForgeStatus -Type Warning -Message "Verificação interrompida; o Windows Defender pode continuar até o fim. Confira em Segurança > Segurança do Windows."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Verificação interrompida; o Windows Defender pode continuar até o fim. Confira em Segurança > Segurança do Windows.')
     }
 }
 
@@ -1521,7 +1545,7 @@ function Get-WinForgeScanFinish {
         $status = $null
 
         try {
-            $status = Get-MpComputerStatus -ErrorAction Stop
+            $status = @(Invoke-WinForgeCimCommand -Name "Get-MpComputerStatus")[0]
         }
         catch {
             $status = $null
@@ -1559,14 +1583,14 @@ function ConvertTo-WinForgeScanFailure {
 
     $message = $(if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) { [string]$ErrorRecord.Exception.Message } else { [string]$ErrorRecord })
 
-    if ($message -match '(?i)scan is already in progress|verifica\S* j\S* est\S* em andamento') {
-        Write-WinForgeStatus -Type Warning -Message "Já havia uma verificação do Windows Defender em andamento; verifique de novo quando ela terminar."
-        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "outra verificação do Windows Defender já estava em andamento" -Data @{ ScanType = $Type }) `
-            -Headline "Já havia uma verificação em andamento" -Note "Verifique de novo quando ela terminar." -Tone Warn)
+    if ($message -match '(?i)scan is already in progress|verifica\S* j\S* est\S* em andamento|ya (hay|se est\S*) .{0,40}en curso') {
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Já havia uma verificação do Windows Defender em andamento; verifique de novo quando ela terminar.')
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'outra verificação do Windows Defender já estava em andamento') -Data @{ ScanType = $Type }) `
+            -Headline (Get-WinForgeText 'Já havia uma verificação em andamento') -Note (Get-WinForgeText 'Verifique de novo quando ela terminar.') -Tone Warn)
     }
 
     $info = Get-WinForgeDefenderErrorInfo -ErrorRecord $ErrorRecord
-    Write-WinForgeStatus -Type Error -Message "A verificação não foi concluída: $($info.Full)."
+    Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A verificação não foi concluída: {0}.' "$($info.Full)")
 
     return (New-WinForgeResult -Kind Failed -Detail $info.Text -Data @{ ScanType = $Type })
 }
@@ -1592,7 +1616,7 @@ function Get-WinForgeScanOutcome {
     $pendingFound = @($found | Where-Object { -not [bool]$_.Resolved })
     $pendingCount = $pendingFound.Count + $leftover.Count
     $unconfirmed = ($Finish.Confirmed -eq $false)
-    $open = "Abrir a Segurança do Windows"
+    $open = (Get-WinForgeText 'Abrir a Segurança do Windows')
     $data = @{ ScanType = $Type; ThreatCount = $found.Count; PendingThreats = $pendingCount; ActiveThreats = $leftover.Count }
 
     foreach ($threat in @($found) + @($leftover)) {
@@ -1600,89 +1624,97 @@ function Get-WinForgeScanOutcome {
     }
 
     if ($unconfirmed) {
-        Write-WinForgeStatus -Type Warning -Message "O Windows Defender não registrou o fim da verificação; ela pode ter sido interrompida."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows Defender não registrou o fim da verificação; ela pode ter sido interrompida.')
     }
 
-    $foundText = Format-WinForgeCount -Count $found.Count -One "ameaça encontrada" -Many "ameaças encontradas"
-    $unconfirmedText = "o Windows Defender não confirmou o fim da verificação"
+    $foundText = Format-WinForgeCount -Count $found.Count -One (Get-WinForgeText 'ameaça encontrada') -Many (Get-WinForgeText 'ameaças encontradas')
+    $unconfirmedText = (Get-WinForgeText 'o Windows Defender não confirmou o fim da verificação')
 
     if ($pendingCount -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "Escolha o que fazer com $(if ($pendingCount -eq 1) { 'ela' } else { 'elas' }) em Segurança > Segurança do Windows."
-
         $parts = @()
-        if ($found.Count -gt 0) { $parts += $foundText } else { $parts += "nenhuma ameaça nova" }
-        if ($pendingFound.Count -gt 0) { $parts += (Format-WinForgeCount -Count $pendingFound.Count -One "ainda pede ação" -Many "ainda pedem ação") }
-        if ($leftover.Count -gt 0) { $parts += (Format-WinForgeCount -Count $leftover.Count -One "ameaça de antes ainda ativa" -Many "ameaças de antes ainda ativas") }
+        if ($found.Count -gt 0) { $parts += $foundText } else { $parts += (Get-WinForgeText 'nenhuma ameaça nova') }
+        if ($pendingFound.Count -gt 0) { $parts += (Format-WinForgeCount -Count $pendingFound.Count -One (Get-WinForgeText 'ainda pede ação') -Many (Get-WinForgeText 'ainda pedem ação')) }
+        if ($leftover.Count -gt 0) { $parts += (Format-WinForgeCount -Count $leftover.Count -One (Get-WinForgeText 'ameaça de antes ainda ativa') -Many (Get-WinForgeText 'ameaças de antes ainda ativas')) }
         if ($unconfirmed) { $parts += $unconfirmedText }
 
         # O que falta, quando o Defender já agiu em todas as pendentes e elas só esperam o mesmo passo do PC: reiniciar,
         # ou a verificação completa.
         $needs = @($pendingFound | ForEach-Object { @($_.Needs) } | Select-Object -Unique)
         $allNeed = ($leftover.Count -eq 0 -and @($pendingFound | Where-Object { -not [bool]$_.Waiting }).Count -eq 0)
-        $note = "O Windows Defender não resolveu sozinho."
+        $note = (Get-WinForgeText 'O Windows Defender não resolveu sozinho.')
         $next = "WindowsSecurityThreats"
         $nextLabel = $open
 
         if ($allNeed -and $needs.Count -eq 1 -and $needs[0] -eq "Reboot") {
-            $note = "Reinicie o PC para o Windows Defender terminar a limpeza."
+            $note = (Get-WinForgeText 'Reinicie o PC para o Windows Defender terminar a limpeza.')
+            $data["RestartNeeded"] = $true
         }
         elseif ($allNeed -and $needs.Count -eq 1 -and $needs[0] -eq "FullScan") {
-            $note = "O Windows Defender pede a verificação completa."
+            $note = (Get-WinForgeText 'O Windows Defender pede a verificação completa.')
             $next = "security.full-scan"
-            $nextLabel = "Fazer a verificação completa"
+            $nextLabel = (Get-WinForgeText 'Fazer a verificação completa')
         }
 
+        # A linha do resumo diz o mesmo que a faixa: quando falta só reiniciar (ou a completa), "escolha o que fazer na
+        # Segurança do Windows" mandaria a pessoa procurar uma escolha que não existe.
+        Write-WinForgeStatus -Type Info -Message $(
+            if ($note -ne (Get-WinForgeText 'O Windows Defender não resolveu sozinho.')) { $note }
+            elseif ($pendingCount -eq 1) { (Get-WinForgeText 'Escolha o que fazer com ela em Segurança > Segurança do Windows.') }
+            else { (Get-WinForgeText 'Escolha o que fazer com elas em Segurança > Segurança do Windows.') }
+        )
+
         $result = New-WinForgeResult -Kind Warning -Detail ($parts -join "; ") -Data $data
-        return (Set-WinForgeResultView -Result $result -Headline (Format-WinForgeCount -Count $pendingCount -One "ameaça pede ação" -Many "ameaças pedem ação") `
+        return (Set-WinForgeResultView -Result $result -Headline (Format-WinForgeCount -Count $pendingCount -One (Get-WinForgeText 'ameaça pede ação') -Many (Get-WinForgeText 'ameaças pedem ação')) `
             -Note $note -Tone Bad -Next $next -NextLabel $nextLabel)
     }
 
-    $resolvedText = "$foundText; $(if ($found.Count -eq 1) { 'resolvida' } else { 'todas resolvidas' }) pelo Windows Defender"
+    $resolvedText = $(if ($found.Count -eq 1) { (Get-WinForgeText '{0}; resolvida pelo Windows Defender' "$foundText") } else { (Get-WinForgeText '{0}; todas resolvidas pelo Windows Defender' "$foundText") })
     $needs = @($Finish.Needs)
 
     if ($needs.Count -gt 0) {
         # Nada pendente, mas o Defender ainda pede um passo ao PC (reiniciar depois de limpar, a verificação completa).
         $needText = Get-WinForgeDefenderNeedText -Needs $needs
-        Write-WinForgeStatus -Type Warning -Message "O Windows Defender pede $needText. Veja em Segurança > Segurança do Windows."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows Defender pede {0}. Veja em Segurança > Segurança do Windows.' "$needText")
 
-        $parts = @($(if ($found.Count -gt 0) { $resolvedText } else { "nenhuma ameaça encontrada" }), "o Windows Defender pede $needText")
+        $parts = @($(if ($found.Count -gt 0) { $resolvedText } else { (Get-WinForgeText 'nenhuma ameaça encontrada') }), (Get-WinForgeText 'o Windows Defender pede {0}' "$needText"))
         if ($unconfirmed) { $parts += $unconfirmedText }
 
         $fullScanOnly = ($needs.Count -eq 1 -and $needs[0] -eq "FullScan")
+        if ($needs.Count -eq 1 -and $needs[0] -eq "Reboot") { $data["RestartNeeded"] = $true }
         $result = New-WinForgeResult -Kind Warning -Detail ($parts -join "; ") -Data $data
 
-        return (Set-WinForgeResultView -Result $result -Headline $(if ($needs.Count -eq 1) { "O Windows Defender pede $needText" } else { "O Windows Defender pede mais um passo" }) `
-            -Note $(if ($found.Count -gt 0) { "$(Format-WinForgeCount -Count $found.Count -One 'ameaça encontrada e resolvida' -Many 'ameaças encontradas e resolvidas')." } else { "Nenhuma ameaça encontrada nesta verificação." }) `
-            -Tone Warn -Next $(if ($fullScanOnly) { "security.full-scan" } else { "WindowsSecurityThreats" }) -NextLabel $(if ($fullScanOnly) { "Fazer a verificação completa" } else { $open }))
+        return (Set-WinForgeResultView -Result $result -Headline $(if ($needs.Count -eq 1) { (Get-WinForgeText 'O Windows Defender pede {0}' "$needText") } else { (Get-WinForgeText 'O Windows Defender pede mais um passo') }) `
+            -Note $(if ($found.Count -gt 0) { "$(Format-WinForgeCount -Count $found.Count -One (Get-WinForgeText 'ameaça encontrada e resolvida') -Many (Get-WinForgeText 'ameaças encontradas e resolvidas'))." } else { (Get-WinForgeText 'Nenhuma ameaça encontrada nesta verificação.') }) `
+            -Tone Warn -Next $(if ($fullScanOnly) { "security.full-scan" } else { "WindowsSecurityThreats" }) -NextLabel $(if ($fullScanOnly) { (Get-WinForgeText 'Fazer a verificação completa') } else { $open }))
     }
 
     if ($unconfirmed) {
-        $result = New-WinForgeResult -Kind Warning -Detail "$(if ($found.Count -gt 0) { $resolvedText } else { 'nenhuma ameaça encontrada' }); $unconfirmedText" -Data $data
-        return (Set-WinForgeResultView -Result $result -Headline "A verificação pode ter parado antes do fim" -Note "Verifique de novo para ter certeza." -Tone Warn)
+        $result = New-WinForgeResult -Kind Warning -Detail "$(if ($found.Count -gt 0) { $resolvedText } else { (Get-WinForgeText 'nenhuma ameaça encontrada') }); $unconfirmedText" -Data $data
+        return (Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'A verificação pode ter parado antes do fim') -Note (Get-WinForgeText 'Verifique de novo para ter certeza.') -Tone Warn)
     }
 
     if ($found.Count -gt 0) {
         $result = New-WinForgeResult -Kind Ok -Detail $resolvedText -Data $data
-        return (Set-WinForgeResultView -Result $result -Headline (Format-WinForgeCount -Count $found.Count -One "ameaça resolvida" -Many "ameaças resolvidas") `
-            -Note "O Windows Defender já cuidou $(if ($found.Count -eq 1) { 'dela' } else { 'delas' }); o histórico fica na Segurança do Windows.")
+        return (Set-WinForgeResultView -Result $result -Headline (Format-WinForgeCount -Count $found.Count -One (Get-WinForgeText 'ameaça resolvida') -Many (Get-WinForgeText 'ameaças resolvidas')) `
+            -Note $(if ($found.Count -eq 1) { (Get-WinForgeText 'O Windows Defender já cuidou dela; o histórico fica na Segurança do Windows.') } else { (Get-WinForgeText 'O Windows Defender já cuidou delas; o histórico fica na Segurança do Windows.') }))
     }
 
     if ($NetworkNote) {
-        Write-WinForgeStatus -Type Warning -Message "Verificação concluída: nenhuma ameaça encontrada, mas os arquivos de rede podem não ter sido examinados."
-        $result = New-WinForgeResult -Kind Warning -Detail "nenhuma ameaça encontrada; os arquivos de rede podem não ter sido examinados" -Data $data
-        return (Set-WinForgeResultView -Result $result -Headline "Nenhum vírus encontrado" -Note "Mas os arquivos de rede podem não ter sido examinados." -Tone Warn)
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Verificação concluída: nenhuma ameaça encontrada, mas os arquivos de rede podem não ter sido examinados.')
+        $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'nenhuma ameaça encontrada; os arquivos de rede podem não ter sido examinados') -Data $data
+        return (Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Nenhum vírus encontrado') -Note (Get-WinForgeText 'Mas os arquivos de rede podem não ter sido examinados.') -Tone Warn)
     }
 
-    Write-WinForgeStatus -Type Success -Message "Verificação concluída: nenhuma ameaça encontrada."
+    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Verificação concluída: nenhuma ameaça encontrada.')
 
     $note = switch ($Type) {
-        "Quick" { "Verificação rápida concluída." }
-        "Full" { "Verificação completa concluída." }
-        default { "Verificado: $Path" }
+        "Quick" { (Get-WinForgeText 'Verificação rápida concluída.') }
+        "Full" { (Get-WinForgeText 'Verificação completa concluída.') }
+        default { (Get-WinForgeText 'Verificado: {0}' "$Path") }
     }
 
     # A faixa diz tudo: o resumo só repetiria.
-    return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "nenhuma ameaça encontrada" -Data $data) -Headline "Nenhum vírus encontrado" -Note $note -HideSummary)
+    return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhuma ameaça encontrada') -Data $data) -Headline (Get-WinForgeText 'Nenhum vírus encontrado') -Note $note -HideSummary)
 }
 
 
@@ -1698,16 +1730,43 @@ function Test-WinForgeScanPath {
     $complete = ($Path -match '^[A-Za-z]:[\\/]' -or $Path -match '^[\\/]{2}[^\\/]' -or ([System.IO.Path]::DirectorySeparatorChar -eq '/' -and $Path.StartsWith('/')))
 
     if (-not $complete) {
-        Write-WinForgeStatus -Type Error -Message "Informe o caminho completo, com a unidade (por exemplo, D:\Fotos): $Path"
-        return (New-WinForgeResult -Kind Failed -Detail "caminho incompleto")
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Informe o caminho completo, com a unidade (por exemplo, D:\Fotos): {0}' "$Path")
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'caminho incompleto'))
     }
 
     if (-not (Test-Path -LiteralPath $Path)) {
-        Write-WinForgeStatus -Type Error -Message "Pasta ou arquivo não encontrado: $Path"
-        return (New-WinForgeResult -Kind Failed -Detail "caminho não encontrado")
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Pasta ou arquivo não encontrado: {0}' "$Path")
+        $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'caminho não encontrado')
+        $note = Get-WinForgeMissingDriveNote -Path $Path
+
+        if ($note) {
+            Write-WinForgeStatus -Type Info -Message $note
+            [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Pasta ou arquivo não encontrado') -Note $note -Tone Bad)
+        }
+
+        return $result
     }
 
     return $null
+}
+
+
+function Get-WinForgeMissingDriveNote {
+    <#
+    Para um caminho cuja unidade não existe para o WinForge (Z:\Documentos): aberto como Administrador, ele não vê as
+    unidades de rede mapeadas na sessão comum, porque cada mapeamento vale só para a sessão em que foi criado. Devolve a
+    frase que diz isso e o que fazer, ou "" quando a unidade existe, o caminho não começa por uma letra ou o WinForge não
+    está como Administrador.
+    #>
+    param ([AllowEmptyString()][string]$Path)
+
+    if ($Path -notmatch '^([A-Za-z]):') { return "" }
+
+    $drive = "$($Matches[1].ToUpperInvariant()):"
+
+    if ((Test-Path -LiteralPath "$drive\") -or -not (Test-WinForgeAdministrator)) { return "" }
+
+    return (Get-WinForgeText 'A unidade {0} não aparece para o WinForge. Se é uma unidade de rede, use o caminho da rede (\\servidor\pasta): aberto como Administrador, o WinForge não vê as unidades mapeadas.' "$drive")
 }
 
 
@@ -1715,8 +1774,9 @@ function Invoke-WinForgeDefenderScan {
     <#
     Roda uma verificação do Defender (Quick, Full ou Custom com -Path) e devolve um WinForge.Result, já com o título da
     faixa da janela. Data traz ScanType, ThreatCount (as achadas por esta verificação), PendingThreats (as que ainda pedem
-    ação, inclusive as de antes) e ActiveThreats (as de antes ainda ativas). Não abre nem fecha a ação (quem chama faz
-    isso).
+    ação, inclusive as de antes), ActiveThreats (as de antes ainda ativas) e, quando o Defender só espera reiniciar o PC
+    para terminar a limpeza, RestartNeeded (Request-WinForgeScanRestart oferece o reinício). Não abre nem fecha a ação
+    (quem chama faz isso).
     #>
     param (
         [Parameter(Mandatory)]
@@ -1766,14 +1826,14 @@ function Invoke-WinForgeDefenderScan {
     }
 
     # O título da fase: na janela, é a frase em destaque enquanto a verificação roda.
-    Write-WinForgeSection -Title $(switch ($Type) { "Quick" { "Verificação rápida" } "Full" { "Verificação completa" } default { "Verificação da pasta" } })
+    Write-WinForgeSection -Title $(switch ($Type) { "Quick" { (Get-WinForgeText 'Verificação rápida') } "Full" { (Get-WinForgeText 'Verificação completa') } default { (Get-WinForgeText 'Verificação da pasta') } })
 
     if (-not $SkipIntro) {
         Write-WinForgeScanIntro -Type $Type -Path $Path
     }
 
     if ($networkNote) {
-        Write-WinForgeStatus -Type Warning -Message "O Windows Defender está configurado para não examinar arquivos de rede: verifique esta pasta no PC onde ela está."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows Defender está configurado para não examinar arquivos de rede: verifique esta pasta no PC onde ela está.')
     }
 
     Write-WinForgeCommand -Command $command
@@ -1788,7 +1848,7 @@ function Invoke-WinForgeDefenderScan {
 
     # Sem porcentagem: o Defender só responde quando termina. A barra indeterminada mostra que ainda está trabalhando, e a
     # linha diz quanto costuma levar (uma linha "Verificando..." ficaria no resumo depois do fim).
-    Write-Progress -Activity "Windows Defender" -Status $estimate
+    Write-Progress -Activity (Get-WinForgeText 'Windows Defender') -Status $estimate
 
     $finished = $false
     $scanStart = Get-Date
@@ -1802,7 +1862,7 @@ function Invoke-WinForgeDefenderScan {
         return (ConvertTo-WinForgeScanFailure -ErrorRecord $_ -Type $Type)
     }
     finally {
-        Write-Progress -Activity "Windows Defender" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Windows Defender') -Completed
 
         if ($awake) { [void](Set-WinForgeKeepAwake -Enabled $false) }
 
@@ -1821,13 +1881,30 @@ function Invoke-WinForgeDefenderScan {
     $scan = Get-WinForgeScanDetections -Since $scanStart.AddSeconds(-5) -Known $known
 
     if ($null -eq $scan) {
-        Write-WinForgeStatus -Type Warning -Message "A verificação terminou, mas não foi possível consultar o resultado. Confira em Segurança > Segurança do Windows."
-        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail "resultado não consultado" -Data @{ ScanType = $Type }) `
-            -Headline "Não foi possível ler o resultado" -Note "A verificação terminou, mas o Windows não deixou consultar o que ela achou." `
-            -Tone Warn -Next "WindowsSecurityThreats" -NextLabel "Abrir a Segurança do Windows")
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A verificação terminou, mas não foi possível consultar o resultado. Confira em Segurança > Segurança do Windows.')
+        return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'resultado não consultado') -Data @{ ScanType = $Type }) `
+            -Headline (Get-WinForgeText 'Não foi possível ler o resultado') -Note (Get-WinForgeText 'A verificação terminou, mas o Windows não deixou consultar o que ela achou.') `
+            -Tone Warn -Next "WindowsSecurityThreats" -NextLabel (Get-WinForgeText 'Abrir a Segurança do Windows'))
     }
 
     return (Get-WinForgeScanOutcome -Type $Type -Path $Path -Scan $scan -Finish $finish -NetworkNote $networkNote)
+}
+
+
+function Request-WinForgeScanRestart {
+    <#
+    Depois de uma verificação em que o Windows Defender só espera reiniciar o PC para terminar a limpeza (Data.RestartNeeded,
+    de Get-WinForgeScanOutcome): oferece reiniciar ali mesmo, com o Depois como padrão, como o reparo da rede. Quem chama
+    não oferece dentro do Otimizar (-Embedded), que tem o próprio fim.
+    #>
+    param ([Parameter(Mandatory)]$Result)
+
+    if (-not [bool](Get-WinForgeResultData -Result $Result -Name "RestartNeeded")) { return }
+
+    Request-WinForgeRestartOffer -Reason (Get-WinForgeText 'Reiniciar agora deixa o Windows Defender terminar a limpeza.') `
+        -Comment (Get-WinForgeText 'Reinicialização solicitada pelo WinForge para o Windows Defender terminar a limpeza.') `
+        -DeclinedMessage (Get-WinForgeText 'O PC não foi reiniciado. O Windows Defender termina a limpeza quando você reiniciar.') `
+        -Fallback (Get-WinForgeText 'Reinicie o PC para o Windows Defender terminar a limpeza.')
 }
 
 
@@ -1841,7 +1918,7 @@ function Update-WinForgeDefenderSignatures {
         [switch]$PassThru
     )
 
-    Enter-WinForgeAction -Title "Atualizar assinaturas do antivírus" -Embedded:$Embedded
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Atualizar assinaturas do antivírus') -Embedded:$Embedded
 
     $result = $null
 
@@ -1849,11 +1926,11 @@ function Update-WinForgeDefenderSignatures {
         $result = Invoke-WinForgeSignatureUpdate
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro ao atualizar as assinaturas: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro ao atualizar as assinaturas: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
-    $result.Etapa = "Atualizar assinaturas do antivírus"
+    $result.Etapa = (Get-WinForgeText 'Atualizar assinaturas do antivírus')
     Exit-WinForgeAction -Embedded:$Embedded -Result $result
 
     if ($PassThru) {
@@ -1868,7 +1945,7 @@ function Start-WinForgeFullScan {
         [switch]$PassThru
     )
 
-    Enter-WinForgeAction -Title "Verificação completa de vírus" -Embedded:$Embedded
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Verificação completa de vírus') -Embedded:$Embedded
 
     $result = $null
 
@@ -1885,14 +1962,14 @@ function Start-WinForgeFullScan {
 
             # Horas de disco e processador esgotam a bateria de um notebook (e a verificação recomeça do zero).
             if (Test-WinForgeOnBattery) {
-                Write-WinForgeStatus -Type Warning -Notice -Message "O notebook está na bateria: conecte o carregador, a verificação completa pode levar horas."
+                Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'O notebook está na bateria: conecte o carregador, a verificação completa pode levar horas.')
             }
 
             Write-Host ""
 
-            if (-not $Embedded -and -not (Confirm-WinForgeAction "Deseja começar a verificação completa agora?" -DefaultKey N)) {
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+            if (-not $Embedded -and -not (Confirm-WinForgeAction (Get-WinForgeText 'Deseja começar a verificação completa agora?') -DefaultKey N -YesLabel (Get-WinForgeText 'Começar') -NoLabel (Get-WinForgeText 'Agora não'))) {
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             else {
                 # Horas de verificação com as assinaturas de dias atrás deixariam passar o que surgiu nesse meio-tempo: o
@@ -1900,15 +1977,16 @@ function Start-WinForgeFullScan {
                 $update = Invoke-WinForgeSignatureUpdate -AssumeReady -Current $ready.Antivirus
                 $scan = Invoke-WinForgeDefenderScan -Type Full -AssumeReady -Current $ready.Antivirus -SkipIntro
                 $result = Join-WinForgeSecurityCheckResult -Update $update -Scan $scan
+                if (-not $Embedded) { Request-WinForgeScanRestart -Result $result }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na verificação: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na verificação: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
-    $result.Etapa = "Verificação completa de vírus"
+    $result.Etapa = (Get-WinForgeText 'Verificação completa de vírus')
     Exit-WinForgeAction -Embedded:$Embedded -Result $result
 
     if ($PassThru) {
@@ -1937,9 +2015,40 @@ function ConvertTo-WinForgeScanPath {
 }
 
 
+function Get-WinForgeRemovableDrives {
+    <#
+    Os pendrives e cartões de memória conectados (as unidades removíveis do Windows), para oferecê-los como destino:
+    Root ("E:\") e Label ("E: (KINGSTON)"). Um leitor de cartão sem cartão também é uma unidade removível, mas sem tamanho
+    (Size vazio): fica de fora, porque escolhê-lo só daria "não encontrado". Vazio quando não há nenhum ou o Windows não
+    respondeu.
+    #>
+    $drives = @()
+
+    try {
+        foreach ($drive in @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType = 2" -OperationTimeoutSec 15 -ErrorAction Stop)) {
+            $letter = [string](Get-WinForgeJsonValue -Object $drive -Name "DeviceID" -Default "")
+            if (-not $letter) { continue }
+
+            if ($null -ne $drive.PSObject.Properties["Size"]) {
+                $size = 0L
+                if (-not [int64]::TryParse([string]$drive.Size, [ref]$size) -or $size -le 0) { continue }
+            }
+
+            $name = [string](Get-WinForgeJsonValue -Object $drive -Name "VolumeName" -Default "")
+            $drives += [PSCustomObject]@{ Root = "$letter\"; Label = $(if ($name) { "$letter ($name)" } else { $letter }) }
+        }
+    }
+    catch {
+        Write-Verbose "Unidades removíveis: $($_.Exception.Message)"
+    }
+
+    return @($drives)
+}
+
+
 function Select-WinForgeScanTarget {
-    # Pergunta o que verificar: as pastas mais comuns em botões, ou um caminho digitado. Devolve o caminho, ou "" quando
-    # a pessoa cancela.
+    # Pergunta o que verificar: as pastas mais comuns e os pendrives conectados em botões, ou um caminho digitado. Devolve
+    # o caminho, ou "" quando a pessoa cancela.
     $options = @()
     $downloads = ""
     $desktop = ""
@@ -1948,22 +2057,34 @@ function Select-WinForgeScanTarget {
     try { $desktop = [string][Environment]::GetFolderPath("Desktop") } catch { $desktop = "" }
 
     if ($downloads -and (Test-Path -LiteralPath $downloads -PathType Container)) {
-        $options += @{ Key = "D"; Label = "Downloads"; Description = $downloads; Accent = $true }
+        $options += @{ Key = "D"; Label = (Get-WinForgeText 'Downloads'); Description = $downloads; Accent = $true }
     }
 
     if ($desktop -and (Test-Path -LiteralPath $desktop -PathType Container)) {
-        $options += @{ Key = "A"; Label = "Área de Trabalho"; Description = $desktop }
+        $options += @{ Key = "A"; Label = (Get-WinForgeText 'Área de Trabalho'); Description = $desktop }
     }
 
-    $options += @{ Key = "O"; Label = "Outra pasta ou arquivo"; Description = "por exemplo D:\Fotos" }
-    $options += @{ Key = "C"; Label = "Cancelar"; Exit = $true }
+    # Os pendrives conectados: a verificação completa pode deixá-los de fora (Write-WinForgeScanIntro manda vir aqui).
+    $drives = @{}
+    $position = 0
 
-    $choice = Read-WinForgeChoice -Message "O que deseja verificar?" -Options $options -DefaultKey "C" -ShowMenu
+    foreach ($drive in @(Get-WinForgeRemovableDrives | Select-Object -First 9)) {
+        $position++
+        $drives[[string]$position] = $drive.Root
+        $options += @{ Key = [string]$position; Label = $drive.Label; Description = (Get-WinForgeText 'pendrive ou cartão de memória') }
+    }
+
+    $options += @{ Key = "O"; Label = (Get-WinForgeText 'Outra pasta ou arquivo'); Description = (Get-WinForgeText 'por exemplo D:\Fotos') }
+    $options += @{ Key = "C"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
+
+    $choice = [string](Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja verificar?') -Options $options -DefaultKey "C" -ShowMenu)
+
+    if ($drives.ContainsKey($choice)) { return $drives[$choice] }
 
     switch ($choice) {
         "D" { return $downloads }
         "A" { return $desktop }
-        "O" { return (ConvertTo-WinForgeScanPath -Text (Read-WinForgeText -Message "Cole o caminho da pasta ou do arquivo (ENTER cancela)")) }
+        "O" { return (ConvertTo-WinForgeScanPath -Text (Read-WinForgeText -Message (Get-WinForgeText 'Cole o caminho da pasta ou do arquivo (ENTER cancela)'))) }
         default { return "" }
     }
 }
@@ -1975,7 +2096,7 @@ function Start-WinForgeFolderScan {
         [switch]$PassThru
     )
 
-    Enter-WinForgeAction -Title "Verificar uma pasta" -Embedded:$Embedded
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Verificar uma pasta') -Embedded:$Embedded
 
     $result = $null
 
@@ -1991,8 +2112,8 @@ function Start-WinForgeFolderScan {
             $invalid = $(if ([string]::IsNullOrWhiteSpace($path)) { $null } else { Test-WinForgeScanPath -Path $path })
 
             if ([string]::IsNullOrWhiteSpace($path)) {
-                Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-                $result = New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+                $result = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário')
             }
             elseif ($null -ne $invalid) {
                 # O caminho errado é dito antes de atualizar o antivírus: a atualização seria trabalho à toa.
@@ -2003,15 +2124,16 @@ function Start-WinForgeFolderScan {
                 $update = Invoke-WinForgeSignatureUpdate -AssumeReady -Current $ready.Antivirus
                 $scan = Invoke-WinForgeDefenderScan -Type Custom -Path $path -AssumeReady -Current $ready.Antivirus
                 $result = Join-WinForgeSecurityCheckResult -Update $update -Scan $scan
+                if (-not $Embedded) { Request-WinForgeScanRestart -Result $result }
             }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na verificação: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na verificação: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
-    $result.Etapa = "Verificar uma pasta"
+    $result.Etapa = (Get-WinForgeText 'Verificar uma pasta')
     Exit-WinForgeAction -Embedded:$Embedded -Result $result
 
     if ($PassThru) {
@@ -2038,9 +2160,9 @@ function Join-WinForgeSecurityCheckResult {
             $scanNote = ([string](Get-WinForgeResultData -Result $Scan -Name "Note")).Trim()
 
             $Scan.Data["Note"] = switch ([string](Get-WinForgeResultData -Result $Scan -Name "ScanType")) {
-                "Full" { "Antivírus atualizado e verificação completa concluída." }
-                "Custom" { $(if ($scanNote) { "Antivírus atualizado; " + $scanNote.Substring(0, 1).ToLowerInvariant() + $scanNote.Substring(1) } else { "Antivírus atualizado e pasta verificada." }) }
-                default { "Antivírus atualizado e verificação rápida concluída." }
+                "Full" { (Get-WinForgeText 'Antivírus atualizado e verificação completa concluída.') }
+                "Custom" { $(if ($scanNote) { (Get-WinForgeText 'Antivírus atualizado; ') + $scanNote.Substring(0, 1).ToLowerInvariant() + $scanNote.Substring(1) } else { (Get-WinForgeText 'Antivírus atualizado e pasta verificada.') }) }
+                default { (Get-WinForgeText 'Antivírus atualizado e verificação rápida concluída.') }
             }
         }
 
@@ -2060,7 +2182,7 @@ function Join-WinForgeSecurityCheckResult {
     if ([string]$Scan.Kind -eq "Ok") {
         # O resumo mostra a linha da atualização que não deu certo: ele não fica escondido.
         $headline = [string](Get-WinForgeResultData -Result $Scan -Name "Headline")
-        [void](Set-WinForgeResultView -Result $result -Headline $(if ($headline) { $headline } else { "Nenhum vírus encontrado" }) `
+        [void](Set-WinForgeResultView -Result $result -Headline $(if ($headline) { $headline } else { (Get-WinForgeText 'Nenhum vírus encontrado') }) `
             -Note ([string](Get-WinForgeResultData -Result $Update -Name "Caveat")) -Tone Warn)
     }
     elseif ([string]$Scan.Kind -eq "Failed") {
@@ -2069,7 +2191,7 @@ function Join-WinForgeSecurityCheckResult {
         $reason = ([string]$Scan.Detail).Trim().TrimEnd(".").Trim()
         if ($reason) { $reason = $reason.Substring(0, 1).ToUpperInvariant() + $reason.Substring(1) + ". " }
 
-        [void](Set-WinForgeResultView -Result $result -Headline "A verificação não foi concluída" -Note "${reason}O antivírus também não foi atualizado." -Tone Bad)
+        [void](Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'A verificação não foi concluída') -Note (Get-WinForgeText '{0}O antivírus também não foi atualizado.' "${reason}") -Tone Bad)
     }
 
     return $result
@@ -2087,7 +2209,7 @@ function Invoke-WinForgeSecurityCheck {
         [switch]$PassThru
     )
 
-    Enter-WinForgeAction -Title "Verificar vírus" -Embedded:$Embedded
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Verificar vírus') -Embedded:$Embedded
 
     $result = $null
 
@@ -2102,14 +2224,17 @@ function Invoke-WinForgeSecurityCheck {
             $update = Invoke-WinForgeSignatureUpdate -AssumeReady -Current $ready.Antivirus
             $scan = Invoke-WinForgeDefenderScan -Type Quick -AssumeReady -Current $ready.Antivirus
             $result = Join-WinForgeSecurityCheckResult -Update $update -Scan $scan
+
+            # No Otimizar, a pergunta não aparece no meio (ele tem o próprio fim).
+            if (-not $Embedded) { Request-WinForgeScanRestart -Result $result }
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na verificação de vírus: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na verificação de vírus: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
-    $result.Etapa = "Verificar vírus"
+    $result.Etapa = (Get-WinForgeText 'Verificar vírus')
     Exit-WinForgeAction -Embedded:$Embedded -Result $result
 
     if ($PassThru) {
@@ -2122,17 +2247,21 @@ function Invoke-WinForgeSecurityCheck {
 # Auditoria de segurança (somente leitura)
 # ---------------------------------------------------------------------------
 
-function Get-WinForgeGuestAccountEnabled {
-    # A conta Convidado tem sempre o SID terminado em -501, qualquer que seja o idioma do Windows. $null = não foi possível ler.
+function Get-WinForgeGuestAccount {
+    <#
+    A conta Convidado: Enabled e Name, o nome dela neste Windows ("Convidado", "Guest", "Invitado", ou o que uma política
+    deu). Ela tem sempre o SID terminado em -501, qualquer que seja o idioma; o nome muda com o idioma em que o Windows foi
+    instalado, e não com o da tela do WinForge. $null = não foi possível ler.
+    #>
     try {
         $guest = @(Get-LocalUser -ErrorAction Stop | Where-Object { $_.SID.Value -like "*-501" } | Select-Object -First 1)
 
         # Sem a conta Convidado (removida da imagem do Windows), não há o que entrar sem senha.
         if ($guest.Count -eq 0) {
-            return $false
+            return [PSCustomObject]@{ Enabled = $false; Name = "" }
         }
 
-        return [bool]$guest[0].Enabled
+        return [PSCustomObject]@{ Enabled = [bool]$guest[0].Enabled; Name = [string]$guest[0].Name }
     }
     catch {
         return $null
@@ -2198,6 +2327,33 @@ function Get-WinForgeBitLockerState {
 }
 
 
+function Get-WinForgeMemoryIntegrityState {
+    <#
+    A integridade da memória (Segurança do Windows > Segurança do dispositivo > Isolamento de núcleo; HVCI): "On" (em uso),
+    "Pending" (configurada, mas fora de uso: falta reiniciar, ou o PC não conseguiu usá-la), "Off" ou $null quando não
+    foi possível ler. A leitura é a que a Microsoft indica, a classe Win32_DeviceGuard: o valor 2 em
+    SecurityServicesRunning diz que ela está em uso, e em SecurityServicesConfigured, que está configurada. Só lê: alguns
+    drivers e programas não funcionam com ela, e ligá-la é escolha da pessoa.
+    #>
+    try {
+        $guard = @(Get-CimInstance -Namespace "root\Microsoft\Windows\DeviceGuard" -ClassName "Win32_DeviceGuard" -OperationTimeoutSec 15 -ErrorAction Stop) | Select-Object -First 1
+    }
+    catch {
+        return $null
+    }
+
+    if ($null -eq $guard) { return $null }
+
+    $running = @(Get-WinForgeJsonValue -Object $guard -Name "SecurityServicesRunning" -Default @() | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+    $configured = @(Get-WinForgeJsonValue -Object $guard -Name "SecurityServicesConfigured" -Default @() | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+
+    if ($running -contains "2") { return "On" }
+    if ($configured -contains "2") { return "Pending" }
+
+    return "Off"
+}
+
+
 function Get-WinForgeSecurityAuditFacts {
     <#
     Lê, sem alterar nada, o que a auditoria avalia. Cada leitura que falha vira $null ("não verificado"), nunca erro.
@@ -2214,7 +2370,10 @@ function Get-WinForgeSecurityAuditFacts {
     # O nível "Nunca notificar" do UAC deixa EnableLUA em 1 e zera ConsentPromptBehaviorAdmin: os programas ganham
     # Administrador sem perguntar.
     $uacPrompt = Get-WinForgeRegistryValueOrNull -Path $system -Name "ConsentPromptBehaviorAdmin"
-    $denyRdp = Get-WinForgeRegistryValueOrNull -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections"
+    # A Área de Trabalho Remota: a política (de grupo, ou do MDM da empresa), quando configurada, decide no lugar da chave
+    # que a tela do Windows grava; sem ela, vale essa chave.
+    $denyRdpPolicy = Get-WinForgeRegistryValueOrNull -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Name "fDenyTSConnections"
+    $denyRdp = $(if ($null -ne $denyRdpPolicy) { $denyRdpPolicy } else { Get-WinForgeRegistryValueOrNull -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" })
     # O Secure Boot com a mesma leitura do Diagnóstico (Sobre este PC): o modo de inicialização, o Registro (legível sem
     # Administrador) e, sem ele, a consulta do Windows. "Legacy" = o Windows iniciou no modo BIOS legado.
     $secureBootState = [string](Get-WinForgeSecureBootState)
@@ -2231,6 +2390,7 @@ function Get-WinForgeSecurityAuditFacts {
     $autoLogon = Get-WinForgeRegistryValueOrNull -Path $winlogon -Name "AutoAdminLogon"
     $storedPassword = Get-WinForgeRegistryValueOrNull -Path $winlogon -Name "DefaultPassword"
     $currentVersion = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+    $guest = Get-WinForgeGuestAccount
 
     return [PSCustomObject]@{
         Antivirus        = Get-WinForgeAntivirusStatus
@@ -2242,12 +2402,17 @@ function Get-WinForgeSecurityAuditFacts {
         SmartScreenOff   = ($explorerSmartScreen -eq "Off" -or ($null -ne $policySmartScreen -and [int]$policySmartScreen -eq 0))
         SmartScreenSet   = ($smartScreenSet -or ($null -ne $policySmartScreen -and [string]$policySmartScreen -eq "1"))
         RdpEnabled       = $(if ($null -eq $denyRdp) { $null } else { [int]$denyRdp -eq 0 })
-        GuestEnabled     = Get-WinForgeGuestAccountEnabled
+        RdpByPolicy      = ($null -ne $denyRdpPolicy)
+        GuestEnabled     = $(if ($null -eq $guest) { $null } else { [bool]$guest.Enabled })
+        GuestName        = $(if ($null -eq $guest) { "" } else { [string]$guest.Name })
+        # Sem Administrador, o Windows nega algumas leituras (as ameaças guardadas, o SMB 1.0 e o BitLocker): a linha diz isso.
+        Administrator    = [bool](Test-WinForgeAdministrator)
         AutoLogon        = ([string]$autoLogon -eq "1")
         PasswordStored   = (-not [string]::IsNullOrEmpty([string]$storedPassword))
         BitLocker        = Get-WinForgeBitLockerState
         Smb1             = Get-WinForgeSmb1State
         SecureBoot       = $secureBoot
+        MemoryIntegrity  = Get-WinForgeMemoryIntegrityState
         WindowsBuild     = Get-WinForgeWindowsBuild
         WindowsRevision  = Get-WinForgeWindowsRevision
         WindowsEdition   = Get-WinForgeWindowsEditionId
@@ -2285,7 +2450,8 @@ function New-WinForgeAuditCheck {
         Status   = $Status
         Weight   = $Weight
         Detail   = $Detail
-        Advice   = $(if ($Status -in "Warn", "Bad") { $Advice } else { "" })
+        # Num ponto que só informa (peso 0), o conselho vale também com tudo certo: o BitLocker ligado lembra de guardar a chave.
+        Advice   = $(if ($Status -in "Warn", "Bad" -or $Weight -eq 0) { $Advice } else { "" })
         Critical = [bool]$Critical
     }
 }
@@ -2303,56 +2469,56 @@ function Get-WinForgeWindowsSupportCheck {
         $Facts
     )
 
-    $title = "Suporte do Windows"
+    $title = (Get-WinForgeText 'Suporte do Windows')
     $build = [int]$Facts.WindowsBuild
     $edition = [string](Get-WinForgeJsonValue -Object $Facts -Name "WindowsEdition" -Default "")
     $displayVersion = [string](Get-WinForgeJsonValue -Object $Facts -Name "WindowsVersion" -Default "")
 
     if ($build -lt 10240) {
-        return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail "Não foi possível identificar a versão")
+        return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail (Get-WinForgeText 'Não foi possível identificar a versão'))
     }
 
     try {
         $status = Get-WinForgeWindowsSupportStatus -Build $build -EditionId $edition -Revision (Get-WinForgeJsonValue -Object $Facts -Name "WindowsRevision") -Today ([datetime]$Facts.Now).Date
     }
     catch {
-        return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail "Não foi possível conferir as datas de suporte")
+        return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail (Get-WinForgeText 'Não foi possível conferir as datas de suporte'))
     }
 
     $label = [string]$status.Product
-    if ($status.Class -eq "Ltsc") { $label += $(if ($edition -match '^IoT') { " (IoT Enterprise LTSC)" } else { " (LTSC)" }) }
+    if ($status.Class -eq "Ltsc") { $label += $(if ($edition -match '^IoT') { " (IoT Enterprise LTSC)" } else { (Get-WinForgeText ' (LTSC)') }) }
 
     $endText = $(if ($status.EndDate -is [datetime]) { Format-WinForgeDateTime -When $status.EndDate -Pattern "dd/MM/yyyy" } else { "" })
     $advice = ([string]$status.Advice).TrimEnd(".")
 
     switch ([string]$status.State) {
         "Supported" {
-            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Ok -Weight 15 -Detail "${label}: correções de segurança até $endText")
+            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Ok -Weight 15 -Detail (Get-WinForgeText '{0}: correções de segurança até {1}' "${label}" "$endText"))
         }
         "EndingSoon" {
-            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Warn -Weight 15 -Detail $(if ([int]$status.DaysLeft -le 0) { "${label}: as correções de segurança terminam hoje ($endText)" } else { "${label}: as correções de segurança acabam em $endText ($(Get-WinForgeSupportDaysText -Days $status.DaysLeft))" }) -Advice $advice)
+            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Warn -Weight 15 -Detail $(if ([int]$status.DaysLeft -le 0) { (Get-WinForgeText '{0}: as correções de segurança terminam hoje ({1})' "${label}" "$endText") } else { (Get-WinForgeText '{0}: as correções de segurança acabam em {1} ({2})' "${label}" "$endText" "$(Get-WinForgeSupportDaysText -Days $status.DaysLeft)") }) -Advice $advice)
         }
         "Esu" {
-            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Warn -Weight 15 -Detail "${label}: correções pelo programa ESU$(if ($status.EsuEnd -is [datetime]) { " até $(Format-WinForgeDateTime -When $status.EsuEnd -Pattern 'dd/MM/yyyy')" } else { ' da organização' }); o suporte normal acabou em $endText" -Advice $advice)
+            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Warn -Weight 15 -Detail (Get-WinForgeText '{0}: correções pelo programa ESU{1}; o suporte normal acabou em {2}' "${label}" "$(if ($status.EsuEnd -is [datetime]) { (Get-WinForgeText ' até {0}' "$(Format-WinForgeDateTime -When $status.EsuEnd -Pattern 'dd/MM/yyyy')") } else { (Get-WinForgeText ' da organização') })" "$endText") -Advice $advice)
         }
         "EsuAvailable" {
             if (-not [bool]$status.EsuChecked) {
                 # Sem a build instalada, não dá para dizer se o PC está no ESU: fica como não verificado.
-                return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail "${label}: o suporte gratuito terminou em $endText e não foi possível conferir o programa ESU")
+                return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail (Get-WinForgeText '{0}: o suporte gratuito terminou em {1} e não foi possível conferir o programa ESU' "${label}" "$endText"))
             }
 
-            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Bad -Weight 15 -Detail "${label}: o suporte gratuito terminou em $endText, e nenhuma correção do programa ESU foi instalada" -Advice $advice)
+            return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Bad -Weight 15 -Detail (Get-WinForgeText '{0}: o suporte gratuito terminou em {1}, e nenhuma correção do programa ESU foi instalada' "${label}" "$endText") -Advice $advice)
         }
         "Ended" {
-            $since = $(if ($endText) { "a última correção de segurança saiu em $endText" } else { "sem correções de segurança" })
+            $since = $(if ($endText) { (Get-WinForgeText 'a última correção de segurança saiu em {0}' "$endText") } else { (Get-WinForgeText 'sem correções de segurança') })
             return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Bad -Weight 15 -Detail "${label}: $since" -Advice $advice)
         }
     }
 
     # Fora da lista de datas (Windows 11 mais novo que ela, prévia do Insider): o nome, sem prometer prazo.
-    $unknownLabel = $(if ($displayVersion) { "Windows 11 versão $displayVersion" } else { $label })
+    $unknownLabel = $(if ($displayVersion) { (Get-WinForgeText 'Windows 11 versão {0}' "$displayVersion") } else { $label })
 
-    return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail "${unknownLabel}: versão fora da lista de datas do WinForge")
+    return (New-WinForgeAuditCheck -Id "windows-support" -Title $title -Status Unknown -Weight 15 -Detail (Get-WinForgeText '{0}: versão fora da lista de datas do WinForge' "${unknownLabel}"))
 }
 
 
@@ -2366,68 +2532,78 @@ function Get-WinForgeSecurityAuditChecks {
     $checks = @()
     $antivirus = $Facts.Antivirus
 
+    # O que o Windows nega sem Administrador diz isso na própria linha, e não "não foi possível ler" (ou um motivo errado).
+    $needsAdmin = (-not [bool](Get-WinForgeJsonValue -Object $Facts -Name "Administrator" -Default $true))
+    $adminText = (Get-WinForgeText 'Pede o WinForge aberto como Administrador')
+
     # Antivírus
     switch ($antivirus.Mode) {
         "Active" {
-            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title "Antivírus" -Status Ok -Weight 30 -Detail "Windows Defender ativo"
+            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title (Get-WinForgeText 'Antivírus') -Status Ok -Weight 30 -Detail (Get-WinForgeText 'Windows Defender ativo')
         }
         "Other" {
-            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title "Antivírus" -Status Ok -Weight 30 -Detail "Outro antivírus protege o PC ($(Join-WinForgeList -Items @($antivirus.Others)))"
+            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title (Get-WinForgeText 'Antivírus') -Status Ok -Weight 30 -Detail (Get-WinForgeText 'Outro antivírus protege o PC ({0})' "$(Join-WinForgeList -Items @($antivirus.Others))")
         }
         "Passive" {
-            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title "Antivírus" -Status Warn -Weight 30 -Detail "O Windows Defender está em modo passivo e nenhum outro antivírus ligado foi identificado" `
-                -Advice "Confirme em Segurança > Segurança do Windows se há outro antivírus ativo; sem ele, o PC fica desprotegido"
+            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title (Get-WinForgeText 'Antivírus') -Status Warn -Weight 30 -Detail (Get-WinForgeText 'O Windows Defender está em modo passivo e nenhum outro antivírus ligado foi identificado') `
+                -Advice (Get-WinForgeText 'Confirme em Segurança > Segurança do Windows se há outro antivírus ativo; sem ele, o PC fica desprotegido')
         }
         "Off" {
-            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title "Antivírus" -Status Bad -Weight 30 -Critical -Detail "Desligado e nenhum outro antivírus ligado foi encontrado" `
-                -Advice "Ligue o antivírus em Segurança > Segurança do Windows"
+            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title (Get-WinForgeText 'Antivírus') -Status Bad -Weight 30 -Critical -Detail (Get-WinForgeText 'Desligado e nenhum outro antivírus ligado foi encontrado') `
+                -Advice (Get-WinForgeText 'Ligue o antivírus em Segurança > Segurança do Windows')
         }
         default {
-            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title "Antivírus" -Status Unknown -Weight 30 -Detail "Não foi possível ler o estado"
+            $checks += New-WinForgeAuditCheck -Id "antivirus" -Title (Get-WinForgeText 'Antivírus') -Status Unknown -Weight 30 -Detail (Get-WinForgeText 'Não foi possível ler o estado')
         }
     }
 
     if ($antivirus.Mode -eq "Active") {
         if ($antivirus.RealTime -eq $false) {
-            $checks += New-WinForgeAuditCheck -Id "realtime" -Title "Proteção em tempo real" -Status Bad -Weight 15 -Critical -Detail "Desligada" `
-                -Advice "Ligue a proteção em tempo real em Segurança > Segurança do Windows"
+            $checks += New-WinForgeAuditCheck -Id "realtime" -Title (Get-WinForgeText 'Proteção em tempo real') -Status Bad -Weight 15 -Critical -Detail (Get-WinForgeText 'Desligada') `
+                -Advice (Get-WinForgeText 'Ligue a proteção em tempo real em Segurança > Segurança do Windows')
         }
         elseif ($antivirus.RealTime -eq $true) {
-            $checks += New-WinForgeAuditCheck -Id "realtime" -Title "Proteção em tempo real" -Status Ok -Weight 15 -Detail "Ligada"
+            $checks += New-WinForgeAuditCheck -Id "realtime" -Title (Get-WinForgeText 'Proteção em tempo real') -Status Ok -Weight 15 -Detail (Get-WinForgeText 'Ligada')
         }
 
         $tamper = Get-WinForgeJsonValue -Object $antivirus -Name "TamperProtected"
 
         if ($tamper -eq $false) {
-            $checks += New-WinForgeAuditCheck -Id "tamper" -Title "Proteção contra adulterações" -Status Warn -Weight 5 -Detail "Desligada" `
-                -Advice "Ligue-a em Segurança > Segurança do Windows; ela impede que vírus desliguem o antivírus"
+            $checks += New-WinForgeAuditCheck -Id "tamper" -Title (Get-WinForgeText 'Proteção contra adulterações') -Status Warn -Weight 5 -Detail (Get-WinForgeText 'Desligada') `
+                -Advice (Get-WinForgeText 'Ligue-a em Segurança > Segurança do Windows; ela impede que vírus desliguem o antivírus')
         }
         elseif ($tamper -eq $true) {
-            $checks += New-WinForgeAuditCheck -Id "tamper" -Title "Proteção contra adulterações" -Status Ok -Weight 5 -Detail "Ligada"
+            $checks += New-WinForgeAuditCheck -Id "tamper" -Title (Get-WinForgeText 'Proteção contra adulterações') -Status Ok -Weight 5 -Detail (Get-WinForgeText 'Ligada')
         }
 
         $age = Get-WinForgeJsonValue -Object $antivirus -Name "SignatureAgeDays"
 
-        if ($null -eq $age) {
+        if ([bool](Get-WinForgeJsonValue -Object $antivirus -Name "SignaturesNeverUpdated" -Default $false)) {
+            # Nunca atualizadas (as que vêm com o Windows, de meses atrás): o mesmo ponto do Estado da proteção e do Início,
+            # e não "não foi possível ler".
+            $checks += New-WinForgeAuditCheck -Id "signatures" -Title (Get-WinForgeText 'Assinaturas do antivírus') -Status Bad -Weight 10 -Detail (Get-WinForgeText 'Nunca atualizadas') `
+                -Advice (Get-WinForgeText 'Use Segurança > Atualizar assinaturas do antivírus')
+        }
+        elseif ($null -eq $age) {
             # Sem a data das assinaturas, o ponto não some da conta em silêncio: fica como não verificado, e a tela diz.
-            $checks += New-WinForgeAuditCheck -Id "signatures" -Title "Assinaturas do antivírus" -Status Unknown -Weight 10 -Detail "Não foi possível ler a data da última atualização"
+            $checks += New-WinForgeAuditCheck -Id "signatures" -Title (Get-WinForgeText 'Assinaturas do antivírus') -Status Unknown -Weight 10 -Detail (Get-WinForgeText 'Não foi possível ler a data da última atualização')
         }
         else {
             if ($age -gt 7) {
-                $checks += New-WinForgeAuditCheck -Id "signatures" -Title "Assinaturas do antivírus" -Status Bad -Weight 10 -Detail "Têm $age dias" `
-                    -Advice "Use Segurança > Atualizar assinaturas do antivírus"
+                $checks += New-WinForgeAuditCheck -Id "signatures" -Title (Get-WinForgeText 'Assinaturas do antivírus') -Status Bad -Weight 10 -Detail (Get-WinForgeText 'Têm {0} dias' "$age") `
+                    -Advice (Get-WinForgeText 'Use Segurança > Atualizar assinaturas do antivírus')
             }
             elseif ($age -gt 3) {
-                $checks += New-WinForgeAuditCheck -Id "signatures" -Title "Assinaturas do antivírus" -Status Warn -Weight 10 -Detail "Têm $age dias; o normal é atualizarem todo dia" `
-                    -Advice "Use Segurança > Atualizar assinaturas do antivírus"
+                $checks += New-WinForgeAuditCheck -Id "signatures" -Title (Get-WinForgeText 'Assinaturas do antivírus') -Status Warn -Weight 10 -Detail (Get-WinForgeText 'Têm {0} dias; o normal é atualizarem todo dia' "$age") `
+                    -Advice (Get-WinForgeText 'Use Segurança > Atualizar assinaturas do antivírus')
             }
             else {
-                $checks += New-WinForgeAuditCheck -Id "signatures" -Title "Assinaturas do antivírus" -Status Ok -Weight 10 -Detail $(
+                $checks += New-WinForgeAuditCheck -Id "signatures" -Title (Get-WinForgeText 'Assinaturas do antivírus') -Status Ok -Weight 10 -Detail $(
                     # "há 12 horas", e não "hoje": atualizadas às 23h de ontem, às 8h ainda têm menos de um dia.
                     $updated = Get-WinForgeJsonValue -Object $antivirus -Name "SignaturesUpdated"
-                    if ($updated -is [datetime]) { "Atualizadas $(Format-WinForgeRelativeTime -When $updated -Now ([datetime]$Facts.Now))" }
-                    elseif ($age -le 0) { "Atualizadas há menos de um dia" }
-                    else { "Atualizadas há $(Format-WinForgeCount -Count $age -One 'dia' -Many 'dias')" }
+                    if ($updated -is [datetime]) { (Get-WinForgeText 'Atualizadas {0}' "$(Format-WinForgeRelativeTime -When $updated -Now ([datetime]$Facts.Now))") }
+                    elseif ($age -le 0) { (Get-WinForgeText 'Atualizadas há menos de um dia') }
+                    else { (Get-WinForgeText 'Atualizadas há {0}' "$(Format-WinForgeCount -Count $age -One (Get-WinForgeText 'dia') -Many (Get-WinForgeText 'dias'))") }
                 )
             }
         }
@@ -2437,29 +2613,29 @@ function Get-WinForgeSecurityAuditChecks {
     # outro antivírus no lugar, o Defender não responder é o esperado (não é "sem verificar"), e o que ele ainda guarda
     # é ressalva: quem decide é o outro antivírus.
     if ($null -ne $Facts.Threats -and @($Facts.Threats).Count -gt 0) {
-        $threatList = "$(@($Facts.Threats).Count): $(Join-WinForgeList -Items @($Facts.Threats))"
+        $threatList = "$(@($Facts.Threats).Count): $(Get-WinForgeThreatListText -Threats @($Facts.Threats))"
 
         if ($antivirus.Mode -eq "Other") {
-            $checks += New-WinForgeAuditCheck -Id "threats" -Title "Ameaças no Defender" -Status Warn -Weight 20 -Detail $threatList `
-                -Advice "Abra Segurança > Segurança do Windows e confira as ameaças que o Defender ainda guarda; confirme também no outro antivírus"
+            $checks += New-WinForgeAuditCheck -Id "threats" -Title (Get-WinForgeText 'Ameaças no Defender') -Status Warn -Weight 20 -Detail $threatList `
+                -Advice (Get-WinForgeText 'Abra Segurança > Segurança do Windows e confira as ameaças que o Defender ainda guarda; confirme também no outro antivírus')
         }
         else {
-            $checks += New-WinForgeAuditCheck -Id "threats" -Title "Ameaças ativas" -Status Bad -Weight 20 -Critical -Detail $threatList `
-                -Advice "Abra Segurança > Segurança do Windows e aplique as ações indicadas para cada ameaça"
+            $checks += New-WinForgeAuditCheck -Id "threats" -Title (Get-WinForgeText 'Ameaças ativas') -Status Bad -Weight 20 -Critical -Detail $threatList `
+                -Advice (Get-WinForgeText 'Abra Segurança > Segurança do Windows e aplique as ações indicadas para cada ameaça')
         }
     }
     elseif ($antivirus.Mode -eq "Active") {
         if ($null -eq $Facts.Threats) {
-            $checks += New-WinForgeAuditCheck -Id "threats" -Title "Ameaças ativas" -Status Unknown -Weight 20 -Detail "Não foi possível consultar"
+            $checks += New-WinForgeAuditCheck -Id "threats" -Title (Get-WinForgeText 'Ameaças ativas') -Status Unknown -Weight 20 -Detail $(if ($needsAdmin) { $adminText } else { (Get-WinForgeText 'Não foi possível consultar') })
         }
         else {
-            $checks += New-WinForgeAuditCheck -Id "threats" -Title "Ameaças ativas" -Status Ok -Weight 20 -Detail "Nenhuma"
+            $checks += New-WinForgeAuditCheck -Id "threats" -Title (Get-WinForgeText 'Ameaças ativas') -Status Ok -Weight 20 -Detail (Get-WinForgeText 'Nenhuma')
         }
     }
 
     # Firewall
     if ($null -eq $Facts.Firewall) {
-        $checks += New-WinForgeAuditCheck -Id "firewall" -Title "Firewall" -Status Unknown -Weight 20 -Detail "Não foi possível ler"
+        $checks += New-WinForgeAuditCheck -Id "firewall" -Title (Get-WinForgeText 'Firewall') -Status Unknown -Weight 20 -Detail (Get-WinForgeText 'Não foi possível ler')
     }
     else {
         $off = @(Get-WinForgeFirewallGaps -Firewall $Facts.Firewall)
@@ -2468,62 +2644,62 @@ function Get-WinForgeSecurityAuditChecks {
         $otherFirewall = Get-WinForgeFirewallOtherProduct -Firewall $Facts.Firewall
 
         if ($off.Count -eq 0 -and $otherFirewall) {
-            $checks += New-WinForgeAuditCheck -Id "firewall" -Title "Firewall" -Status Ok -Weight 20 -Detail "Outro firewall protege o PC ($otherFirewall)"
+            $checks += New-WinForgeAuditCheck -Id "firewall" -Title (Get-WinForgeText 'Firewall') -Status Ok -Weight 20 -Detail (Get-WinForgeText 'Outro firewall protege o PC ({0})' "$otherFirewall")
         }
         elseif ($off.Count -eq 0 -and $unused.Count -gt 0) {
-            $checks += New-WinForgeAuditCheck -Id "firewall" -Title "Firewall" -Status Ok -Weight 20 -Detail "Ligado nas redes privada e pública (o perfil Domínio, desligado, não vale para este PC)"
+            $checks += New-WinForgeAuditCheck -Id "firewall" -Title (Get-WinForgeText 'Firewall') -Status Ok -Weight 20 -Detail (Get-WinForgeText 'Ligado nas redes privada e pública (o perfil Domínio, desligado, não vale para este PC)')
         }
         elseif ($off.Count -eq 0) {
-            $checks += New-WinForgeAuditCheck -Id "firewall" -Title "Firewall" -Status Ok -Weight 20 -Detail "Ligado em todos os perfis de rede"
+            $checks += New-WinForgeAuditCheck -Id "firewall" -Title (Get-WinForgeText 'Firewall') -Status Ok -Weight 20 -Detail (Get-WinForgeText 'Ligado em todos os perfis de rede')
         }
         else {
             $names = @($off | ForEach-Object { Get-WinForgeFirewallProfileName -Name $_.Name })
             $publicOff = @($off | Where-Object { $_.Name -eq "Public" }).Count -gt 0
 
-            $checks += New-WinForgeAuditCheck -Id "firewall" -Title "Firewall" -Status $(if ($publicOff) { "Bad" } else { "Warn" }) -Weight 20 -Critical:$publicOff `
-                -Detail "Desligado em: $(Join-WinForgeList -Items $names)" -Advice "Ligue o firewall em Segurança > Segurança do Windows"
+            $checks += New-WinForgeAuditCheck -Id "firewall" -Title (Get-WinForgeText 'Firewall') -Status $(if ($publicOff) { "Bad" } else { "Warn" }) -Weight 20 -Critical:$publicOff `
+                -Detail (Get-WinForgeText 'Desligado em: {0}' "$(Join-WinForgeList -Items $names)") -Advice (Get-WinForgeText 'Ligue o firewall em Segurança > Segurança do Windows')
         }
     }
 
     # Controle de Conta de Usuário
     if ($null -eq $Facts.UacEnabled) {
-        $checks += New-WinForgeAuditCheck -Id "uac" -Title "Controle de Conta de Usuário (UAC)" -Status Unknown -Weight 15 -Detail "Não foi possível ler"
+        $checks += New-WinForgeAuditCheck -Id "uac" -Title (Get-WinForgeText 'Controle de Conta de Usuário (UAC)') -Status Unknown -Weight 15 -Detail (Get-WinForgeText 'Não foi possível ler')
     }
     elseif ($Facts.UacEnabled -and [bool](Get-WinForgeJsonValue -Object $Facts -Name "UacNeverNotify" -Default $false)) {
-        $checks += New-WinForgeAuditCheck -Id "uac" -Title "Controle de Conta de Usuário (UAC)" -Status Bad -Weight 15 -Critical -Detail "No nível 'Nunca notificar': os programas ganham Administrador sem perguntar" `
-            -Advice "Procure 'Alterar configurações de Controle de Conta de Usuário' no menu Iniciar e escolha um nível acima de 'Nunca notificar'"
+        $checks += New-WinForgeAuditCheck -Id "uac" -Title (Get-WinForgeText 'Controle de Conta de Usuário (UAC)') -Status Bad -Weight 15 -Critical -Detail (Get-WinForgeText 'No nível ''Nunca notificar'': os programas ganham Administrador sem perguntar') `
+            -Advice (Get-WinForgeText 'Procure ''Alterar configurações de Controle de Conta de Usuário'' no menu Iniciar e escolha um nível acima de ''Nunca notificar''')
     }
     elseif ($Facts.UacEnabled) {
-        $checks += New-WinForgeAuditCheck -Id "uac" -Title "Controle de Conta de Usuário (UAC)" -Status Ok -Weight 15 -Detail "Ligado"
+        $checks += New-WinForgeAuditCheck -Id "uac" -Title (Get-WinForgeText 'Controle de Conta de Usuário (UAC)') -Status Ok -Weight 15 -Detail (Get-WinForgeText 'Ligado')
     }
     else {
-        $checks += New-WinForgeAuditCheck -Id "uac" -Title "Controle de Conta de Usuário (UAC)" -Status Bad -Weight 15 -Critical -Detail "Desligado" `
-            -Advice "Procure 'Alterar configurações de Controle de Conta de Usuário' no menu Iniciar, escolha um nível acima de 'Nunca notificar' e reinicie o PC"
+        $checks += New-WinForgeAuditCheck -Id "uac" -Title (Get-WinForgeText 'Controle de Conta de Usuário (UAC)') -Status Bad -Weight 15 -Critical -Detail (Get-WinForgeText 'Desligado') `
+            -Advice (Get-WinForgeText 'Procure ''Alterar configurações de Controle de Conta de Usuário'' no menu Iniciar, escolha um nível acima de ''Nunca notificar'' e reinicie o PC')
     }
 
     # SmartScreen
     if ($Facts.SmartScreenOff) {
-        $checks += New-WinForgeAuditCheck -Id "smartscreen" -Title "SmartScreen" -Status Warn -Weight 5 -Detail "Desligado" `
-            -Advice "Ligue-o em Segurança > Segurança do Windows; ele avisa sobre programas e sites perigosos"
+        $checks += New-WinForgeAuditCheck -Id "smartscreen" -Title "SmartScreen" -Status Warn -Weight 5 -Detail (Get-WinForgeText 'Desligado') `
+            -Advice (Get-WinForgeText 'Ligue-o em Segurança > Segurança do Windows; ele avisa sobre programas e sites perigosos')
     }
     elseif ([bool](Get-WinForgeJsonValue -Object $Facts -Name "SmartScreenSet" -Default $false)) {
-        $checks += New-WinForgeAuditCheck -Id "smartscreen" -Title "SmartScreen" -Status Ok -Weight 5 -Detail "Ligado"
+        $checks += New-WinForgeAuditCheck -Id "smartscreen" -Title "SmartScreen" -Status Ok -Weight 5 -Detail (Get-WinForgeText 'Ligado')
     }
     else {
         # Nada gravado: vale o padrão do Windows, que é ligado.
-        $checks += New-WinForgeAuditCheck -Id "smartscreen" -Title "SmartScreen" -Status Ok -Weight 5 -Detail "Ligado (o padrão do Windows)"
+        $checks += New-WinForgeAuditCheck -Id "smartscreen" -Title "SmartScreen" -Status Ok -Weight 5 -Detail (Get-WinForgeText 'Ligado (o padrão do Windows)')
     }
 
     # Atualizações pendentes
     if ($null -eq $Facts.Updates) {
-        $checks += New-WinForgeAuditCheck -Id "updates" -Title "Atualizações do Windows" -Status Unknown -Weight 10 -Detail "Não foi possível consultar o Windows Update"
+        $checks += New-WinForgeAuditCheck -Id "updates" -Title (Get-WinForgeText 'Atualizações do Windows') -Status Unknown -Weight 10 -Detail (Get-WinForgeText 'Não foi possível consultar o Windows Update')
     }
     elseif ($Facts.Updates.Count -gt 0) {
-        $checks += New-WinForgeAuditCheck -Id "updates" -Title "Atualizações do Windows" -Status Warn -Weight 10 -Detail (Format-WinForgeCount -Count $Facts.Updates.Count -One "pendente" -Many "pendentes") `
-            -Advice "Use Atualizações > Instalar atualizações do Windows"
+        $checks += New-WinForgeAuditCheck -Id "updates" -Title (Get-WinForgeText 'Atualizações do Windows') -Status Warn -Weight 10 -Detail (Format-WinForgeCount -Count $Facts.Updates.Count -One (Get-WinForgeText 'pendente') -Many (Get-WinForgeText 'pendentes')) `
+            -Advice (Get-WinForgeText 'Use Atualizações > Instalar atualizações do Windows')
     }
     else {
-        $checks += New-WinForgeAuditCheck -Id "updates" -Title "Atualizações do Windows" -Status Ok -Weight 10 -Detail "Nenhuma pendente"
+        $checks += New-WinForgeAuditCheck -Id "updates" -Title (Get-WinForgeText 'Atualizações do Windows') -Status Ok -Weight 10 -Detail (Get-WinForgeText 'Nenhuma pendente')
     }
 
     # Versão do Windows ainda recebe correções?
@@ -2531,98 +2707,133 @@ function Get-WinForgeSecurityAuditChecks {
 
     # Área de Trabalho Remota
     if ($null -eq $Facts.RdpEnabled) {
-        $checks += New-WinForgeAuditCheck -Id "rdp" -Title "Área de Trabalho Remota" -Status Unknown -Weight 10 -Detail "Não foi possível ler"
+        $checks += New-WinForgeAuditCheck -Id "rdp" -Title (Get-WinForgeText 'Área de Trabalho Remota') -Status Unknown -Weight 10 -Detail (Get-WinForgeText 'Não foi possível ler')
     }
     else {
-        if ($Facts.RdpEnabled) {
-            $checks += New-WinForgeAuditCheck -Id "rdp" -Title "Área de Trabalho Remota" -Status Warn -Weight 10 -Detail "Ligada: outros computadores podem tentar entrar neste" `
-                -Advice "Se você não usa o acesso remoto, desligue-o em Configurações, Sistema, Área de Trabalho Remota"
+        # Com uma política decidindo, o botão das Configurações fica travado: o conselho diz onde ela se muda.
+        $rdpByPolicy = [bool](Get-WinForgeJsonValue -Object $Facts -Name "RdpByPolicy" -Default $false)
+
+        if ($Facts.RdpEnabled -and $rdpByPolicy) {
+            $checks += New-WinForgeAuditCheck -Id "rdp" -Title (Get-WinForgeText 'Área de Trabalho Remota') -Status Warn -Weight 10 -Detail (Get-WinForgeText 'Ligada por uma política: outros computadores podem tentar entrar neste') `
+                -Advice (Get-WinForgeText 'Uma política trava o botão das Configurações: se você não usa o acesso remoto, desligue-a no Editor de Política de Grupo ou peça a quem cuida dos PCs da empresa')
+        }
+        elseif ($Facts.RdpEnabled) {
+            $checks += New-WinForgeAuditCheck -Id "rdp" -Title (Get-WinForgeText 'Área de Trabalho Remota') -Status Warn -Weight 10 -Detail (Get-WinForgeText 'Ligada: outros computadores podem tentar entrar neste') `
+                -Advice (Get-WinForgeText 'Se você não usa o acesso remoto, desligue-o em Configurações, Sistema, Área de Trabalho Remota')
         }
         else {
-            $checks += New-WinForgeAuditCheck -Id "rdp" -Title "Área de Trabalho Remota" -Status Ok -Weight 10 -Detail "Desligada"
+            $checks += New-WinForgeAuditCheck -Id "rdp" -Title (Get-WinForgeText 'Área de Trabalho Remota') -Status Ok -Weight 10 -Detail $(if ($rdpByPolicy) { (Get-WinForgeText 'Desligada por uma política') } else { (Get-WinForgeText 'Desligada') })
         }
     }
 
     # Conta Convidado
     if ($null -eq $Facts.GuestEnabled) {
-        $checks += New-WinForgeAuditCheck -Id "guest" -Title "Conta Convidado" -Status Unknown -Weight 8 -Detail "Não foi possível ler"
+        $checks += New-WinForgeAuditCheck -Id "guest" -Title (Get-WinForgeText 'Conta Convidado') -Status Unknown -Weight 8 -Detail (Get-WinForgeText 'Não foi possível ler')
     }
     else {
         if ($Facts.GuestEnabled) {
-            $checks += New-WinForgeAuditCheck -Id "guest" -Title "Conta Convidado" -Status Warn -Weight 8 -Detail "Ligada: permite entrar sem senha" `
-                -Advice "No menu Iniciar, procure Prompt de Comando, escolha Executar como administrador e digite: net user Convidado /active:no"
+            # O comando com o nome da conta neste Windows: "net user Guest" não acha a conta de um Windows em português.
+            $guestName = [string](Get-WinForgeJsonValue -Object $Facts -Name "GuestName" -Default "")
+            $checks += New-WinForgeAuditCheck -Id "guest" -Title (Get-WinForgeText 'Conta Convidado') -Status Warn -Weight 8 -Detail (Get-WinForgeText 'Ligada: permite entrar sem senha') `
+                -Advice $(if ($guestName) { (Get-WinForgeText 'No menu Iniciar, procure Prompt de Comando, escolha Executar como administrador e digite: net user "{0}" /active:no' "$guestName") } else { (Get-WinForgeText 'No menu Iniciar, procure Prompt de Comando, escolha Executar como administrador e digite: net user Convidado /active:no') })
         }
         else {
-            $checks += New-WinForgeAuditCheck -Id "guest" -Title "Conta Convidado" -Status Ok -Weight 8 -Detail "Desativada"
+            $checks += New-WinForgeAuditCheck -Id "guest" -Title (Get-WinForgeText 'Conta Convidado') -Status Ok -Weight 8 -Detail (Get-WinForgeText 'Desativada')
         }
     }
 
     # SMB 1.0: só entra quando foi lido (os fatos montados à mão por outra parte do WinForge podem não trazê-lo).
     if ($null -ne $Facts.PSObject.Properties["Smb1"]) {
-        $smbTitle = "Compartilhamento SMB 1.0"
+        $smbTitle = (Get-WinForgeText 'Compartilhamento SMB 1.0')
 
         if ($null -eq $Facts.Smb1) {
-            $checks += New-WinForgeAuditCheck -Id "smb1" -Title $smbTitle -Status Unknown -Weight 8 -Detail "Não foi possível ler"
+            $checks += New-WinForgeAuditCheck -Id "smb1" -Title $smbTitle -Status Unknown -Weight 8 -Detail $(if ($needsAdmin) { $adminText } else { (Get-WinForgeText 'Não foi possível ler') })
         }
         elseif ([string]$Facts.Smb1 -eq "On") {
-            $checks += New-WinForgeAuditCheck -Id "smb1" -Title $smbTitle -Status Warn -Weight 8 -Detail "Ligado: protocolo antigo e inseguro de arquivos em rede, usado por ataques como o WannaCry" `
-                -Advice "Se nenhum equipamento antigo (scanner, NAS) precisa dele, desligue-o em Programas > Recursos opcionais do Windows"
+            $checks += New-WinForgeAuditCheck -Id "smb1" -Title $smbTitle -Status Warn -Weight 8 -Detail (Get-WinForgeText 'Ligado: protocolo antigo e inseguro de arquivos em rede, usado por ataques como o WannaCry') `
+                -Advice (Get-WinForgeText 'Se nenhum equipamento antigo (scanner, NAS) precisa dele, desligue-o em Programas > Recursos opcionais do Windows')
         }
         else {
-            $checks += New-WinForgeAuditCheck -Id "smb1" -Title $smbTitle -Status Ok -Weight 8 -Detail "Desligado"
+            $checks += New-WinForgeAuditCheck -Id "smb1" -Title $smbTitle -Status Ok -Weight 8 -Detail (Get-WinForgeText 'Desligado')
         }
     }
 
     # Entrada automática no Windows
     if ($Facts.AutoLogon -and $Facts.PasswordStored) {
-        $checks += New-WinForgeAuditCheck -Id "autologon" -Title "Entrada automática" -Status Bad -Weight 8 -Detail "Ligada, com a senha gravada em texto no registro" `
-            -Advice "No menu Iniciar, digite netplwiz, pressione Enter e marque 'Os usuários devem digitar um nome de usuário e uma senha para usar este computador'; depois troque a senha dessa conta"
+        $checks += New-WinForgeAuditCheck -Id "autologon" -Title (Get-WinForgeText 'Entrada automática') -Status Bad -Weight 8 -Detail (Get-WinForgeText 'Ligada, com a senha gravada em texto no registro') `
+            -Advice (Get-WinForgeText 'No menu Iniciar, digite netplwiz, pressione Enter e marque ''Os usuários devem digitar um nome de usuário e uma senha para usar este computador''; depois troque a senha dessa conta')
     }
     elseif ($Facts.AutoLogon) {
-        $checks += New-WinForgeAuditCheck -Id "autologon" -Title "Entrada automática" -Status Warn -Weight 8 -Detail "Ligada: quem ligar o PC entra sem senha" `
-            -Advice "Se o PC sai de casa: no menu Iniciar, digite netplwiz, pressione Enter e marque 'Os usuários devem digitar um nome de usuário e uma senha para usar este computador'"
+        $checks += New-WinForgeAuditCheck -Id "autologon" -Title (Get-WinForgeText 'Entrada automática') -Status Warn -Weight 8 -Detail (Get-WinForgeText 'Ligada: quem ligar o PC entra sem senha') `
+            -Advice (Get-WinForgeText 'Se o PC sai de casa: no menu Iniciar, digite netplwiz, pressione Enter e marque ''Os usuários devem digitar um nome de usuário e uma senha para usar este computador''')
     }
     else {
-        $checks += New-WinForgeAuditCheck -Id "autologon" -Title "Entrada automática" -Status Ok -Weight 8 -Detail "Desligada"
+        $checks += New-WinForgeAuditCheck -Id "autologon" -Title (Get-WinForgeText 'Entrada automática') -Status Ok -Weight 8 -Detail (Get-WinForgeText 'Desligada')
     }
 
     # Só informam (não entram na nota)
     if ($null -eq $Facts.BitLocker) {
-        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title "Criptografia do disco" -Status Unknown -Detail "Não verificada (esta edição do Windows pode não ter o BitLocker)"
+        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title (Get-WinForgeText 'Criptografia do disco') -Status Unknown -Detail $(if ($needsAdmin) { $adminText } else { (Get-WinForgeText 'Não verificada (esta edição do Windows pode não ter o BitLocker)') })
     }
     elseif ($Facts.BitLocker -eq "On") {
-        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title "Criptografia do disco" -Status Ok -Detail "Ligada no disco do sistema"
+        # Com o disco protegido, o que falta é ter a chave de recuperação fora do PC.
+        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title (Get-WinForgeText 'Criptografia do disco') -Status Ok -Detail (Get-WinForgeText 'Ligada no disco do sistema') `
+            -Advice (Get-WinForgeText 'Guarde uma cópia da chave de recuperação fora do PC em Segurança > Chave de recuperação do BitLocker')
     }
     elseif ($Facts.BitLocker -eq "Suspended") {
         # A proteção costuma ficar suspensa depois de uma atualização da BIOS.
-        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title "Criptografia do disco" -Status Warn -Detail "Criptografado, mas com a proteção suspensa: a chave fica gravada no disco" `
-            -Advice "Retome a proteção no Painel de Controle, em Criptografia de Unidade de Disco BitLocker (ou em Criptografia do dispositivo)"
+        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title (Get-WinForgeText 'Criptografia do disco') -Status Warn -Detail (Get-WinForgeText 'Criptografado, mas com a proteção suspensa: a chave fica gravada no disco') `
+            -Advice (Get-WinForgeText 'Retome a proteção no Painel de Controle, em Criptografia de Unidade de Disco BitLocker (ou em Criptografia do dispositivo)')
     }
     elseif ($Facts.BitLocker -eq "Encrypting") {
-        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title "Criptografia do disco" -Status Ok -Detail "Criptografando o disco do sistema; a proteção liga quando terminar"
+        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title (Get-WinForgeText 'Criptografia do disco') -Status Ok -Detail (Get-WinForgeText 'Criptografando o disco do sistema; a proteção liga quando terminar')
     }
     elseif ($Facts.BitLocker -eq "Pending") {
-        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title "Criptografia do disco" -Status Warn -Detail "O disco do sistema está preparado, mas a criptografia espera ativação" `
-            -Advice "Ligue-a em Configurações, Privacidade e segurança, Criptografia do dispositivo; ela guarda a chave de recuperação na sua conta Microsoft"
+        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title (Get-WinForgeText 'Criptografia do disco') -Status Warn -Detail (Get-WinForgeText 'O disco do sistema está preparado, mas a criptografia espera ativação') `
+            -Advice (Get-WinForgeText 'Ligue-a em Configurações, Privacidade e segurança, Criptografia do dispositivo; ela guarda a chave de recuperação na sua conta Microsoft')
     }
     else {
-        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title "Criptografia do disco" -Status Warn -Detail "Desligada no disco do sistema" `
-            -Advice "Em notebooks, a criptografia protege seus arquivos se o PC for perdido ou roubado"
+        $checks += New-WinForgeAuditCheck -Id "bitlocker" -Title (Get-WinForgeText 'Criptografia do disco') -Status Warn -Detail (Get-WinForgeText 'Desligada no disco do sistema') `
+            -Advice (Get-WinForgeText 'Em notebooks, a criptografia protege seus arquivos se o PC for perdido ou roubado')
     }
 
     if ($null -eq $Facts.SecureBoot) {
-        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title "Inicialização segura (Secure Boot)" -Status Unknown -Detail "Não verificada"
+        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title (Get-WinForgeText 'Inicialização segura (Secure Boot)') -Status Unknown -Detail (Get-WinForgeText 'Não verificada')
     }
     elseif ([string]$Facts.SecureBoot -eq "Legacy") {
-        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title "Inicialização segura (Secure Boot)" -Status Warn -Detail "Indisponível: o Windows iniciou no modo BIOS legado" `
-            -Advice "Ela pede o modo UEFI, trabalho para um técnico"
+        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title (Get-WinForgeText 'Inicialização segura (Secure Boot)') -Status Warn -Detail (Get-WinForgeText 'Indisponível: o Windows iniciou no modo BIOS legado') `
+            -Advice (Get-WinForgeText 'Ela pede o modo UEFI, trabalho para um técnico')
     }
     elseif ($Facts.SecureBoot -eq $true) {
-        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title "Inicialização segura (Secure Boot)" -Status Ok -Detail "Ligada"
+        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title (Get-WinForgeText 'Inicialização segura (Secure Boot)') -Status Ok -Detail (Get-WinForgeText 'Ligada')
     }
     else {
-        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title "Inicialização segura (Secure Boot)" -Status Warn -Detail "Desligada" `
-            -Advice "Ligue-a na configuração da placa-mãe (UEFI); ela impede vírus de carregar antes do Windows"
+        $checks += New-WinForgeAuditCheck -Id "secureboot" -Title (Get-WinForgeText 'Inicialização segura (Secure Boot)') -Status Warn -Detail (Get-WinForgeText 'Desligada') `
+            -Advice (Get-WinForgeText 'Ligue-a na configuração da placa-mãe (UEFI); ela impede vírus de carregar antes do Windows')
+    }
+
+    # Integridade da memória: só entra quando foi lida (os fatos montados à mão por outra parte do WinForge podem não
+    # trazê-la). Só informa: alguns drivers e programas não funcionam com ela ligada.
+    if ($null -ne $Facts.PSObject.Properties["MemoryIntegrity"]) {
+        $hvciTitle = (Get-WinForgeText 'Integridade da memória')
+        $hvciPath = (Get-WinForgeText 'Segurança do Windows > Segurança do dispositivo > Detalhes de isolamento do núcleo')
+
+        switch ([string]$Facts.MemoryIntegrity) {
+            "On" {
+                $checks += New-WinForgeAuditCheck -Id "memory-integrity" -Title $hvciTitle -Status Ok -Detail (Get-WinForgeText 'Ligada')
+            }
+            "Pending" {
+                $checks += New-WinForgeAuditCheck -Id "memory-integrity" -Title $hvciTitle -Status Warn -Detail (Get-WinForgeText 'Ligada nas configurações, mas fora de uso') `
+                    -Advice (Get-WinForgeText 'Reinicie o PC; se continuar assim, veja o motivo em {0}' "$hvciPath")
+            }
+            "Off" {
+                $checks += New-WinForgeAuditCheck -Id "memory-integrity" -Title $hvciTitle -Status Warn -Detail (Get-WinForgeText 'Desligada') `
+                    -Advice (Get-WinForgeText 'Ligue-a em {0}; alguns drivers e programas antigos não funcionam com ela' "$hvciPath")
+            }
+            default {
+                $checks += New-WinForgeAuditCheck -Id "memory-integrity" -Title $hvciTitle -Status Unknown -Detail $(if ($needsAdmin) { $adminText } else { (Get-WinForgeText 'Não foi possível ler') })
+            }
+        }
     }
 
     return @($checks)
@@ -2699,11 +2910,11 @@ function Get-WinForgeSecurityGradeLabel {
     # A faixa de uma nota de 0 a 100, a mesma da nota de saúde do Início: as duas notas do WinForge falam a mesma língua.
     param ([int]$Score)
 
-    if ($Score -ge 90) { return "Ótima" }
-    if ($Score -ge 75) { return "Boa" }
-    if ($Score -ge 50) { return "Pede atenção" }
+    if ($Score -ge 90) { return (Get-WinForgeText 'Ótima') }
+    if ($Score -ge 75) { return (Get-WinForgeText 'Boa') }
+    if ($Score -ge 50) { return (Get-WinForgeText 'Pede atenção') }
 
-    return "Crítica"
+    return (Get-WinForgeText 'Crítica')
 }
 
 
@@ -2711,9 +2922,9 @@ function Format-WinForgeSecurityGrade {
     # "84 de 100 · Boa" (a nota com a faixa), como a tela e a linha de comando mostram.
     param ([Parameter(Mandatory)]$Grade)
 
-    if ($null -eq $Grade.Score) { return "sem nota" }
+    if ($null -eq $Grade.Score) { return (Get-WinForgeText 'sem nota') }
 
-    return "$($Grade.Score) de 100 · $($Grade.Grade)"
+    return (Get-WinForgeText '{0} de 100 · {1}' "$($Grade.Score)" "$($Grade.Grade)")
 }
 
 
@@ -2738,7 +2949,7 @@ function Show-WinForgeSecurityAudit {
         [switch]$PassThru
     )
 
-    $title = "Auditoria de segurança"
+    $title = (Get-WinForgeText 'Auditoria de segurança')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
@@ -2747,55 +2958,60 @@ function Show-WinForgeSecurityAudit {
     try {
         # A auditoria só lê as configurações do PC: nada é alterado (por isso não há pergunta antes).
         # O andamento vai na barra: linhas "Consultando..." ficariam no resumo depois do fim.
-        Write-Progress -Activity $title -Status "consultando o antivírus, o firewall e as configurações do Windows"
+        # A consulta ao Windows Update, a mais demorada, começa antes e corre enquanto o resto é lido.
+        $search = Start-WinForgePendingUpdatesSearch
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'consultando o antivírus, o firewall e as configurações do Windows')
 
         try {
             $facts = Get-WinForgeSecurityAuditFacts
-            Write-Progress -Activity $title -Status "consultando o Windows Update (pode levar até um minuto e meio)"
-            $facts.Updates = Get-WinForgePendingWindowsUpdates
+            Write-Progress -Activity $title -Status (Get-WinForgeText 'consultando o Windows Update (pode levar até um minuto e meio)')
+            $facts.Updates = Get-WinForgePendingWindowsUpdates -Search $search
         }
         finally {
             Write-Progress -Activity $title -Completed
+
+            # Sem chegar a pedir a resposta (um erro numa leitura, ou o Parar), a consulta não fica rodando.
+            Stop-WinForgeInBackground -Task $search
         }
 
         $checks = @(Get-WinForgeSecurityAuditChecks -Facts $facts)
         $grade = Get-WinForgeSecurityGrade -Checks $checks
         $unverifiedChecks = @($checks | Where-Object { $_.Weight -gt 0 -and $_.Status -eq "Unknown" })
 
-        Write-WinForgeSection -Title "Nota"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Nota')
 
         # Por que não há nota: o antivírus sem leitura, ou menos da metade da proteção verificada.
         $noGradeAntivirus = ([string](Get-WinForgeJsonValue -Object $grade -Name "NoGradeReason" -Default "") -eq "Antivirus")
         $coverage = $(
-            if ($noGradeAntivirus) { "o antivírus não pôde ser verificado" }
-            elseif ($grade.Verified -eq 0) { "nenhum ponto pôde ser verificado" }
-            else { "só $($grade.Verified) de $($grade.Total) pontos puderam ser verificados" }
+            if ($noGradeAntivirus) { (Get-WinForgeText 'o antivírus não pôde ser verificado') }
+            elseif ($grade.Verified -eq 0) { (Get-WinForgeText 'nenhum ponto pôde ser verificado') }
+            else { (Get-WinForgeText 'só {0} de {1} pontos puderam ser verificados' "$($grade.Verified)" "$($grade.Total)") }
         )
 
         if ($null -eq $grade.Score) {
             # O motivo já está na linha da nota: a nota precisa do antivírus verificado (sem saber se há um ativo, ela
             # diria mais do que foi visto) e de pelo menos metade da proteção verificada.
-            Write-WinForgeKeyValue -Label "Nota de segurança" -Value "Sem nota: $coverage"
-            Write-WinForgeStatus -Type Warning -Message "Não puderam ser verificados: $(Join-WinForgeList -Items @($unverifiedChecks | ForEach-Object { $_.Title }))."
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Nota de segurança') -Value (Get-WinForgeText 'Sem nota: {0}' "$coverage")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não puderam ser verificados: {0}.' "$(Join-WinForgeList -Items @($unverifiedChecks | ForEach-Object { $_.Title }))")
         }
         else {
             $noteText = Format-WinForgeSecurityGrade -Grade $grade
 
             if ($unverifiedChecks.Count -gt 0) {
-                $noteText += ", sem $(Format-WinForgeCount -Count $unverifiedChecks.Count -One 'ponto que não pôde ser verificado' -Many 'pontos que não puderam ser verificados')"
+                $noteText += (Get-WinForgeText ', sem {0}' "$(Format-WinForgeCount -Count $unverifiedChecks.Count -One (Get-WinForgeText 'ponto que não pôde ser verificado') -Many (Get-WinForgeText 'pontos que não puderam ser verificados'))")
             }
 
-            Write-WinForgeKeyValue -Label "Nota de segurança" -Value $noteText
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Nota de segurança') -Value $noteText
 
             if ($unverifiedChecks.Count -gt 0) {
-                Write-WinForgeStatus -Type Warning -Message "Ficaram de fora: $(Join-WinForgeList -Items @($unverifiedChecks | ForEach-Object { $_.Title }))."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Ficaram de fora: {0}.' "$(Join-WinForgeList -Items @($unverifiedChecks | ForEach-Object { $_.Title }))")
             }
 
             if ($grade.Capped -and [int]$grade.Cap -eq 74) {
-                Write-WinForgeStatus -Type Warning -Message "A nota ficou em no máximo 74 por causa de um problema grave na proteção do PC."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A nota ficou em no máximo 74 por causa de um problema grave na proteção do PC.')
             }
             elseif ($grade.Capped) {
-                Write-WinForgeStatus -Type Warning -Message "A nota ficou em no máximo 89 porque há pelo menos um ponto com risco real."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A nota ficou em no máximo 89 porque há pelo menos um ponto com risco real.')
             }
         }
 
@@ -2804,7 +3020,7 @@ function Show-WinForgeSecurityAudit {
 
         # O que fazer vem como mensagem logo abaixo do ponto: na janela, fica no resumo (os detalhes técnicos ficam
         # recolhidos quando há faixa de resultado).
-        Write-WinForgeSection -Title "Pontos verificados"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Pontos verificados')
 
         # O que pede ação primeiro (risco real, depois atenção), depois o que não pôde ser verificado e, por último, o que
         # está em ordem; dentro de cada grupo, a ordem de importância.
@@ -2816,12 +3032,12 @@ function Show-WinForgeSecurityAudit {
             Write-WinForgeStatus -Type (Get-WinForgeSecurityAuditStatusType -Status $check.Status) -Message "$($check.Title): $($check.Detail)"
 
             if (-not [string]::IsNullOrWhiteSpace($check.Advice)) {
-                Write-WinForgeStatus -Type Info -Message "O que fazer: $($check.Advice)."
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O que fazer: {0}.' "$($check.Advice)")
             }
         }
 
         if ($infoChecks.Count -gt 0) {
-            Write-WinForgeSection -Title "Só para saber (não entram na nota)"
+            Write-WinForgeSection -Title (Get-WinForgeText 'Só para saber (não entram na nota)')
 
             foreach ($check in $infoChecks) {
                 Write-WinForgeStatus -Type $(if ($check.Status -eq "Ok") { "Success" } else { "Info" }) -Message "$($check.Title): $($check.Detail)"
@@ -2835,29 +3051,29 @@ function Show-WinForgeSecurityAudit {
         # Sem Administrador, algumas leituras são negadas pelo Windows (as ameaças guardadas e o BitLocker, por exemplo).
         if (@($checks | Where-Object { $_.Status -eq "Unknown" }).Count -gt 0 -and -not (Test-WinForgeAdministrator)) {
             Write-Host ""
-            Write-WinForgeStatus -Type Info -Message "Alguns pontos só podem ser verificados com o WinForge aberto como Administrador."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Alguns pontos só podem ser verificados com o WinForge aberto como Administrador.')
         }
 
         $attention = @($checks | Where-Object { $_.Weight -gt 0 -and $_.Status -in "Warn", "Bad" })
-        $attentionText = Format-WinForgeCount -Count $attention.Count -One "ponto de atenção" -Many "pontos de atenção"
-        $unverifiedNote = $(if ($grade.Unverified -gt 0) { "; $($grade.Unverified) sem verificar" } else { "" })
+        $attentionText = Format-WinForgeCount -Count $attention.Count -One (Get-WinForgeText 'ponto de atenção') -Many (Get-WinForgeText 'pontos de atenção')
+        $unverifiedNote = $(if ($grade.Unverified -gt 0) { (Get-WinForgeText '; {0} sem verificar' "$($grade.Unverified)") } else { "" })
         $data = @{ Grade = $grade.Grade; Score = $grade.Score }
 
         if ($null -eq $grade.Score) {
-            $detail = "sem nota: $coverage"
+            $detail = (Get-WinForgeText 'sem nota: {0}' "$coverage")
             if ($attention.Count -gt 0) { $detail += "; $attentionText" }
 
             $result = New-WinForgeResult -Kind Warning -Detail $detail -Data $data
         }
         elseif ($attention.Count -eq 0 -and $grade.Unverified -eq 0) {
-            $result = New-WinForgeResult -Kind Ok -Detail "nota $(Format-WinForgeSecurityGrade -Grade $grade); nenhum ponto de atenção" -Data $data
+            $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nota {0}; nenhum ponto de atenção' "$(Format-WinForgeSecurityGrade -Grade $grade)") -Data $data
         }
         elseif ($attention.Count -eq 0) {
             # Nenhum problema nos pontos lidos, mas um "tudo certo" só vale se tudo o que pesa na nota foi lido.
-            $result = New-WinForgeResult -Kind Warning -Detail "nota $(Format-WinForgeSecurityGrade -Grade $grade); nenhum ponto de atenção no que foi lido$unverifiedNote" -Data $data
+            $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'nota {0}; nenhum ponto de atenção no que foi lido{1}' "$(Format-WinForgeSecurityGrade -Grade $grade)" "$unverifiedNote") -Data $data
         }
         else {
-            $result = New-WinForgeResult -Kind Warning -Detail "nota $(Format-WinForgeSecurityGrade -Grade $grade); $attentionText$unverifiedNote" -Data $data
+            $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'nota {0}; {1}{2}' "$(Format-WinForgeSecurityGrade -Grade $grade)" "$attentionText" "$unverifiedNote") -Data $data
         }
 
         # A faixa da janela: a nota como título; embaixo, os pontos que pedem ação, pelo nome. Vermelho com um problema
@@ -2870,12 +3086,12 @@ function Show-WinForgeSecurityAudit {
             if ($null -ne $step) { break }
         }
 
-        $headline = $(if ($null -eq $grade.Score) { "Sem nota de segurança" } else { "Nota $($grade.Score) de 100 · $($grade.Grade)" })
+        $headline = $(if ($null -eq $grade.Score) { (Get-WinForgeText 'Sem nota de segurança') } else { (Get-WinForgeText 'Nota {0} de 100 · {1}' "$($grade.Score)" "$($grade.Grade)") })
         $noteParts = @()
         if ($null -eq $grade.Score) { $noteParts += "$(ConvertTo-WinForgeHeadline -Text $coverage)." }
         if ($sortedAttention.Count -gt 0) { $noteParts += "$(ConvertTo-WinForgeHeadline -Text $attentionText): $(Join-WinForgeList -Items @($sortedAttention | ForEach-Object { $_.Title }))." }
-        if ($grade.Unverified -gt 0 -and $null -ne $grade.Score) { $noteParts += "$(ConvertTo-WinForgeHeadline -Text (Format-WinForgeCount -Count $grade.Unverified -One 'ponto não pôde ser verificado' -Many 'pontos não puderam ser verificados'))." }
-        if ($noteParts.Count -eq 0) { $noteParts += "Nenhum ponto de atenção." }
+        if ($grade.Unverified -gt 0 -and $null -ne $grade.Score) { $noteParts += "$(ConvertTo-WinForgeHeadline -Text (Format-WinForgeCount -Count $grade.Unverified -One (Get-WinForgeText 'ponto não pôde ser verificado') -Many (Get-WinForgeText 'pontos não puderam ser verificados')))." }
+        if ($noteParts.Count -eq 0) { $noteParts += (Get-WinForgeText 'Nenhum ponto de atenção.') }
 
         $severe = (@($scoredChecks | Where-Object { $_.Critical -and $_.Status -eq "Bad" }).Count -gt 0) -or ($null -ne $grade.Score -and [int]$grade.Score -lt 50)
         $tone = $(if ($severe) { "Bad" } elseif ($sortedAttention.Count -gt 0 -or $grade.Unverified -gt 0 -or $null -eq $grade.Score) { "Warn" } else { "" })
@@ -2883,7 +3099,7 @@ function Show-WinForgeSecurityAudit {
         [void](Set-WinForgeResultView -Result $result -Headline $headline -Note ($noteParts -join " ") -Tone $tone -Next $(if ($null -ne $step) { $step.Next } else { "" }) -NextLabel $(if ($null -ne $step) { $step.Label } else { "" }))
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro na auditoria de segurança: $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro na auditoria de segurança: {0}' "$($_.Exception.Message)")
         $result = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -2893,6 +3109,331 @@ function Show-WinForgeSecurityAudit {
     if ($PassThru) {
         return $result
     }
+}
+
+
+# ---------------------------------------------------------------------------
+# Chave de recuperação do BitLocker (Segurança > Chave de recuperação do BitLocker)
+# ---------------------------------------------------------------------------
+
+function Get-WinForgeBitLockerVolumes {
+    <#
+    Os discos com BitLocker (criptografados, criptografando ou preparados): MountPoint (C:), System (o disco do Windows),
+    State (On, Suspended, Encrypting ou Pending, como em Get-WinForgeBitLockerState) e Keys, as chaves de recuperação (Id,
+    sem chaves; Password, os 48 números). Pede Administrador; lança erro quando o Windows não responde. As chaves nunca
+    vão para a tela nem para o log por aqui.
+    #>
+    $found = @()
+
+    foreach ($volume in @(Get-BitLockerVolume -ErrorAction Stop)) {
+        $status = [string](Get-WinForgeJsonValue -Object $volume -Name "VolumeStatus" -Default "")
+        $protection = [string](Get-WinForgeJsonValue -Object $volume -Name "ProtectionStatus" -Default "")
+        $protectors = @(Get-WinForgeJsonValue -Object $volume -Name "KeyProtector" -Default @() | Where-Object { $null -ne $_ })
+
+        if ($status -in @("FullyDecrypted", "DecryptionInProgress", "DecryptionSuspended") -and $protection -notin @("On", "1")) { continue }
+
+        $state = $(if ($protection -in @("On", "1")) { "On" }
+            elseif ($status -in @("EncryptionInProgress", "EncryptionSuspended")) { "Encrypting" }
+            elseif ($protectors.Count -gt 0) { "Suspended" }
+            else { "Pending" })
+
+        $keys = @(
+            foreach ($protector in $protectors) {
+                if ([string](Get-WinForgeJsonValue -Object $protector -Name "KeyProtectorType" -Default "") -notin @("RecoveryPassword", "3")) { continue }
+
+                [PSCustomObject]@{
+                    Id       = ([string](Get-WinForgeJsonValue -Object $protector -Name "KeyProtectorId" -Default "")).Trim('{', '}')
+                    Password = [string](Get-WinForgeJsonValue -Object $protector -Name "RecoveryPassword" -Default "")
+                }
+            }
+        )
+
+        $mount = ([string](Get-WinForgeJsonValue -Object $volume -Name "MountPoint" -Default "")).TrimEnd('\')
+
+        $found += [PSCustomObject]@{
+            MountPoint = $mount
+            System     = ([string](Get-WinForgeJsonValue -Object $volume -Name "VolumeType" -Default "") -in @("OperatingSystem", "0"))
+            State      = $state
+            Keys       = @($keys | Where-Object { $_.Password })
+        }
+    }
+
+    return @($found | Sort-Object @{ Expression = { -not $_.System } }, MountPoint)
+}
+
+
+function Get-WinForgeBitLockerStateText {
+    param ([Parameter(Mandatory)][string]$State)
+
+    switch ($State) {
+        "On" { return (Get-WinForgeText 'protegido') }
+        "Suspended" { return (Get-WinForgeText 'criptografado, com a proteção suspensa') }
+        "Encrypting" { return (Get-WinForgeText 'criptografando') }
+        default { return (Get-WinForgeText 'preparado, esperando ativação') }
+    }
+}
+
+
+function Save-WinForgeBitLockerKeyFile {
+    # Grava as chaves num arquivo de texto, com o que fazer com ele. Devolve o caminho. A chave não passa pela tela.
+    param (
+        [Parameter(Mandatory)][object[]]$Volumes,
+        [Parameter(Mandatory)][string]$Folder
+    )
+
+    $stamp = (Get-Date).ToString("yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
+    $name = (Get-WinForgeText 'Chave de recuperação BitLocker - {0} - {1}.txt' "$env:COMPUTERNAME" "$stamp")
+    $path = Join-Path $Folder $name
+    $lines = New-Object System.Collections.Generic.List[string]
+
+    $lines.Add((Get-WinForgeText 'Chave de recuperação do BitLocker'))
+    $lines.Add((Get-WinForgeText 'PC: {0}' "$env:COMPUTERNAME"))
+    $lines.Add((Get-WinForgeText 'Guardada pelo WinForge em {0}.' "$(Format-WinForgeDateTime -When (Get-Date))"))
+    $lines.Add("")
+
+    foreach ($volume in $Volumes) {
+        foreach ($key in @($volume.Keys)) {
+            $lines.Add((Get-WinForgeText 'Disco: {0}' "$($volume.MountPoint)"))
+            $lines.Add((Get-WinForgeText 'Identificação da chave: {0}' "$($key.Id)"))
+            $lines.Add((Get-WinForgeText 'Chave de recuperação: {0}' "$($key.Password)"))
+            $lines.Add("")
+        }
+    }
+
+    $lines.Add((Get-WinForgeText 'Se o PC pedir a chave de recuperação, confira se a identificação na tela começa como a daqui e digite a chave de 48 números.'))
+    $lines.Add((Get-WinForgeText 'Guarde este arquivo fora do PC (num pendrive, impresso ou num e-mail para você): quem tiver esta chave consegue abrir o disco.'))
+
+    [System.IO.File]::WriteAllText($path, ($lines -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding $true))
+
+    return $path
+}
+
+
+function Select-WinForgeBitLockerKeyFolder {
+    # Onde salvar a cópia: um pendrive (as unidades removíveis à vista) ou uma pasta digitada. "" = cancelado.
+    $options = @()
+    $places = @{}
+    $position = 0
+
+    foreach ($drive in @(Get-WinForgeRemovableDrives | Select-Object -First 9)) {
+        $position++
+        $places[[string]$position] = $drive.Root
+        $options += @{ Key = [string]$position; Label = $drive.Label; Description = (Get-WinForgeText 'pendrive ou cartão de memória'); Accent = ($position -eq 1) }
+    }
+
+    $options += @{ Key = "O"; Label = (Get-WinForgeText 'Outra pasta'); Description = (Get-WinForgeText 'Digitar o caminho de uma pasta') }
+    $options += @{ Key = "0"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
+
+    $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'Onde salvar a cópia da chave?') -Options $options -ShowMenu
+
+    if ($places.ContainsKey([string]$answer)) { return $places[[string]$answer] }
+    if ([string]$answer -ne "O") { return "" }
+
+    # Só caminho completo (E:\Chaves, \\servidor\pasta): um relativo seria conferido numa pasta e gravado noutra.
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $typed = ([string](Read-WinForgeText -Message (Get-WinForgeText 'Caminho da pasta (ENTER cancela)'))).Trim().Trim('"')
+
+        if (-not $typed) { return "" }
+
+        $typed = [Environment]::ExpandEnvironmentVariables($typed)
+
+        # "E:" sozinho é a raiz do pendrive.
+        if ($typed -match '^[A-Za-z]:$') { $typed += "\" }
+        if ($typed -match '^[A-Za-z]:[\\/]' -or $typed -match '^\\\\[^\\]+\\[^\\]+') { return $typed }
+
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Digite o caminho completo da pasta, com a letra do disco (por exemplo, E:\Chaves).')
+    }
+
+    return ""
+}
+
+
+function Show-WinForgeBitLockerKey {
+    $title = (Get-WinForgeText 'Chave de recuperação do BitLocker')
+    Enter-WinForgeAction -Title $title
+
+    $final = $null
+    $created = @()
+
+    try {
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Ler a chave de recuperação do BitLocker exige privilégios de Administrador.'))) {
+            $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title
+            Exit-WinForgeAction -Result $final
+            return
+        }
+
+        if ($null -eq (Get-Command -Name Get-BitLockerVolume -ErrorAction SilentlyContinue)) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Este Windows não tem o BitLocker: não há chave de recuperação.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'este Windows não tem o BitLocker') -Title $title)
+            return
+        }
+
+        $volumes = @(Get-WinForgeBitLockerVolumes)
+
+        if ($volumes.Count -eq 0) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhum disco deste PC usa o BitLocker: não há chave de recuperação para guardar.')
+            Exit-WinForgeAction -Result (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhum disco com BitLocker') -Title $title) `
+                    -Headline (Get-WinForgeText 'Nenhum disco com BitLocker') -Note (Get-WinForgeText 'Os discos deste PC não estão criptografados; não há chave para guardar.'))
+            return
+        }
+
+        Write-WinForgeSection -Title (Get-WinForgeText 'Discos com BitLocker')
+
+        foreach ($volume in $volumes) {
+            # Esperando ativação, o disco ainda abre sem chave: não ter uma é o normal, e não um alerta.
+            if ($volume.State -eq "Pending") {
+                Write-WinForgeKeyValue -Label $volume.MountPoint -Value (Get-WinForgeBitLockerStateText -State $volume.State) -LabelWidth 8
+                continue
+            }
+
+            $keys = $(if (@($volume.Keys).Count -gt 0) { Join-WinForgeList -Items @($volume.Keys | ForEach-Object { (Get-WinForgeText 'chave {0}' "$($_.Id.Substring(0, [Math]::Min(8, $_.Id.Length)))") }) } else { (Get-WinForgeText 'sem chave de recuperação') })
+            Write-WinForgeKeyValue -Label $volume.MountPoint -Value (Get-WinForgeText '{0}; {1}' "$(Get-WinForgeBitLockerStateText -State $volume.State)" "$keys") -Level $(if (@($volume.Keys).Count -gt 0) { "Normal" } else { "Warn" }) -LabelWidth 8
+        }
+
+        Write-Host ""
+
+        if (@($volumes | Where-Object { $_.State -eq "Pending" }).Count -gt 0) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Esperando ativação, a criptografia ainda não protege o disco, e ele abre sem chave. Para ligar, use Configurações, Privacidade e segurança, Criptografia do dispositivo; a chave de recuperação fica guardada na sua conta Microsoft.')
+        }
+
+        $withKeys = @($volumes | Where-Object { @($_.Keys).Count -gt 0 })
+        $withoutKeys = @($volumes | Where-Object { @($_.Keys).Count -eq 0 -and $_.State -ne "Pending" })
+
+        # Só discos esperando ativação: não há chave para guardar nem para criar daqui.
+        if ($withKeys.Count -eq 0 -and $withoutKeys.Count -eq 0) {
+            Exit-WinForgeAction -Result (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'criptografia esperando ativação') -Title $title) `
+                    -Headline (Get-WinForgeText 'Criptografia esperando ativação') -Note (Get-WinForgeText 'O disco ainda não está protegido e abre sem chave; não há chave para guardar.'))
+            return
+        }
+
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Se o PC pedir a chave (depois de trocar uma peça ou atualizar a BIOS), sem ela os arquivos do disco ficam inacessíveis. Com uma conta Microsoft, uma cópia costuma estar em aka.ms/myrecoverykey.')
+        Write-Host ""
+
+        $options = @()
+
+        if ($withKeys.Count -gt 0) {
+            $options += @{ Key = "S"; Label = (Get-WinForgeText 'Salvar uma cópia num arquivo'); Description = (Get-WinForgeText 'Num pendrive ou noutra pasta, fora deste disco'); Accent = $true }
+            $options += @{ Key = "M"; Label = (Get-WinForgeText 'Mostrar na tela'); Description = (Get-WinForgeText 'Para anotar; a chave não vai para o log do WinForge') }
+        }
+
+        if ($withoutKeys.Count -gt 0) {
+            $options += @{ Key = "C"; Label = (Get-WinForgeText 'Criar uma chave de recuperação'); Description = (Join-WinForgeList -Items @($withoutKeys | ForEach-Object { $_.MountPoint })); Accent = ($withKeys.Count -eq 0) }
+        }
+
+        $options += @{ Key = "X"; Label = (Get-WinForgeText 'Voltar'); Exit = $true }
+
+        $answer = Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja fazer?') -Options $options -DefaultKey "X" -ShowMenu -TextPrompt (Get-WinForgeText 'Opção (0 ou Enter = voltar)')
+
+        if ($answer -eq "C") {
+            foreach ($volume in $withoutKeys) {
+                try {
+                    # O próprio comando escreve a chave nova num aviso: calado, para ela não ir para o log.
+                    [void](Add-BitLockerKeyProtector -MountPoint $volume.MountPoint -RecoveryPasswordProtector -ErrorAction Stop -WarningAction SilentlyContinue)
+                }
+                catch {
+                    # Uma política da empresa que exige guardar a chave no Active Directory recusa a criação quando não consegue:
+                    # a falha é de criar, e não de ler o BitLocker.
+                    $reason = ([string]$_.Exception.Message).Trim().TrimEnd('.')
+                    Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível criar a chave de recuperação de {0}: {1}.' "$($volume.MountPoint)" "$reason")
+                    $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a chave de {0} não foi criada: {1}' "$($volume.MountPoint)" "$reason") -Title $title
+                    break
+                }
+
+                [void](Add-WinForgeChange -Action (Get-WinForgeText 'Chave de recuperação do BitLocker') -Text (Get-WinForgeText 'chave criada para o disco {0}' "$($volume.MountPoint)"))
+                $created += $volume.MountPoint
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Chave de recuperação criada para o disco {0}.' "$($volume.MountPoint)")
+            }
+
+            if ($null -eq $final) {
+                $volumes = @(Get-WinForgeBitLockerVolumes)
+                $withKeys = @($volumes | Where-Object { @($_.Keys).Count -gt 0 })
+                Write-Host ""
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Agora guarde uma cópia da chave nova fora do PC.')
+                $answer = "S"
+            }
+            else {
+                $answer = ""
+            }
+        }
+
+        if ($answer -eq "M") {
+            foreach ($volume in $withKeys) {
+                foreach ($key in @($volume.Keys)) { Write-WinForgeSecret -Label (Get-WinForgeText '{0} (chave {1})' "$($volume.MountPoint)" "$($key.Id.Substring(0, [Math]::Min(8, $key.Id.Length)))") -Value $key.Password -LabelWidth 8 }
+            }
+
+            Write-Host ""
+            Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'A chave aparece só na tela: ela não vai para o log do WinForge. Anote e guarde fora do PC.')
+            $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'chave mostrada na tela') -Title $title) `
+                -Headline (Get-WinForgeText 'Chave de recuperação na tela') -Note (Get-WinForgeText 'Ela está no resumo, abaixo, e não vai para o log do WinForge. Anote e guarde fora do PC.')
+        }
+        elseif ($answer -eq "S") {
+            $folder = Select-WinForgeBitLockerKeyFolder
+
+            if (-not $folder) {
+                $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
+            }
+            elseif (-not (Test-Path -LiteralPath $folder -PathType Container)) {
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A pasta não existe: {0}' "$folder")
+                $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a pasta não existe') -Title $title
+                $note = Get-WinForgeMissingDriveNote -Path $folder
+
+                if ($note) {
+                    Write-WinForgeStatus -Type Info -Message $note
+                    [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A pasta não existe') -Note $note -Tone Bad)
+                }
+            }
+            else {
+                # Uma cópia dentro do próprio disco criptografado não ajuda quando o disco não abre.
+                $letter = ([System.IO.Path]::GetPathRoot((Get-WinForgeFullPath -Path $folder))).TrimEnd('\')
+                $go = $true
+
+                if (@($volumes | Where-Object { $_.MountPoint -ieq $letter }).Count -gt 0) {
+                    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Esta pasta fica num disco com BitLocker ({0}): se o PC pedir a chave, esse disco não abre. Use um pendrive ou copie o arquivo para fora depois.' "$letter")
+                    $go = Confirm-WinForgeAction -Message (Get-WinForgeText 'Salvar aí mesmo assim?') -DefaultKey N -YesLabel (Get-WinForgeText 'Salvar mesmo assim') -NoLabel (Get-WinForgeText 'Cancelar')
+                }
+
+                if (-not $go) {
+                    $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
+                }
+                else {
+                    try {
+                        $path = Save-WinForgeBitLockerKeyFile -Volumes $withKeys -Folder $folder
+                        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Cópia da chave salva: {0}' "$path")
+                        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'cópia da chave salva em {0}' "$path") -Title $title) `
+                            -Headline (Get-WinForgeText 'Cópia da chave salva') -Note (Get-WinForgeText 'Está em {0}. Guarde esse arquivo fora do PC: quem tiver a chave consegue abrir o disco.' "$path")
+                    }
+                    catch {
+                        # A falha é de gravar (o pendrive tirado, protegido contra gravação ou cheio, a pasta sem permissão), e
+                        # não de ler o BitLocker: a tela diz isso, e o botão tenta de novo.
+                        $reason = ([string](ConvertTo-WinForgeReadableError -Text ([string]$_.Exception.Message))).Trim().TrimEnd('.')
+                        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível salvar a cópia da chave: {0}.' "$reason")
+                        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a cópia da chave não foi salva: {0}' "$reason") -Title $title) `
+                            -Headline (Get-WinForgeText 'A cópia da chave não foi salva') -Note (Get-WinForgeText 'Confira se o pendrive está conectado e com espaço, ou escolha outra pasta.') `
+                            -Tone Bad -Next "security.bitlocker-key" -NextLabel (Get-WinForgeText 'Tentar de novo')
+                    }
+                }
+            }
+        }
+        elseif ($null -eq $final) {
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title
+        }
+    }
+    catch {
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler o BitLocker: {0}.' "$(([string]$_.Exception.Message).TrimEnd('.'))")
+        $final = New-WinForgeResult -Kind Failed -Detail ([string]$_.Exception.Message).TrimEnd('.') -Title $title
+    }
+
+    # Uma chave criada agora sem cópia guardada (a pessoa desistiu de onde salvar, ou não deu para salvar): é o que o
+    # resultado diz, e o próximo passo é guardá-la.
+    if ($created.Count -gt 0 -and ($null -eq $final -or $final.Kind -ne "Ok")) {
+        $where = Join-WinForgeList -Items $created
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A chave nova de {0} foi criada, mas nenhuma cópia foi guardada.' "$where")
+        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'chave criada para {0}, mas nenhuma cópia foi guardada' "$where") -Title $title) `
+            -Headline (Get-WinForgeText 'Chave criada, sem cópia guardada') -Note (Get-WinForgeText 'Guarde uma cópia agora: salve num arquivo fora deste disco ou anote a chave.') `
+            -Next "security.bitlocker-key" -NextLabel (Get-WinForgeText 'Guardar a chave')
+    }
+
+    Exit-WinForgeAction -Result $final
 }
 
 

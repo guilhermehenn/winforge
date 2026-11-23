@@ -13,10 +13,10 @@ function Get-WinForgeShortcutFolders {
     $folders = @()
 
     foreach ($entry in @(
-            @{ Name = "Desktop"; Label = "Área de Trabalho"; Admin = $false; Recurse = $false },
-            @{ Name = "CommonDesktopDirectory"; Label = "Área de Trabalho (todos os usuários)"; Admin = $true; Recurse = $false },
-            @{ Name = "Programs"; Label = "Menu Iniciar"; Admin = $false; Recurse = $true },
-            @{ Name = "CommonPrograms"; Label = "Menu Iniciar (todos os usuários)"; Admin = $true; Recurse = $true }
+            @{ Name = "Desktop"; Label = (Get-WinForgeText 'Área de Trabalho'); Admin = $false; Recurse = $false },
+            @{ Name = "CommonDesktopDirectory"; Label = (Get-WinForgeText 'Área de Trabalho (todos os usuários)'); Admin = $true; Recurse = $false },
+            @{ Name = "Programs"; Label = (Get-WinForgeText 'Menu Iniciar'); Admin = $false; Recurse = $true },
+            @{ Name = "CommonPrograms"; Label = (Get-WinForgeText 'Menu Iniciar (todos os usuários)'); Admin = $true; Recurse = $true }
         )) {
         $path = ""
         try { $path = [string][Environment]::GetFolderPath($entry.Name) } catch { $path = "" }
@@ -76,14 +76,14 @@ function Find-WinForgeBrokenShortcuts {
 
 
 function Remove-WinForgeBrokenShortcuts {
-    $title = "Remover atalhos quebrados"
+    $title = (Get-WinForgeText 'Remover atalhos quebrados')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        Write-Progress -Activity $title -Status "conferindo os atalhos da Área de Trabalho e do Menu Iniciar"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'conferindo os atalhos da Área de Trabalho e do Menu Iniciar')
 
         try {
             $broken = @(Find-WinForgeBrokenShortcuts)
@@ -93,8 +93,8 @@ function Remove-WinForgeBrokenShortcuts {
         }
 
         if ($broken.Count -eq 0) {
-            Write-WinForgeStatus -Type Success -Message "Nenhum atalho quebrado na Área de Trabalho nem no Menu Iniciar."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Ok -Detail "nenhum atalho quebrado" -Title $title)
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhum atalho quebrado na Área de Trabalho nem no Menu Iniciar.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum atalho quebrado') -Title $title)
             return
         }
 
@@ -103,44 +103,44 @@ function Remove-WinForgeBrokenShortcuts {
         $locked = $broken.Count - $usable.Count
 
         foreach ($group in @($broken | Group-Object -Property Location)) {
-            Write-WinForgeKeyValue -Label $group.Name -Value (Format-WinForgeCount -Count $group.Count -One "atalho quebrado" -Many "atalhos quebrados") -LabelWidth 36
+            Write-WinForgeKeyValue -Label $group.Name -Value (Format-WinForgeCount -Count $group.Count -One (Get-WinForgeText 'atalho quebrado') -Many (Get-WinForgeText 'atalhos quebrados')) -LabelWidth 36
         }
 
         Write-Host ""
 
         if ($locked -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "$(Format-WinForgeCount -Count $locked -One 'atalho é' -Many 'atalhos são') de todos os usuários: para removê-$(if ($locked -eq 1) { 'lo' } else { 'los' }), feche o WinForge, abra de novo e aceite o aviso do Windows."
+            Write-WinForgeStatus -Type Info -Message $(if ($locked -eq 1) { (Get-WinForgeText '1 atalho é de todos os usuários: para removê-lo, feche o WinForge, abra de novo e aceite o aviso do Windows.') } else { (Get-WinForgeText '{0} atalhos são de todos os usuários: para removê-los, feche o WinForge, abra de novo e aceite o aviso do Windows.' "$locked") })
         }
 
         if ($usable.Count -eq 0) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Warning -Detail "os atalhos quebrados exigem Administrador" -Title $title)
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'os atalhos quebrados exigem Administrador') -Title $title)
             return
         }
 
         # Os atalhos vão para a Lixeira (a pergunta já diz), e dá para devolver qualquer um por lá.
-        [void](Write-WinForgeOtherAccountNotice -What "os atalhos pessoais da Área de Trabalho e do Menu Iniciar")
+        [void](Write-WinForgeOtherAccountNotice -What 'os atalhos pessoais da Área de Trabalho e do Menu Iniciar')
 
         $synced = @($usable | Where-Object { $_.Synced }).Count
 
         # Um atalho do OneDrive pode ser de um programa instalado em outro PC da pessoa.
         if ($synced -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "$(Format-WinForgeCount -Count $synced -One 'atalho fica no OneDrive e vem desmarcado' -Many 'atalhos ficam no OneDrive e vêm desmarcados'): o que sai daqui sai dos seus outros PCs."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0}: o que sai daqui sai dos seus outros PCs.' "$(Format-WinForgeCount -Count $synced -One (Get-WinForgeText 'atalho fica no OneDrive e vem desmarcado') -Many (Get-WinForgeText 'atalhos ficam no OneDrive e vêm desmarcados'))")
         }
 
         Write-Host ""
 
         $options = @(
             for ($i = 0; $i -lt $usable.Count; $i++) {
-                $where = $(if ($usable[$i].Synced) { "$($usable[$i].Location), no OneDrive" } else { $usable[$i].Location })
-                @{ Key = [string]$i; Label = $usable[$i].Name; Description = "$where · apontava para $($usable[$i].Target)"; Selected = (-not $usable[$i].Synced) }
+                $where = $(if ($usable[$i].Synced) { (Get-WinForgeText '{0}, no OneDrive' "$($usable[$i].Location)") } else { $usable[$i].Location })
+                @{ Key = [string]$i; Label = $usable[$i].Name; Description = (Get-WinForgeText '{0} · apontava para {1}' "$where" "$($usable[$i].Target)"); Selected = (-not $usable[$i].Synced) }
             }
         )
 
-        $picked = Read-WinForgeMultiSelect -Message "Marque os atalhos que devem ir para a Lixeira" -Options $options
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Marque os atalhos que devem ir para a Lixeira') -Options $options
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
@@ -153,7 +153,7 @@ function Remove-WinForgeBrokenShortcuts {
                 try {
                     # Um item aberto por outro programa faria o Windows mostrar a janela "Arquivo em uso", que pararia a
                     # ação esperando resposta (às vezes atrás da janela do WinForge): ele fica de fora antes disso.
-                    if (Test-WinForgeItemInUse -Path $shortcut.Path) { throw "está aberto em outro programa; feche-o e tente de novo" }
+                    if (Test-WinForgeItemInUse -Path $shortcut.Path) { throw (Get-WinForgeText 'está aberto em outro programa; feche-o e tente de novo') }
 
                     Move-WinForgeItemToRecycleBin -Path $shortcut.Path
                     $removed += $shortcut.Name
@@ -167,20 +167,20 @@ function Remove-WinForgeBrokenShortcuts {
         finally {
             # No finally: parar a ação no meio não deixa sem anotação o que já foi para a Lixeira.
             if ($removed.Count -gt 0) {
-                [void](Add-WinForgeChange -Action "Atalhos quebrados" -Text "$(Join-WinForgeList -Items $removed) $(if ($removed.Count -eq 1) { 'foi' } else { 'foram' }) para a Lixeira")
+                [void](Add-WinForgeChange -Action (Get-WinForgeText 'Atalhos quebrados') -Text $(if ($removed.Count -eq 1) { (Get-WinForgeText '{0} foi para a Lixeira' "$(Join-WinForgeList -Items $removed)") } else { (Get-WinForgeText '{0} foram para a Lixeira' "$(Join-WinForgeList -Items $removed)") }))
             }
         }
 
         if ($removed.Count -gt 0) {
-            Write-WinForgeStatus -Type Success -Message "$(Format-WinForgeCount -Count $removed.Count -One 'atalho foi' -Many 'atalhos foram') para a Lixeira."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0} para a Lixeira.' "$(Format-WinForgeCount -Count $removed.Count -One (Get-WinForgeText 'atalho foi') -Many (Get-WinForgeText 'atalhos foram'))")
         }
 
-        if ($failed.Count -eq 0) { $final = New-WinForgeResult -Kind Ok -Detail (Format-WinForgeCount -Count $removed.Count -One "atalho removido" -Many "atalhos removidos") -Title $title }
-        elseif ($removed.Count -eq 0) { $final = New-WinForgeResult -Kind Failed -Detail "nenhum atalho foi removido: $(Join-WinForgeList -Items $failed)" -Title $title }
-        else { $final = New-WinForgeResult -Kind Warning -Detail "$($failed.Count) de $($chosen.Count) não foram removidos: $(Join-WinForgeList -Items $failed)" -Title $title }
+        if ($failed.Count -eq 0) { $final = New-WinForgeResult -Kind Ok -Detail (Format-WinForgeCount -Count $removed.Count -One (Get-WinForgeText 'atalho removido') -Many (Get-WinForgeText 'atalhos removidos')) -Title $title }
+        elseif ($removed.Count -eq 0) { $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhum atalho foi removido: {0}' "$(Join-WinForgeList -Items $failed)") -Title $title }
+        else { $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} não foram removidos: {2}' "$($failed.Count)" "$($chosen.Count)" "$(Join-WinForgeList -Items $failed)") -Title $title }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível conferir os atalhos: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível conferir os atalhos: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
@@ -346,7 +346,7 @@ function Find-WinForgeDuplicateGroups {
             $hashed++
 
             if ($hashed % 10 -eq 1) {
-                Write-Progress -Activity "Procurando arquivos duplicados" -Status "comparando $(Format-WinForgeNumber -Value $hashed) de $(Format-WinForgeNumber -Value $toHash)" -PercentComplete ([int](($hashed - 1) * 100 / [Math]::Max(1, $toHash)))
+                Write-Progress -Activity (Get-WinForgeText 'Procurando arquivos duplicados') -Status (Get-WinForgeText 'comparando {0} de {1}' "$(Format-WinForgeNumber -Value $hashed)" "$(Format-WinForgeNumber -Value $toHash)") -PercentComplete ([int](($hashed - 1) * 100 / [Math]::Max(1, $toHash)))
             }
 
             try {
@@ -364,7 +364,7 @@ function Find-WinForgeDuplicateGroups {
 
         foreach ($candidates in @($samples.Values | Where-Object { $_.Count -gt 1 })) {
             foreach ($file in $candidates) {
-                Write-Progress -Activity "Procurando arquivos duplicados" -Status "conferindo o conteúdo de $($file.Name)" -PercentComplete ([int](($hashed - 1) * 100 / [Math]::Max(1, $toHash)))
+                Write-Progress -Activity (Get-WinForgeText 'Procurando arquivos duplicados') -Status (Get-WinForgeText 'conferindo o conteúdo de {0}' "$($file.Name)") -PercentComplete ([int](($hashed - 1) * 100 / [Math]::Max(1, $toHash)))
 
                 try {
                     $hash = Get-WinForgeFileDigest -Path $file.FullName
@@ -395,7 +395,7 @@ function Find-WinForgeDuplicateGroups {
         }
     }
 
-    Write-Progress -Activity "Procurando arquivos duplicados" -Completed
+    Write-Progress -Activity (Get-WinForgeText 'Procurando arquivos duplicados') -Completed
 
     return [PSCustomObject]@{
         Groups    = @($groups | Sort-Object -Property @{ Expression = { [int64]$_.Size * $_.Copies.Count }; Descending = $true })
@@ -472,10 +472,10 @@ function Select-WinForgeDuplicateFolder {
     # exista: quem chama diz que não encontrou, em vez de tratar como cancelado). "" = cancelou.
     $options = @()
     $known = @(
-        @{ Key = "D"; Label = "Downloads"; Path = $(try { [string](Get-WinForgeDownloadsPath) } catch { "" }) },
-        @{ Key = "I"; Label = "Imagens"; Path = $(try { [string][Environment]::GetFolderPath("MyPictures") } catch { "" }) },
-        @{ Key = "M"; Label = "Documentos"; Path = $(try { [string][Environment]::GetFolderPath("MyDocuments") } catch { "" }) },
-        @{ Key = "A"; Label = "Área de Trabalho"; Path = $(try { [string][Environment]::GetFolderPath("Desktop") } catch { "" }) }
+        @{ Key = "D"; Label = (Get-WinForgeText 'Downloads'); Path = $(try { [string](Get-WinForgeDownloadsPath) } catch { "" }) },
+        @{ Key = "I"; Label = (Get-WinForgeText 'Imagens'); Path = $(try { [string][Environment]::GetFolderPath("MyPictures") } catch { "" }) },
+        @{ Key = "M"; Label = (Get-WinForgeText 'Documentos'); Path = $(try { [string][Environment]::GetFolderPath("MyDocuments") } catch { "" }) },
+        @{ Key = "A"; Label = (Get-WinForgeText 'Área de Trabalho'); Path = $(try { [string][Environment]::GetFolderPath("Desktop") } catch { "" }) }
     )
 
     foreach ($entry in $known) {
@@ -484,15 +484,15 @@ function Select-WinForgeDuplicateFolder {
         }
     }
 
-    $options += @{ Key = "O"; Label = "Outra pasta"; Description = "por exemplo D:\Fotos" }
-    $options += @{ Key = "C"; Label = "Cancelar"; Exit = $true }
+    $options += @{ Key = "O"; Label = (Get-WinForgeText 'Outra pasta'); Description = (Get-WinForgeText 'por exemplo D:\Fotos') }
+    $options += @{ Key = "C"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
 
-    [void](Write-WinForgeOtherAccountNotice -What "as pastas pessoais (Downloads, Imagens, Documentos, Área de Trabalho)")
+    [void](Write-WinForgeOtherAccountNotice -What 'as pastas pessoais (Downloads, Imagens, Documentos, Área de Trabalho)')
 
-    $choice = Read-WinForgeChoice -Message "Onde procurar?" -Options $options -DefaultKey "C" -ShowMenu
+    $choice = Read-WinForgeChoice -Message (Get-WinForgeText 'Onde procurar?') -Options $options -DefaultKey "C" -ShowMenu
 
     if ($choice -eq "O") {
-        return [string](ConvertTo-WinForgeScanPath -Text (Read-WinForgeText -Message "Cole o caminho da pasta (ENTER cancela)"))
+        return [string](ConvertTo-WinForgeScanPath -Text (Read-WinForgeText -Message (Get-WinForgeText 'Cole o caminho da pasta (ENTER cancela)')))
     }
 
     $match = @($known | Where-Object { $_.Key -eq $choice }) | Select-Object -First 1
@@ -507,7 +507,7 @@ function Find-WinForgeDuplicateFiles {
         [string]$Path = ""
     )
 
-    $title = "Encontrar arquivos duplicados"
+    $title = (Get-WinForgeText 'Encontrar arquivos duplicados')
 
     Enter-WinForgeAction -Title $title
 
@@ -517,31 +517,31 @@ function Find-WinForgeDuplicateFiles {
         $path = $(if ([string]::IsNullOrWhiteSpace($Path)) { Select-WinForgeDuplicateFolder } else { $Path })
 
         if ([string]::IsNullOrWhiteSpace($path)) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
         # Um caminho digitado que não existe não é desistência: a faixa diz que a pasta não foi encontrada.
         if (-not (Test-Path -LiteralPath $path -PathType Container)) {
-            Write-WinForgeStatus -Type Error -Message "Pasta não encontrada: $path"
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "pasta não encontrada" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Pasta não encontrada: {0}' "$path")
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta não encontrada') -Title $title)
             return
         }
 
         if (-not (Test-WinForgeDuplicateFolderSafe -Path $path)) {
             # Ficam de fora a raiz do disco, o perfil inteiro e as pastas do Windows, dos programas e jogos e dos dados dos
             # programas (AppData e ProgramData).
-            Write-WinForgeStatus -Type Error -Message "Por segurança, o WinForge não procura duplicados nesta pasta: escolha uma pasta sua, como Downloads ou Imagens."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "pasta recusada por segurança" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Por segurança, o WinForge não procura duplicados nesta pasta: escolha uma pasta sua, como Downloads ou Imagens.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pasta recusada por segurança') -Title $title)
             return
         }
 
         $linkTarget = Get-WinForgeFolderLinkTarget -Path $path
 
         if ($linkTarget) {
-            Write-WinForgeStatus -Type Error -Message "A pasta $path é um atalho para $linkTarget (ou fica dentro de um): escolha a pasta de verdade."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "a pasta é um atalho para outra pasta" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A pasta {0} é um atalho para {1} (ou fica dentro de um): escolha a pasta de verdade.' "$path" "$linkTarget")
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a pasta é um atalho para outra pasta') -Title $title)
             return
         }
 
@@ -550,32 +550,32 @@ function Find-WinForgeDuplicateFiles {
         $binProblem = Get-WinForgeRecycleBinProblem -Path $path
 
         if ($binProblem) {
-            Write-WinForgeStatus -Type Error -Message "A pasta $path ${binProblem}: o Windows apagaria as cópias em definitivo, sem passar pela Lixeira."
-            Write-WinForgeStatus -Type Info -Message "Procure os duplicados numa pasta do disco do PC, ou apague as cópias à mão sabendo que não terão volta."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "a pasta $binProblem" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A pasta {0} {1}: o Windows apagaria as cópias em definitivo, sem passar pela Lixeira.' "$path" "${binProblem}")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Procure os duplicados numa pasta do disco do PC, ou apague as cópias à mão sabendo que não terão volta.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a pasta {0}' "$binProblem") -Title $title)
             return
         }
 
-        Write-Progress -Activity "Procurando arquivos duplicados" -Status "listando os arquivos de $path"
+        Write-Progress -Activity (Get-WinForgeText 'Procurando arquivos duplicados') -Status (Get-WinForgeText 'listando os arquivos de {0}' "$path")
         $scan = Find-WinForgeDuplicateGroups -Path $path
 
-        Write-WinForgeKeyValue -Label "Pasta" -Value $path
-        Write-WinForgeKeyValue -Label "Arquivos de 1 MB ou mais" -Value (Format-WinForgeNumber -Value $scan.Scanned)
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Pasta') -Value $path
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Arquivos de 1 MB ou mais') -Value (Format-WinForgeNumber -Value $scan.Scanned)
 
         if ($scan.Truncated) {
-            Write-WinForgeStatus -Type Info -Message "A pasta tem arquivos demais; só os primeiros $(Format-WinForgeNumber -Value $scan.Scanned) foram comparados. Escolha uma pasta menor para ver o resto."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'A pasta tem arquivos demais; só os primeiros {0} foram comparados. Escolha uma pasta menor para ver o resto.' "$(Format-WinForgeNumber -Value $scan.Scanned)")
         }
 
         $groups = @($scan.Groups)
 
         if ($scan.Links -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "$(Format-WinForgeCount -Count $scan.Links -One 'item ficou' -Many 'itens ficaram') de fora (atalhos de pasta e arquivos do OneDrive)."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0} de fora (atalhos de pasta e arquivos do OneDrive).' "$(Format-WinForgeCount -Count $scan.Links -One (Get-WinForgeText 'item ficou') -Many (Get-WinForgeText 'itens ficaram'))")
         }
 
         if ($groups.Count -eq 0) {
             Write-Host ""
-            Write-WinForgeStatus -Type Success -Message "Nenhum arquivo duplicado$(if ($scan.Links -gt 0) { ' no que foi comparado' })."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Ok -Detail "nenhum duplicado" -Title $title)
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhum arquivo duplicado{0}.' "$(if ($scan.Links -gt 0) { (Get-WinForgeText ' no que foi comparado') })")
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum duplicado') -Title $title)
             return
         }
 
@@ -583,12 +583,12 @@ function Find-WinForgeDuplicateFiles {
         $copies = 0
         foreach ($group in $groups) { $wasted += [int64]$group.Size * $group.Copies.Count; $copies += $group.Copies.Count }
 
-        Write-WinForgeKeyValue -Label "Cópias repetidas" -Value (Format-WinForgeNumber -Value $copies)
-        Write-WinForgeKeyValue -Label "Espaço ocupado por elas" -Value (Format-WinForgeBytes -Bytes $wasted)
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Cópias repetidas') -Value (Format-WinForgeNumber -Value $copies)
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço ocupado por elas') -Value (Format-WinForgeBytes -Bytes $wasted)
         Write-Host ""
-        Write-WinForgeStatus -Type Info -Message "O arquivo mais antigo de cada grupo fica de fora da lista; nada vem marcado."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O arquivo mais antigo de cada grupo fica de fora da lista; nada vem marcado.')
         if (Test-WinForgeRecycleBinLimitExceeded -Items @($groups | ForEach-Object { [PSCustomObject]@{ Path = [string]$_.Keep; Size = [int64]$_.Size } }) -SizeProperty "Size") {
-            Write-WinForgeStatus -Type Info -Message "Uma cópia maior que o limite da Lixeira fica onde está: o Windows a apagaria em definitivo."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Uma cópia maior que o limite da Lixeira fica onde está: o Windows a apagaria em definitivo.')
         }
 
         Write-Host ""
@@ -604,32 +604,32 @@ function Find-WinForgeDuplicateFiles {
 
         if ($entries.Count -gt $shown.Count) {
             # Os grupos vêm dos que mais ocupam: a lista mostra as maiores cópias, e a pessoa precisa saber que há mais.
-            Write-WinForgeStatus -Type Info -Message "Só as $($shown.Count) maiores de $(Format-WinForgeNumber -Value $entries.Count) cópias aparecem; depois de limpar, procure de novo."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Só as {0} maiores de {1} cópias aparecem; depois de limpar, procure de novo.' "$($shown.Count)" "$(Format-WinForgeNumber -Value $entries.Count)")
         }
         $base = $path.TrimEnd('\') + '\'
         $relative = { param ($Full) $(if ($Full.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)) { $Full.Substring($base.Length) } else { $Full }) }
 
         $options = @(
             for ($i = 0; $i -lt $shown.Count; $i++) {
-                @{ Key = [string]$i; Label = (& $relative $shown[$i].Path); Description = "$(Format-WinForgeBytes -Bytes $shown[$i].Size) · igual a $(& $relative $shown[$i].Keep)"; Selected = $false }
+                @{ Key = [string]$i; Label = (& $relative $shown[$i].Path); Description = (Get-WinForgeText '{0} · igual a {1}' "$(Format-WinForgeBytes -Bytes $shown[$i].Size)" "$(& $relative $shown[$i].Keep)"); Selected = $false }
             }
         )
 
-        $picked = Read-WinForgeMultiSelect -Message "Marque as cópias que devem ir para a Lixeira" -Options $options
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Marque as cópias que devem ir para a Lixeira') -Options $options
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
         $chosen = @(foreach ($key in @($picked)) { $shown[[int]$key] })
-        $question = "Enviar $(Format-WinForgeCount -Count $chosen.Count -One 'cópia' -Many 'cópias') para a Lixeira?"
+        $question = (Get-WinForgeText 'Enviar {0} para a Lixeira?' "$(Format-WinForgeCount -Count $chosen.Count -One (Get-WinForgeText 'cópia') -Many (Get-WinForgeText 'cópias'))")
 
         # São arquivos pessoais (fotos, documentos): Não como padrão, como nos restos de programas.
-        if (-not (Confirm-WinForgeAction -Message $question -DefaultKey "N")) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+        if (-not (Confirm-WinForgeAction -Message $question -DefaultKey "N" -YesLabel (Get-WinForgeText 'Enviar para a Lixeira') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
@@ -650,14 +650,14 @@ function Find-WinForgeDuplicateFiles {
                     if ([string]::Equals([string]$entry.Keep, [string]$entry.Path, [StringComparison]::OrdinalIgnoreCase) -or
                         $null -eq $kept -or $kept.PSIsContainer -or [int64]$kept.Length -ne [int64]$entry.Size -or
                         [int64]$kept.LastWriteTimeUtc.Ticks -ne [int64]$entry.KeepStamp) {
-                        throw "o arquivo que ficaria ($(& $relative $entry.Keep)) sumiu ou mudou; esta cópia ficou onde estava"
+                        throw (Get-WinForgeText 'o arquivo que ficaria ({0}) sumiu ou mudou; esta cópia ficou onde estava' "$(& $relative $entry.Keep)")
                     }
 
                     if ($null -eq $copy -or [int64]$copy.Length -ne [int64]$entry.Size -or [int64]$copy.LastWriteTimeUtc.Ticks -ne [int64]$entry.Stamp) {
-                        throw "mudou depois da busca e pode não ser mais igual; ficou onde estava"
+                        throw (Get-WinForgeText 'mudou depois da busca e pode não ser mais igual; ficou onde estava')
                     }
 
-                    if (Test-WinForgeItemInUse -Path $entry.Path) { throw "está aberto em outro programa; feche-o e tente de novo" }
+                    if (Test-WinForgeItemInUse -Path $entry.Path) { throw (Get-WinForgeText 'está aberto em outro programa; feche-o e tente de novo') }
 
                     Move-WinForgeItemToRecycleBin -Path $entry.Path -SizeBytes ([int64]$entry.Size)
                     $freed += [int64]$entry.Size
@@ -672,26 +672,29 @@ function Find-WinForgeDuplicateFiles {
         finally {
             # No finally: parar a ação no meio não deixa sem anotação o que já foi para a Lixeira.
             if ($moved -gt 0) {
-                [void](Add-WinForgeChange -Action "Arquivos duplicados" -Text "$(Format-WinForgeCount -Count $moved -One 'cópia' -Many 'cópias') de $path $(if ($moved -eq 1) { 'foi' } else { 'foram' }) para a Lixeira")
+                [void](Add-WinForgeChange -Action (Get-WinForgeText 'Arquivos duplicados') -Text $(if ($moved -eq 1) { (Get-WinForgeText '1 cópia de {0} foi para a Lixeira' "$path") } else { (Get-WinForgeText '{0} cópias de {1} foram para a Lixeira' "$moved" "$path") }))
             }
         }
 
         if ($moved -gt 0) {
-            Write-WinForgeStatus -Type Success -Message "$(Format-WinForgeCount -Count $moved -One 'cópia foi' -Many 'cópias foram') para a Lixeira ($(Format-WinForgeBytes -Bytes $freed)). O espaço só volta ao esvaziar a Lixeira (Limpeza > Esvaziar a Lixeira)."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0} para a Lixeira ({1}). O espaço só volta ao esvaziar a Lixeira (Limpeza > Esvaziar a Lixeira).' "$(Format-WinForgeCount -Count $moved -One (Get-WinForgeText 'cópia foi') -Many (Get-WinForgeText 'cópias foram'))" "$(Format-WinForgeBytes -Bytes $freed)")
         }
 
         $data = @{ FreedBytes = $freed }
 
         if ($failed.Count -eq 0) {
-            $final = New-WinForgeResult -Kind Ok -Detail "$(Format-WinForgeCount -Count $moved -One 'cópia enviada' -Many 'cópias enviadas') para a Lixeira" -Title $title -Data $data
-            [void](Set-WinForgeRecycleBinNext -Result $final -Count $moved -Bytes $freed -One "cópia" -Many "cópias")
+            $final = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText '{0} para a Lixeira' "$(Format-WinForgeCount -Count $moved -One (Get-WinForgeText 'cópia enviada') -Many (Get-WinForgeText 'cópias enviadas'))") -Title $title -Data $data
+            [void](Set-WinForgeRecycleBinNext -Result $final -Count $moved -Bytes $freed -One (Get-WinForgeText 'cópia') -Many (Get-WinForgeText 'cópias'))
         }
-        elseif ($moved -eq 0) { $final = New-WinForgeResult -Kind Failed -Detail "nenhuma cópia foi para a Lixeira" -Title $title }
-        else { $final = New-WinForgeResult -Kind Warning -Detail "$($failed.Count) de $($chosen.Count) não foram para a Lixeira" -Title $title -Data $data }
+        elseif ($moved -eq 0) { $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhuma cópia foi para a Lixeira') -Title $title }
+        else {
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} não foram para a Lixeira' "$($failed.Count)" "$($chosen.Count)") -Title $title -Data $data
+            [void](Set-WinForgeRecycleBinNext -Result $final -Count $moved -Bytes $freed)
+        }
     }
     catch {
-        Write-Progress -Activity "Procurando arquivos duplicados" -Completed
-        Write-WinForgeStatus -Type Error -Message "Não foi possível procurar duplicados: $($_.Exception.Message.TrimEnd('.'))."
+        Write-Progress -Activity (Get-WinForgeText 'Procurando arquivos duplicados') -Completed
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível procurar duplicados: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
@@ -948,7 +951,7 @@ function Select-WinForgeProgramLeftovers {
     pastas que pedem Administrador) ou a pessoa desistiu, o WinForge.Result com que a busca termina; senão, $null.
     #>
     param (
-        [string]$Title = "Restos de programas desinstalados"
+        [string]$Title = (Get-WinForgeText 'Restos de programas desinstalados')
     )
 
     $end = {
@@ -961,17 +964,17 @@ function Select-WinForgeProgramLeftovers {
     # Num PowerShell de 32 bits, as entradas de Aplicativos instalados de 64 bits ficam invisíveis: a pasta de um
     # programa ainda instalado pareceria resto.
     if (Test-WinForgeRegistryViewMismatch) {
-        Write-WinForgeStatus -Type Error -Message "Não é possível procurar os restos agora: $(Get-WinForgeRegistryViewMismatchText)."
-        return (& $end (New-WinForgeResult -Kind Failed -Detail "PowerShell de 32 bits" -Title $Title))
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não é possível procurar os restos agora: {0}.' "$(Get-WinForgeRegistryViewMismatchText)")
+        return (& $end (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'PowerShell de 32 bits') -Title $Title))
     }
 
     if ($programs.Count -eq 0) {
         # Nada foi procurado: "Nada a fazer", e não "Tudo certo".
-        Write-WinForgeStatus -Type Info -Message "O WinForge procura restos só dos programas desinstalados por ele, em Programas > Desinstalar programas; nenhum foi desinstalado por lá ainda."
-        return (& $end (New-WinForgeResult -Kind Skipped -Detail "nenhum programa desinstalado pelo WinForge" -Title $Title))
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O WinForge procura restos só dos programas desinstalados por ele, em Programas > Desinstalar programas; nenhum foi desinstalado por lá ainda.')
+        return (& $end (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhum programa desinstalado pelo WinForge') -Title $Title))
     }
 
-    Write-Progress -Activity $Title -Status "procurando pastas com o nome dos programas desinstalados"
+    Write-Progress -Activity $Title -Status (Get-WinForgeText 'procurando pastas com o nome dos programas desinstalados')
 
     try {
         $leftovers = @(Find-WinForgeLeftoverFolders -Programs $programs)
@@ -980,12 +983,12 @@ function Select-WinForgeProgramLeftovers {
         Write-Progress -Activity $Title -Completed
     }
 
-    Write-WinForgeKeyValue -Label "Programas conferidos" -Value $programs.Count
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Programas conferidos') -Value $programs.Count
 
     if ($leftovers.Count -eq 0) {
         Write-Host ""
-        Write-WinForgeStatus -Type Success -Message "Nenhuma pasta ficou para trás."
-        return (& $end (New-WinForgeResult -Kind Ok -Detail "nenhum resto encontrado" -Title $Title))
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Nenhuma pasta ficou para trás.')
+        return (& $end (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'nenhum resto encontrado') -Title $Title))
     }
 
     $isAdmin = Test-WinForgeAdministrator
@@ -993,43 +996,43 @@ function Select-WinForgeProgramLeftovers {
     $total = [int64]0
     foreach ($item in $leftovers) { $total += [int64]$item.Size }
 
-    Write-WinForgeKeyValue -Label "Pastas encontradas" -Value $leftovers.Count
-    Write-WinForgeKeyValue -Label "Espaço" -Value (Format-WinForgeBytes -Bytes $total -ZeroText "0 B")
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Pastas encontradas') -Value $leftovers.Count
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Espaço') -Value (Format-WinForgeBytes -Bytes $total -ZeroText "0 B")
     Write-Host ""
 
     if ($usable.Count -lt $leftovers.Count) {
-        Write-WinForgeStatus -Type Info -Message "Pastas em Arquivos de Programas e ProgramData pedem Administrador: para incluí-las, feche o WinForge, abra de novo e aceite o aviso do Windows."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Pastas em Arquivos de Programas e ProgramData pedem Administrador: para incluí-las, feche o WinForge, abra de novo e aceite o aviso do Windows.')
     }
 
     if ($usable.Count -eq 0) {
-        return (& $end (New-WinForgeResult -Kind Warning -Detail "as pastas encontradas exigem Administrador" -Title $Title))
+        return (& $end (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'as pastas encontradas exigem Administrador') -Title $Title))
     }
 
     # O que for marcado vai para a Lixeira (a pergunta diz).
-    Write-WinForgeStatus -Type Info -Message "Nada vem marcado: confira cada pasta."
+    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada vem marcado: confira cada pasta.')
 
     if (Test-WinForgeRecycleBinLimitExceeded -Items $usable -SizeProperty "Size") {
-        Write-WinForgeStatus -Type Info -Message "Uma pasta maior que o limite da Lixeira fica onde está: o Windows a apagaria em definitivo."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Uma pasta maior que o limite da Lixeira fica onde está: o Windows a apagaria em definitivo.')
     }
 
     if (@($usable | Where-Object { [bool](Get-WinForgeJsonValue -Object $_ -Name "Data" -Default $false) }).Count -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "As pastas do AppData guardam configurações e arquivos salvos do programa (perfis, partidas, conversas): confira antes de marcar."
-        [void](Write-WinForgeOtherAccountNotice -What "as pastas do AppData")
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'As pastas do AppData guardam configurações e arquivos salvos do programa (perfis, partidas, conversas): confira antes de marcar.')
+        [void](Write-WinForgeOtherAccountNotice -What 'as pastas do AppData')
     }
 
     Write-Host ""
 
     $options = @(
         for ($i = 0; $i -lt $usable.Count; $i++) {
-            $kind = $(if ([bool](Get-WinForgeJsonValue -Object $usable[$i] -Name "Data" -Default $false)) { " · dados do programa" } else { "" })
-            @{ Key = [string]$i; Label = $usable[$i].Path; Description = "de $($usable[$i].Program) · $(Format-WinForgeBytes -Bytes $usable[$i].Size -ZeroText '0 B')$kind"; Selected = $false }
+            $kind = $(if ([bool](Get-WinForgeJsonValue -Object $usable[$i] -Name "Data" -Default $false)) { (Get-WinForgeText ' · dados do programa') } else { "" })
+            @{ Key = [string]$i; Label = $usable[$i].Path; Description = (Get-WinForgeText 'de {0} · {1}{2}' "$($usable[$i].Program)" "$(Format-WinForgeBytes -Bytes $usable[$i].Size -ZeroText '0 B')" "$kind"); Selected = $false }
         }
     )
 
-    $picked = Read-WinForgeMultiSelect -Message "Marque as pastas que devem ir para a Lixeira" -Options $options
+    $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Marque as pastas que devem ir para a Lixeira') -Options $options
 
     if ($null -eq $picked -or @($picked).Count -eq 0) {
-        return (& $end (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $Title))
+        return (& $end (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $Title))
     }
 
     return [PSCustomObject]@{ Chosen = @(foreach ($key in @($picked)) { $usable[[int]$key] }); Result = $null }
@@ -1044,7 +1047,7 @@ function Remove-WinForgeProgramLeftovers {
         [AllowEmptyCollection()]
         [object[]]$Items,
 
-        [string]$Title = "Restos de programas desinstalados"
+        [string]$Title = (Get-WinForgeText 'Restos de programas desinstalados')
     )
 
     $moved = @()
@@ -1054,11 +1057,11 @@ function Remove-WinForgeProgramLeftovers {
         foreach ($item in $Items) {
             try {
                 # Sem isto, um arquivo aberto faria o Windows mostrar a janela "Arquivo em uso" e a ação ficaria parada.
-                if (Test-WinForgeItemInUse -Path $item.Path -IsDirectory) { throw "há arquivos em uso nesta pasta; feche o programa que os usa e tente de novo" }
+                if (Test-WinForgeItemInUse -Path $item.Path -IsDirectory) { throw (Get-WinForgeText 'há arquivos em uso nesta pasta; feche o programa que os usa e tente de novo') }
 
                 Move-WinForgeItemToRecycleBin -Path $item.Path -IsDirectory -SizeBytes ([int64](Get-WinForgeJsonValue -Object $item -Name "Size" -Default 0))
                 $moved += $item
-                Write-WinForgeStatus -Type Success -Message "$($item.Path): na Lixeira."
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: na Lixeira.' "$($item.Path)")
             }
             catch {
                 $failed += $item
@@ -1069,28 +1072,28 @@ function Remove-WinForgeProgramLeftovers {
     finally {
         # No finally: parar a ação no meio não deixa sem anotação o que já foi para a Lixeira.
         if ($moved.Count -gt 0) {
-            [void](Add-WinForgeChange -Action "Restos de programas" -Text "$(Join-WinForgeList -Items @($moved | ForEach-Object { $_.Path })) $(if ($moved.Count -eq 1) { 'foi' } else { 'foram' }) para a Lixeira")
+            [void](Add-WinForgeChange -Action (Get-WinForgeText 'Restos de programas') -Text $(if ($moved.Count -eq 1) { (Get-WinForgeText '{0} foi para a Lixeira' "$(Join-WinForgeList -Items @($moved | ForEach-Object { $_.Path }))") } else { (Get-WinForgeText '{0} foram para a Lixeira' "$(Join-WinForgeList -Items @($moved | ForEach-Object { $_.Path }))") }))
         }
     }
 
     if ($moved.Count -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "O espaço só volta ao esvaziar a Lixeira (Limpeza > Esvaziar a Lixeira)."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O espaço só volta ao esvaziar a Lixeira (Limpeza > Esvaziar a Lixeira).')
     }
 
     if ($failed.Count -eq 0) {
         $movedBytes = [int64]0
         foreach ($item in $moved) { $movedBytes += [int64](Get-WinForgeJsonValue -Object $item -Name "Size" -Default 0) }
 
-        return (Set-WinForgeRecycleBinNext -Result (New-WinForgeResult -Kind Ok -Detail "$(Format-WinForgeCount -Count $moved.Count -One 'pasta enviada' -Many 'pastas enviadas') para a Lixeira" -Title $Title) -Count $moved.Count -Bytes $movedBytes -One "pasta" -Many "pastas")
+        return (Set-WinForgeRecycleBinNext -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText '{0} para a Lixeira' "$(Format-WinForgeCount -Count $moved.Count -One (Get-WinForgeText 'pasta enviada') -Many (Get-WinForgeText 'pastas enviadas'))") -Title $Title) -Count $moved.Count -Bytes $movedBytes -One (Get-WinForgeText 'pasta') -Many (Get-WinForgeText 'pastas'))
     }
-    if ($moved.Count -eq 0) { return (New-WinForgeResult -Kind Failed -Detail "nenhuma pasta foi para a Lixeira (talvez estejam em uso)" -Title $Title) }
+    if ($moved.Count -eq 0) { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhuma pasta foi para a Lixeira (talvez estejam em uso)') -Title $Title) }
 
-    return (New-WinForgeResult -Kind Warning -Detail "$($failed.Count) de $(@($Items).Count) não foram para a Lixeira" -Title $Title)
+    return (Set-WinForgeRecycleBinNext -Result (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} não foram para a Lixeira' "$($failed.Count)" "$(@($Items).Count)") -Title $Title) -Count $moved.Count)
 }
 
 
 function Find-WinForgeProgramLeftovers {
-    $title = "Restos de programas desinstalados"
+    $title = (Get-WinForgeText 'Restos de programas desinstalados')
 
     Enter-WinForgeAction -Title $title
 
@@ -1100,24 +1103,27 @@ function Find-WinForgeProgramLeftovers {
         $selection = Select-WinForgeProgramLeftovers -Title $title
 
         if ($null -ne $selection.Result) {
-            if ([string]$selection.Result.Detail -eq "cancelado pelo usuário") { Write-WinForgeStatus -Type Warning -Message "Operação cancelada." }
+            if ([string]$selection.Result.Detail -eq (Get-WinForgeText 'cancelado pelo usuário')) { Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.') }
             Exit-WinForgeAction -Result $selection.Result
             return
         }
 
+        # A pergunta conta as pastas, como a dos duplicados conta as cópias: o caminho de cada uma está na lista logo acima,
+        # e só o nome repetiria "Firefox e Firefox" (a pasta do Local e a do Roaming). Antes, a frase de lista marcada
+        # (masculina) dizia "os 3 pastas marcados".
         $chosen = @($selection.Chosen)
-        $question = Get-WinForgeSelectionQuestion -Verb "Enviar para a Lixeira" -Names @($chosen | ForEach-Object { Split-Path -Leaf $_.Path }) -Many "pastas" -Limit 2
+        $question = (Get-WinForgeText 'Enviar {0} para a Lixeira?' "$(Format-WinForgeCount -Count $chosen.Count -One (Get-WinForgeText 'pasta') -Many (Get-WinForgeText 'pastas'))")
 
-        if (-not (Confirm-WinForgeAction -Message $question -DefaultKey "N")) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+        if (-not (Confirm-WinForgeAction -Message $question -DefaultKey "N" -YesLabel (Get-WinForgeText 'Enviar para a Lixeira') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
         $final = Remove-WinForgeProgramLeftovers -Items $chosen -Title $title
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível procurar os restos: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível procurar os restos: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
@@ -1168,7 +1174,7 @@ function Get-WinForgeWipeDriveText {
     $parts = @()
 
     try {
-        if ($id -ieq (Get-WinForgeSystemDriveLetter)) { $parts += "a do Windows" }
+        if ($id -ieq (Get-WinForgeSystemDriveLetter)) { $parts += (Get-WinForgeText 'a do Windows') }
     }
     catch {
         Write-Verbose "Unidade do Windows: $($_.Exception.Message)"
@@ -1183,30 +1189,30 @@ function Get-WinForgeWipeDriveText {
         Write-Verbose "Tipo do disco de ${id}: $($_.Exception.Message)"
     }
 
-    $parts += "$(Format-WinForgeBytes -Bytes ([int64]$Drive.FreeSpace)) livres de $(Format-WinForgeBytes -Bytes ([int64]$Drive.Size))"
+    $parts += (Get-WinForgeText '{0} livres de {1}' "$(Format-WinForgeBytes -Bytes ([int64]$Drive.FreeSpace))" "$(Format-WinForgeBytes -Bytes ([int64]$Drive.Size))")
 
     return ($parts -join " · ")
 }
 
 
 function Clear-WinForgeFreeSpace {
-    $title = "Apagar o espaço livre"
+    $title = (Get-WinForgeText 'Apagar o espaço livre')
 
     Enter-WinForgeAction -Title $title
 
     $final = New-WinForgeResult -Kind Ok -Title $title
 
     try {
-        if (-not (Test-WinForgeElevation -Reason "Apagar o espaço livre exige privilégios de Administrador.")) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "requer Administrador" -Title $title)
+        if (-not (Test-WinForgeElevation -Reason (Get-WinForgeText 'Apagar o espaço livre exige privilégios de Administrador.'))) {
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'requer Administrador') -Title $title)
             return
         }
 
-        $drives = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop | Where-Object { $_.DeviceID } | Sort-Object -Property DeviceID)
+        $drives = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -OperationTimeoutSec 15 -ErrorAction Stop | Where-Object { $_.DeviceID } | Sort-Object -Property DeviceID)
 
         if ($drives.Count -eq 0) {
-            Write-WinForgeStatus -Type Error -Message "Nenhuma unidade local foi encontrada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "nenhuma unidade local" -Title $title)
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Nenhuma unidade local foi encontrada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhuma unidade local') -Title $title)
             return
         }
 
@@ -1215,14 +1221,14 @@ function Clear-WinForgeFreeSpace {
         foreach ($leftover in @($drives | ForEach-Object { Get-WinForgeCipherLeftoverPath -Drive ([string]$_.DeviceID) } | Where-Object { Test-Path -LiteralPath $_ -PathType Container })) {
             $leftoverSize = [int64](Get-WinForgePathStats -Path $leftover).Size
 
-            Write-WinForgeStatus -Type Warning -Message "Uma gravação do espaço livre que não terminou deixou a pasta $leftover ocupando $(Format-WinForgeBytes -Bytes $leftoverSize -ZeroText '0 B')."
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Uma gravação do espaço livre que não terminou deixou a pasta {0} ocupando {1}.' "$leftover" "$(Format-WinForgeBytes -Bytes $leftoverSize -ZeroText '0 B')")
 
-            if (Confirm-WinForgeAction -Message "Apagar a pasta $leftover agora?" -DefaultKey "S") {
+            if (Confirm-WinForgeAction -Message (Get-WinForgeText 'Apagar a pasta {0} agora?' "$leftover") -DefaultKey "S" -YesLabel (Get-WinForgeText 'Apagar') -NoLabel (Get-WinForgeText 'Manter')) {
                 if (Remove-WinForgeCipherLeftover -Path $leftover) {
-                    Write-WinForgeStatus -Type Success -Message "Pasta $leftover apagada; o espaço voltou."
+                    Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Pasta {0} apagada; o espaço voltou.' "$leftover")
                 }
                 else {
-                    Write-WinForgeStatus -Type Error -Message "A pasta $leftover não saiu inteira (algum arquivo em uso). Feche outras janelas que estejam apagando o espaço livre e tente de novo."
+                    Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A pasta {0} não saiu inteira (algum arquivo em uso). Feche outras janelas que estejam apagando o espaço livre e tente de novo.' "$leftover")
                 }
             }
 
@@ -1231,12 +1237,12 @@ function Clear-WinForgeFreeSpace {
 
         # Serve antes de vender ou doar o PC. O disco é preenchido por inteiro e depois liberado. Num SSD, o próprio Windows
         # já descarta o que foi apagado, e a gravação extra só desgasta o disco.
-        Write-WinForgeStatus -Type Info -Message "Grava por cima do espaço livre para que o que já foi apagado não possa ser recuperado; nenhum arquivo é apagado."
-        Write-WinForgeStatus -Type Info -Message "Leva horas e enche o disco até o fim: feche os outros programas. Num SSD, use só se precisar (desgasta o disco)."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Grava por cima do espaço livre para que o que já foi apagado não possa ser recuperado; nenhum arquivo é apagado.')
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Leva horas e enche o disco até o fim: feche os outros programas. Num SSD, use só se precisar (desgasta o disco).')
         Write-Host ""
 
         # Cada unidade diz se é a do Windows e se é SSD ou HD: o aviso acima vale diferente para cada uma.
-        Write-Progress -Activity $title -Status "lendo o tipo dos discos"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'lendo o tipo dos discos')
 
         try {
             $options = @(
@@ -1249,24 +1255,24 @@ function Clear-WinForgeFreeSpace {
             Write-Progress -Activity $title -Completed
         }
 
-        $options += @{ Key = "X"; Label = "Cancelar"; Exit = $true }
+        $options += @{ Key = "X"; Label = (Get-WinForgeText 'Cancelar'); Exit = $true }
 
-        $answer = [string](Read-WinForgeChoice -Message "Qual unidade?" -Options $options -DefaultKey "X" -ShowMenu)
+        $answer = [string](Read-WinForgeChoice -Message (Get-WinForgeText 'Qual unidade?') -Options $options -DefaultKey "X" -ShowMenu)
         $drive = @($drives | Where-Object { [string]$_.DeviceID -eq $answer }) | Select-Object -First 1
 
         if ($null -eq $drive) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
-        if (-not (Confirm-WinForgeAction -Message "Apagar o espaço livre de $($drive.DeviceID) agora? O disco fica cheio até terminar." -DefaultKey "N")) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário" -Title $title)
+        if (-not (Confirm-WinForgeAction -Message (Get-WinForgeText 'Apagar o espaço livre de {0} agora? O disco fica cheio até terminar.' "$($drive.DeviceID)") -DefaultKey "N" -Danger -YesLabel (Get-WinForgeText 'Apagar o espaço livre') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
             return
         }
 
-        Write-Progress -Activity $title -Status "gravando por cima do espaço livre de $($drive.DeviceID) (pode levar horas)"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'gravando por cima do espaço livre de {0} (pode levar horas)' "$($drive.DeviceID)")
 
         $leftover = Get-WinForgeCipherLeftoverPath -Drive ([string]$drive.DeviceID)
         $exitCode = $null
@@ -1289,21 +1295,21 @@ function Clear-WinForgeFreeSpace {
         }
 
         if ($exitCode -eq 0) {
-            Write-WinForgeStatus -Type Success -Message "Espaço livre de $($drive.DeviceID) apagado."
-            $final = New-WinForgeResult -Kind Ok -Detail "espaço livre de $($drive.DeviceID) apagado" -Title $title
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Espaço livre de {0} apagado.' "$($drive.DeviceID)")
+            $final = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'espaço livre de {0} apagado' "$($drive.DeviceID)") -Title $title
         }
         else {
-            Write-WinForgeStatus -Type Error -Message "A gravação terminou com erro (código $exitCode)."
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A gravação terminou com erro (código {0}).' "$exitCode")
 
             if (Test-Path -LiteralPath $leftover) {
-                Write-WinForgeStatus -Type Warning -Message "A pasta $leftover ficou para trás ocupando espaço; abra esta tela de novo para apagá-la."
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A pasta {0} ficou para trás ocupando espaço; abra esta tela de novo para apagá-la.' "$leftover")
             }
 
-            $final = New-WinForgeResult -Kind Failed -Detail "a gravação terminou com erro (código $exitCode)" -Title $title
+            $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a gravação terminou com erro (código {0})' "$exitCode") -Title $title
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível apagar o espaço livre: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível apagar o espaço livre: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 

@@ -24,6 +24,10 @@
 .PARAMETER ReportDirectory
     Pasta de saída do relatório (somente com -Action Report). Padrão: %LOCALAPPDATA%\WinForge\reports.
 
+.PARAMETER Language
+    O idioma do menu: pt (português), en (inglês) ou es (espanhol). Sem ele, vale a escolha em Sobre o WinForge > Idioma
+    ou, sem escolha, o idioma do Windows (português, inglês ou espanhol; qualquer outro, inglês).
+
 .PARAMETER PauseAtEnd
     Espera uma tecla antes de fechar. É passado automaticamente quando o script se reabre como Administrador,
     para que a janela nova não suma antes de o resultado ser lido.
@@ -36,10 +40,60 @@ param (
 
     [switch]$Json,
 
+    [string]$Language,
+
     [switch]$PauseAtEnd
 )
 
 $ErrorActionPreference = "Continue"
+
+function Get-WinForgeStartupText {
+    # As mensagens de antes dos módulos (ou de quando eles não carregaram). Com o Core carregado, valem Get-WinForgeText e
+    # o idioma do WinForge; sem ele, estas poucas mensagens trazem a tradução aqui mesmo, pelo idioma do Windows.
+    param ([string]$Text)
+
+    $command = Get-Command -Name Get-WinForgeText -CommandType Function -ErrorAction SilentlyContinue
+
+    if ($null -ne $command) { return (& $command $Text @args) }
+
+    $table = @{
+        "Não foi possível abrir a janela do WinForge. Abra o WinForge de novo." = @("The WinForge window could not be opened. Open WinForge again.", "No se pudo abrir la ventana de WinForge. Abre WinForge de nuevo.")
+        "Módulo obrigatório não encontrado: {0}" = @("Required module not found: {0}", "No se encontró un módulo necesario: {0}")
+        "Arquivo da janela não encontrado: {0}" = @("Window file not found: {0}", "No se encontró el archivo de la ventana: {0}")
+        "Extraia de novo o WinForge.zip inteiro (Extrair tudo), numa pasta sem colchetes no nome, e abra o WinForge da pasta extraída." = @("Extract the whole WinForge.zip again (Extract all) to a folder without brackets in its name, and open WinForge from the extracted folder.", "Vuelve a extraer todo WinForge.zip (Extraer todo) en una carpeta sin corchetes en el nombre y abre WinForge desde la carpeta extraída.")
+        "O WinForge não abriu porque falta um arquivo dele: {0}.`n`n{1} Se o arquivo sumir outra vez, veja se o antivírus o pôs em quarentena." = @("WinForge did not open because one of its files is missing: {0}.`n`n{1} If the file disappears again, check whether the antivirus quarantined it.", "WinForge no se abrió porque falta uno de sus archivos: {0}.`n`n{1} Si el archivo vuelve a desaparecer, revisa si el antivirus lo puso en cuarentena.")
+        "O WinForge não abriu.`n`n{0} Se continuar, mande este detalhe ao suporte:`n`n{1}" = @("WinForge did not open.`n`n{0} If it keeps happening, send this detail to support:`n`n{1}", "WinForge no se abrió.`n`n{0} Si sigue pasando, envía este detalle al soporte:`n`n{1}")
+        "Ação desconhecida: '{0}'. Use -Action Menu, Report, Shortcut, ScheduledMaintenance ou Check." = @("Unknown action: '{0}'. Use -Action Menu, Report, Shortcut, ScheduledMaintenance or Check.", "Acción desconocida: '{0}'. Usa -Action Menu, Report, Shortcut, ScheduledMaintenance o Check.")
+        "O -Json só vale com -Action Check (a verificação rápida)." = @("-Json only works with -Action Check (the quick check).", "-Json solo funciona con -Action Check (la verificación rápida).")
+        "Idioma desconhecido: '{0}'. Use -Language pt, en ou es." = @("Unknown language: '{0}'. Use -Language pt, en or es.", "Idioma desconocido: '{0}'. Usa -Language pt, en o es.")
+        "Arquivo de módulos não encontrado: {0}" = @("Module list not found: {0}", "No se encontró la lista de módulos: {0}")
+        "Extraia o WinForge por completo antes de executar." = @("Extract all of WinForge before running it.", "Extrae WinForge por completo antes de ejecutarlo.")
+        "Não foi possível carregar o WinForge: {0}" = @("WinForge could not be loaded: {0}", "No se pudo cargar WinForge: {0}")
+    }
+
+    $language = ""
+
+    try { $language = [string][System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName } catch { $language = "" }
+
+    if ($env:WINFORGE_LANG) { $language = ([string]$env:WINFORGE_LANG).Trim().ToLowerInvariant() }
+
+    if ($language -ne "pt" -and $table.ContainsKey($Text)) { $Text = $table[$Text][$(if ($language -eq "es") { 1 } else { 0 })] }
+
+    if ($args.Count -gt 0) { return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, $Text, [object[]]$args) }
+
+    return $Text
+}
+
+# O idioma pedido vale para este processo (e para a reabertura como Administrador, que o recebe de novo).
+if (-not [string]::IsNullOrWhiteSpace($Language)) {
+    if ($Language.Trim().ToLowerInvariant() -notin @("pt", "en", "es")) {
+        Write-Host (Get-WinForgeStartupText 'Idioma desconhecido: ''{0}''. Use -Language pt, en ou es.' "$Language") -ForegroundColor Red
+        exit 1
+    }
+
+    $Language = $Language.Trim().ToLowerInvariant()
+    $env:WINFORGE_LANG = $Language
+}
 
 # A ação é conferida aqui, e não com ValidateSet: um nome errado ("-Action Relatorio") recebe a lista em português, e
 # não o erro em inglês do PowerShell. Maiúsculas e minúsculas não importam.
@@ -47,14 +101,14 @@ $knownActions = @("Menu", "Report", "Shortcut", "ScheduledMaintenance", "Check")
 $matchedAction = @($knownActions | Where-Object { $_ -ieq $Action })
 
 if ($matchedAction.Count -eq 0) {
-    Write-Host "Ação desconhecida: '$Action'. Use -Action Menu, Report, Shortcut, ScheduledMaintenance ou Check." -ForegroundColor Red
+    Write-Host (Get-WinForgeStartupText 'Ação desconhecida: ''{0}''. Use -Action Menu, Report, Shortcut, ScheduledMaintenance ou Check.' "$Action") -ForegroundColor Red
     exit 1
 }
 
 $Action = $matchedAction[0]
 
 if ($Json -and $Action -ne "Check") {
-    Write-Host "O -Json só vale com -Action Check (a verificação rápida)." -ForegroundColor Red
+    Write-Host (Get-WinForgeStartupText 'O -Json só vale com -Action Check (a verificação rápida).') -ForegroundColor Red
     exit 1
 }
 
@@ -63,8 +117,8 @@ $moduleRoot = Join-Path $PSScriptRoot "modules"
 $manifestPath = Join-Path $moduleRoot "Modules.psd1"
 
 if (-not (Test-Path -LiteralPath $manifestPath)) {
-    Write-Host "Arquivo de módulos não encontrado: $manifestPath" -ForegroundColor Red
-    Write-Host "Extraia o WinForge por completo antes de executar." -ForegroundColor Yellow
+    Write-Host (Get-WinForgeStartupText 'Arquivo de módulos não encontrado: {0}' "$manifestPath") -ForegroundColor Red
+    Write-Host (Get-WinForgeStartupText 'Extraia o WinForge por completo antes de executar.') -ForegroundColor Yellow
     exit 1
 }
 
@@ -75,7 +129,7 @@ try {
         $modulePath = Join-Path $moduleRoot "$name.psm1"
 
         if (-not (Test-Path -LiteralPath $modulePath)) {
-            throw "Módulo obrigatório não encontrado: $modulePath"
+            throw (Get-WinForgeStartupText 'Módulo obrigatório não encontrado: {0}' "$modulePath")
         }
 
         try {
@@ -88,7 +142,7 @@ try {
     }
 }
 catch {
-    Write-Host "Não foi possível carregar o WinForge: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host (Get-WinForgeStartupText 'Não foi possível carregar o WinForge: {0}' "$($_.Exception.Message)") -ForegroundColor Red
     exit 1
 }
 
@@ -106,6 +160,10 @@ $relaunchArguments = @()
 
 if ($Action -ne "Menu") {
     $relaunchArguments += "-Action $Action"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Language)) {
+    $relaunchArguments += "-Language $Language"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($ReportDirectory)) {
@@ -133,18 +191,18 @@ if ($Action -ne "Check") {
 
 try {
     if ($Action -eq "Report") {
-        Write-Host "Gerando relatório..." -ForegroundColor Cyan
+        Write-Host (Get-WinForgeText 'Gerando relatório...') -ForegroundColor Cyan
 
         $report = Export-WinForgeReport -Directory $ReportDirectory
-        Write-Host "HTML : $($report.Html)" -ForegroundColor Green
+        Write-Host (Get-WinForgeText 'HTML : {0}' "$($report.Html)") -ForegroundColor Green
 
         # O HTML vale sozinho; a cópia em texto que não pôde ser gravada é avisada, sem esconder o HTML salvo.
-        if ($report.Text) { Write-Host "Texto: $($report.Text)" -ForegroundColor Green }
-        else { Write-Host "Texto: não foi gravado ($($report.TextProblem))" -ForegroundColor Yellow }
+        if ($report.Text) { Write-Host (Get-WinForgeText 'Texto: {0}' "$($report.Text)") -ForegroundColor Green }
+        else { Write-Host (Get-WinForgeText 'Texto: não foi gravado ({0})' "$($report.TextProblem)") -ForegroundColor Yellow }
 
         if ($PauseAtEnd) {
             Write-Host ""
-            Wait-WinForgeKey -Message "Pressione qualquer tecla para fechar..."
+            Wait-WinForgeKey -Message (Get-WinForgeText 'Pressione qualquer tecla para fechar...')
         }
     }
     elseif ($Action -eq "ScheduledMaintenance") {
@@ -177,6 +235,24 @@ try {
         # Sem isto, a janela do terminal se chamaria "Administrador: C:\Windows\System32\...\powershell.exe".
         try { $Host.UI.RawUI.WindowTitle = "WinForge" } catch { Write-Verbose "Título da janela: $($_.Exception.Message)" }
 
+        try { Add-WinForgeOpenTime -Kind "Console" -Seconds ((Get-Date) - (Get-Process -Id $PID).StartTime).TotalSeconds } catch { Write-Verbose "Tempo de abertura: $($_.Exception.Message)" }
+
+        # Aberto pelo instalador depois de uma atualização: diz como ela terminou, uma vez.
+        try {
+            $update = Read-WinForgeUpdateResult
+
+            if ($null -ne $update) {
+                $message = Get-WinForgeUpdateResultText -Result $update
+                Write-Host ""
+                Write-WinForgeStatus -Type $(if ($message.Ok) { "Success" } else { "Warning" }) -Message $message.Text
+                Write-Host ""
+                Wait-WinForgeKey
+            }
+        }
+        catch {
+            Write-Verbose "Resultado da atualização: $($_.Exception.Message)"
+        }
+
         Show-WinForgeMainMenu
     }
 }
@@ -185,11 +261,11 @@ catch {
     Write-Host ""
     $failure = $_.Exception.Message
     try { $failure = ConvertTo-WinForgeReadableError -Text $failure } catch { }
-    Write-Host "O WinForge encontrou um erro e precisa fechar: $failure" -ForegroundColor Red
+    Write-Host (Get-WinForgeText 'O WinForge encontrou um erro e precisa fechar: {0}' "$failure") -ForegroundColor Red
 
     # Aberto pelo WinForge-Console.cmd (WINFORGE_FROM_CMD), quem pausa é o .cmd, uma vez só.
     if (($PauseAtEnd -or $Action -eq "Menu") -and $env:WINFORGE_FROM_CMD -ne "1") {
-        Wait-WinForgeKey -Message "Pressione qualquer tecla para fechar..."
+        Wait-WinForgeKey -Message (Get-WinForgeText 'Pressione qualquer tecla para fechar...')
     }
 }
 finally {

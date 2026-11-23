@@ -12,6 +12,7 @@
         'Shell',
         'Launcher',
         'AppUpdate',
+        'Install',
         'Cleanup',
         'CleanupTools',
         'Repair',

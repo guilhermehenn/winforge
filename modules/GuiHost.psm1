@@ -16,6 +16,20 @@ using System.Threading;
 
 namespace WinForge
 {
+    // Os poucos textos que o próprio host escreve, no idioma da interface: a tabela é preenchida pelo
+    // Initialize-WinForgeGuiHost (Get-WinForgeText); sem ela, o texto sai em português.
+    public static class GuiText
+    {
+        public static readonly Dictionary<string, string> Table = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        public static string T(string text)
+        {
+            string value;
+            if (text != null && Table.TryGetValue(text, out value) && !string.IsNullOrEmpty(value)) { return value; }
+            return text;
+        }
+    }
+
     public class GuiOutputItem
     {
         public string Text;
@@ -40,6 +54,8 @@ namespace WinForge
         public bool Accent;
         public bool Exit;
         public bool Selected;
+        // Apaga algo sem volta: a janela desenha a opção com a cor de perigo.
+        public bool Danger;
     }
 
     public class GuiPromptRequest
@@ -102,7 +118,7 @@ namespace WinForge
         {
             GuiPromptRequest request = new GuiPromptRequest();
             request.Kind = "key";
-            request.Label = "Pressione Continuar para prosseguir.";
+            request.Label = GuiText.T("Pressione Continuar para prosseguir.");
             ui.Ask(request);
             return new KeyInfo(13, '\r', ControlKeyStates.NumLockOn, true);
         }
@@ -203,6 +219,27 @@ namespace WinForge
             }
 
             return sb.ToString();
+        }
+
+        // Um segredo (a senha de uma rede Wi-Fi, a chave do BitLocker) como um dado "rótulo : valor", nos mesmos pedaços e
+        // cores do Write-WinForgeKeyValue: o resumo da janela o reconhece e mostra, e o log grava só o rótulo e o aviso no
+        // lugar do valor.
+        public void WriteSecretValue(string label, string value, ConsoleColor color, string placeholder)
+        {
+            EnqueueScreenOnly("  ", raw.ForegroundColor, false);
+            EnqueueScreenOnly(label, ConsoleColor.DarkGray, false);
+            EnqueueScreenOnly(" : ", ConsoleColor.DarkGray, false);
+            EnqueueScreenOnly(value, color, true);
+            WriteLog("  " + Sanitize(label) + " : " + placeholder, true);
+        }
+
+        private void EnqueueScreenOnly(string text, ConsoleColor color, bool newLine)
+        {
+            GuiOutputItem item = new GuiOutputItem();
+            item.Text = Sanitize(text);
+            item.Color = color;
+            item.NewLine = newLine;
+            lock (queueLock) { queue.Enqueue(item); }
         }
 
         private void Enqueue(string text, ConsoleColor color, bool newLine)
@@ -340,9 +377,9 @@ namespace WinForge
         public override void WriteLine(string value) { Enqueue(value, raw.ForegroundColor, true); }
         public override void WriteLine(ConsoleColor foregroundColor, ConsoleColor backgroundColor, string value) { Enqueue(value, foregroundColor, true); }
         public override void WriteErrorLine(string value) { Enqueue(value, ConsoleColor.Red, true); }
-        public override void WriteWarningLine(string value) { Enqueue("AVISO: " + value, ConsoleColor.Yellow, true); }
-        public override void WriteVerboseLine(string value) { Enqueue("DETALHE: " + value, ConsoleColor.DarkGray, true); }
-        public override void WriteDebugLine(string value) { Enqueue("DEPURAÇÃO: " + value, ConsoleColor.DarkGray, true); }
+        public override void WriteWarningLine(string value) { Enqueue(GuiText.T("AVISO: ") + value, ConsoleColor.Yellow, true); }
+        public override void WriteVerboseLine(string value) { Enqueue(GuiText.T("DETALHE: ") + value, ConsoleColor.DarkGray, true); }
+        public override void WriteDebugLine(string value) { Enqueue(GuiText.T("DEPURAÇÃO: ") + value, ConsoleColor.DarkGray, true); }
 
         public override void WriteProgress(long sourceId, ProgressRecord record)
         {
@@ -458,7 +495,7 @@ namespace WinForge
 
             if (!request.Accepted)
             {
-                Enqueue("cancelado", ConsoleColor.White, true);
+                Enqueue(GuiText.T("cancelado"), ConsoleColor.White, true);
                 return null;
             }
 
@@ -471,7 +508,7 @@ namespace WinForge
                 labels.Add(found == null ? key : found.Label);
             }
 
-            Enqueue(keys.Length == 0 ? "nenhum item" : string.Join(", ", labels.ToArray()), ConsoleColor.White, true);
+            Enqueue(keys.Length == 0 ? GuiText.T("nenhum item") : string.Join(", ", labels.ToArray()), ConsoleColor.White, true);
 
             return keys;
         }
@@ -515,12 +552,12 @@ namespace WinForge
 
         public override string ReadLine()
         {
-            return AskLine("Entrada", false);
+            return AskLine(GuiText.T("Entrada"), false);
         }
 
         public override SecureString ReadLineAsSecureString()
         {
-            string text = AskLine("Entrada protegida", true);
+            string text = AskLine(GuiText.T("Entrada protegida"), true);
             SecureString secure = new SecureString();
             foreach (char c in text) { secure.AppendChar(c); }
             secure.MakeReadOnly();
@@ -572,7 +609,7 @@ namespace WinForge
 
             if (!string.IsNullOrEmpty(caption)) { Enqueue(caption, ConsoleColor.Cyan, true); }
 
-            string text = string.IsNullOrEmpty(message) ? "Escolha uma opção" : message;
+            string text = string.IsNullOrEmpty(message) ? GuiText.T("Escolha uma opção") : message;
             string key = AskChoice("", text, options, defaultChoice >= 0 ? defaultChoice.ToString() : null);
             int index;
 
@@ -583,12 +620,12 @@ namespace WinForge
 
         public override PSCredential PromptForCredential(string caption, string message, string userName, string targetName)
         {
-            throw new NotSupportedException("Credenciais não são solicitadas pela interface do WinForge.");
+            throw new NotSupportedException(GuiText.T("Credenciais não são solicitadas pela interface do WinForge."));
         }
 
         public override PSCredential PromptForCredential(string caption, string message, string userName, string targetName, PSCredentialTypes allowedCredentialTypes, PSCredentialUIOptions options)
         {
-            throw new NotSupportedException("Credenciais não são solicitadas pela interface do WinForge.");
+            throw new NotSupportedException(GuiText.T("Credenciais não são solicitadas pela interface do WinForge."));
         }
     }
 
@@ -704,8 +741,10 @@ catch {
     $failure = $_.Exception.Message
     try { $failure = ConvertTo-WinForgeReadableError -Text $failure } catch { }
 
+    $failureLabel = "Falha: "
+    try { $failureLabel = Get-WinForgeText 'Falha: ' } catch { }
     Write-Host ""
-    Write-Host ("Falha: " + $failure) -ForegroundColor Red
+    Write-Host ($failureLabel + $failure) -ForegroundColor Red
 
     try { Set-WinForgeOutcome -Kind Failed -Detail $failure } catch { }
 }
@@ -769,13 +808,28 @@ function Get-WinForgeWindowRequestPath {
 
 
 function Send-WinForgeWindowRequest {
-    # Deixa o pedido para a janela aberta: Action = Id da navegação a rodar ("" = só trazer a janela para a frente).
+    <#
+    Deixa o pedido para a janela aberta: Action = Id da navegação a rodar ("" = só trazer a janela para a frente). Leva
+    também a pasta desta abertura (Root) e a identidade dela (App, Get-WinForgeAppId): a janela aberta pode ser de outra
+    pasta (uma versão anterior, extraída de outro zip), e então ela diz isso em vez de só vir para a frente.
+    #>
     param ([string]$Action = "")
 
     if ($Action -notmatch '^[a-z0-9][a-z0-9.-]*$') { $Action = "" }
 
+    $root = ""
+    $app = ""
+
     try {
-        Write-WinForgeStateJson -Path (Get-WinForgeWindowRequestPath) -InputObject ([ordered]@{ Action = $Action; At = (Get-Date).ToString("o", [System.Globalization.CultureInfo]::InvariantCulture) })
+        $root = [string](Get-WinForgeAppRoot)
+        $app = [string](Get-WinForgeAppId -Root $root)
+    }
+    catch {
+        Write-Verbose "Pasta do pedido: $($_.Exception.Message)"
+    }
+
+    try {
+        Write-WinForgeStateJson -Path (Get-WinForgeWindowRequestPath) -InputObject ([ordered]@{ Action = $Action; At = (Get-Date).ToString("o", [System.Globalization.CultureInfo]::InvariantCulture); Root = $root; App = $app })
         return $true
     }
     catch {
@@ -785,8 +839,12 @@ function Send-WinForgeWindowRequest {
 
 
 function Receive-WinForgeWindowRequest {
-    # O pedido que outra abertura deixou (e que é apagado ao ser lido), ou $null. Um pedido de mais de um minuto (de uma
-    # janela que estava travada) é descartado: rodar uma ação tanto tempo depois do clique surpreenderia a pessoa.
+    <#
+    O pedido que outra abertura deixou (e que é apagado ao ser lido), ou $null. Um pedido de mais de um minuto (de uma
+    janela que estava travada) é descartado: rodar uma ação tanto tempo depois do clique surpreenderia a pessoa. Root e
+    App: a pasta e a identidade de quem pediu ("" num pedido de uma versão anterior, que não os grava). O arquivo é
+    gravado sem elevação, por qualquer programa da conta: Root só serve para ser mostrado, numa linha e com um limite.
+    #>
     $path = Get-WinForgeWindowRequestPath
 
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
@@ -800,35 +858,52 @@ function Receive-WinForgeWindowRequest {
         Get-ChildItem -LiteralPath (Split-Path -Parent $path) -Filter "window-request.json*" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     }
 
-    if ($null -eq $document) { return [PSCustomObject]@{ Action = "" } }
+    if ($null -eq $document) { return [PSCustomObject]@{ Action = ""; Root = ""; App = "" } }
+
+    $root = ([regex]::Replace([string](Get-WinForgeJsonValue -Object $document -Name "Root" -Default ""), '[\p{Cc}\p{Zl}\p{Zp}]+', ' ')).Trim()
+    if ($root.Length -gt 260) { $root = "" }
+
+    $app = [string](Get-WinForgeJsonValue -Object $document -Name "App" -Default "")
+    if ($app -notmatch '^WinForge\.App(\.[0-9A-F]{16})?$') { $app = "" }
 
     $at = [datetime]::MinValue
     $atText = [string](Get-WinForgeJsonValue -Object $document -Name "At" -Default "")
 
     if ([datetime]::TryParse($atText, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$at) -and ((Get-Date) - $at).TotalSeconds -gt 60) {
-        return [PSCustomObject]@{ Action = "" }
+        return [PSCustomObject]@{ Action = ""; Root = $root; App = $app }
     }
 
     $action = [string](Get-WinForgeJsonValue -Object $document -Name "Action" -Default "")
     if ($action -notmatch '^[a-z0-9][a-z0-9.-]*$') { $action = "" }
 
-    return [PSCustomObject]@{ Action = $action }
+    return [PSCustomObject]@{ Action = $action; Root = $root; App = $app }
 }
 
 
 function Initialize-WinForgeGuiHost {
-    if ('WinForge.GuiHost' -as [type]) {
-        return
+    if (-not ('WinForge.GuiHost' -as [type])) {
+        # Windows PowerShell 5.1 já referencia System.Management.Automation por padrão; no PowerShell 7 informar
+        # -ReferencedAssemblies substituiria as referências padrão, então nada extra é passado.
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            Add-Type -TypeDefinition $script:GuiHostSource -ErrorAction Stop
+        }
+        else {
+            Add-Type -TypeDefinition $script:GuiHostSource -ReferencedAssemblies ([System.Management.Automation.PSObject].Assembly.Location) -ErrorAction Stop
+        }
     }
 
-    # Windows PowerShell 5.1 já referencia System.Management.Automation por padrão; no PowerShell 7 informar
-    # -ReferencedAssemblies substituiria as referências padrão, então nada extra é passado.
-    if ($PSVersionTable.PSEdition -eq "Core") {
-        Add-Type -TypeDefinition $script:GuiHostSource -ErrorAction Stop
-    }
-    else {
-        Add-Type -TypeDefinition $script:GuiHostSource -ReferencedAssemblies ([System.Management.Automation.PSObject].Assembly.Location) -ErrorAction Stop
-    }
+    # Os textos que o host escreve sozinho (GuiText), no idioma da interface.
+    $table = [WinForge.GuiText]::Table
+    $table["Pressione Continuar para prosseguir."] = (Get-WinForgeText 'Pressione Continuar para prosseguir.')
+    $table["AVISO: "] = (Get-WinForgeText 'AVISO: ')
+    $table["DETALHE: "] = (Get-WinForgeText 'DETALHE: ')
+    $table["DEPURAÇÃO: "] = (Get-WinForgeText 'DEPURAÇÃO: ')
+    $table["cancelado"] = (Get-WinForgeText 'cancelado')
+    $table["nenhum item"] = (Get-WinForgeText 'nenhum item')
+    $table["Entrada"] = (Get-WinForgeText 'Entrada')
+    $table["Entrada protegida"] = (Get-WinForgeText 'Entrada protegida')
+    $table["Escolha uma opção"] = (Get-WinForgeText 'Escolha uma opção')
+    $table["Credenciais não são solicitadas pela interface do WinForge."] = (Get-WinForgeText 'Credenciais não são solicitadas pela interface do WinForge.')
 }
 
 
@@ -1076,7 +1151,7 @@ function Read-WinForgeGuiUpdate {
                 $finalState = "Stopped"
 
                 if ((Stop-WinForgeChildTools) -gt 0) {
-                    $ui.WriteInfoLine("Ferramentas que ainda estavam rodando foram encerradas.", [ConsoleColor]::DarkGray)
+                    $ui.WriteInfoLine((Get-WinForgeText 'Ferramentas que ainda estavam rodando foram encerradas.'), [ConsoleColor]::DarkGray)
                 }
             }
             elseif ($state -eq "Failed" -and $finalState -ne "Failed") {
@@ -1171,6 +1246,10 @@ function Close-WinForgeGuiSession {
             # A janela está fechando com a ação rodando: o que ela abriu também para, e o log fica fechado e completo.
             [void](Stop-WinForgeChildTools)
             $Session.Host.GuiUI.CloseLog()
+
+            # O Dispose abaixo espera a ação terminar de parar, de propósito: os finally dela (religar os serviços do
+            # Windows Update, tirar a pasta de preenchimento do apagar espaço livre, deixar o PC voltar a suspender) rodam
+            # antes de o processo sair.
         }
 
         elseif ($Session.Status -ne "Idle" -or $null -ne $Session.Runspace) {
@@ -1242,7 +1321,7 @@ function Get-WinForgePromptPlan {
 
     switch ($Prompt.Kind) {
         "key" {
-            $buttons += [PSCustomObject]@{ Text = "Continuar"; Answer = ""; Index = -1; Accent = $true; Description = ""; Exit = $false }
+            $buttons += [PSCustomObject]@{ Text = (Get-WinForgeText 'Continuar'); Answer = ""; Index = -1; Accent = $true; Description = ""; Exit = $false }
         }
 
         "choice" {
@@ -1268,6 +1347,7 @@ function Get-WinForgePromptPlan {
                     Accent      = $isAccent
                     Description = [string]$option.Description
                     Exit        = [bool]$option.Exit
+                    Danger      = [bool](Get-WinForgeJsonValue -Object $option -Name "Danger" -Default $false)
                 }
 
                 $index++
@@ -1280,15 +1360,15 @@ function Get-WinForgePromptPlan {
 
         default {
             if ($label -match '(?i)[\(\[]\s*S\s*/\s*N\s*[\)\]]') {
-                $buttons += [PSCustomObject]@{ Text = "Sim"; Answer = "S"; Index = -1; Accent = $true; Description = ""; Exit = $false }
-                $buttons += [PSCustomObject]@{ Text = "Não"; Answer = "N"; Index = -1; Accent = $false; Description = ""; Exit = $false }
+                $buttons += [PSCustomObject]@{ Text = (Get-WinForgeText 'Sim'); Answer = "S"; Index = -1; Accent = $true; Description = ""; Exit = $false }
+                $buttons += [PSCustomObject]@{ Text = (Get-WinForgeText 'Não'); Answer = "N"; Index = -1; Accent = $false; Description = ""; Exit = $false }
             }
             elseif ($label -match '(?i)\bENTER\b' -and $label -match '(?i)pressione|conclua' -and $label -notmatch '(?i)digite|cole|informe') {
                 # "Pressione ENTER para seguir": só o botão; uma caixa de texto ali não serviria para nada.
-                $buttons += [PSCustomObject]@{ Text = "Continuar"; Answer = ""; Index = -1; Accent = $true; Description = ""; Exit = $false }
+                $buttons += [PSCustomObject]@{ Text = (Get-WinForgeText 'Continuar'); Answer = ""; Index = -1; Accent = $true; Description = ""; Exit = $false }
 
                 if ($label -match '(?i)\bP\s*=\s*pular') {
-                    $buttons += [PSCustomObject]@{ Text = "Pular as etapas restantes"; Answer = "P"; Index = -1; Accent = $false; Description = ""; Exit = $false }
+                    $buttons += [PSCustomObject]@{ Text = (Get-WinForgeText 'Pular as etapas restantes'); Answer = "P"; Index = -1; Accent = $false; Description = ""; Exit = $false }
                 }
             }
             else {
@@ -1296,7 +1376,7 @@ function Get-WinForgePromptPlan {
                 # é a resposta já escrita na caixa; "(ENTER cancela)" e "(vazio = voltar)" viram o botão de sair. Sem
                 # resposta padrão, a caixa vazia é desistir (Read-WinForgeText): o botão Cancelar manda isso.
                 $showText = $true
-                $exitText = "Cancelar"
+                $exitText = (Get-WinForgeText 'Cancelar')
 
                 if ($label -match '(?i)\s*\(\s*ENTER\s*=\s*([^)]+)\)') {
                     $defaultText = $Matches[1].Trim()
@@ -1305,7 +1385,7 @@ function Get-WinForgePromptPlan {
                 }
                 elseif ($label -match '(?i)\s*\(\s*vazio\s*=\s*voltar\s*\)') {
                     $label = $label.Replace($Matches[0], "")
-                    $exitText = "Voltar"
+                    $exitText = (Get-WinForgeText 'Voltar')
                 }
                 elseif ($label -match '(?i)\s*\(\s*ENTER\s+cancela\s*\)') {
                     $label = $label.Replace($Matches[0], "")
@@ -1539,7 +1619,7 @@ function Get-WinForgeRunView {
 
     $view = [ordered]@{
         Level      = "Muted"
-        StatusText = "Concluído"
+        StatusText = (Get-WinForgeText 'Concluído')
         ShowBanner = $false
         BannerTitle = ""
         BannerText  = ""
@@ -1554,43 +1634,43 @@ function Get-WinForgeRunView {
 
     if ($Status -eq "Stopped") {
         $view.Level = "Warn"
-        $view.StatusText = "Interrompido"
+        $view.StatusText = (Get-WinForgeText 'Interrompido')
         $view.ShowBanner = $true
-        $view.BannerTitle = "Interrompido"
-        $view.BannerText = "A ação foi interrompida. O que já tinha sido feito continua feito; a etapa em andamento ficou incompleta."
+        $view.BannerTitle = (Get-WinForgeText 'Interrompido')
+        $view.BannerText = (Get-WinForgeText 'A ação foi interrompida. O que já tinha sido feito continua feito; a etapa em andamento ficou incompleta.')
         $view.Taskbar = "Paused"
         $view.Notify = $false
     }
     elseif ($Status -eq "Failed") {
         $view.Level = "Bad"
-        $view.StatusText = "Terminou com erro"
+        $view.StatusText = (Get-WinForgeText 'Terminou com erro')
         $view.ShowBanner = $true
-        $view.BannerTitle = "Terminou com erro"
-        $view.BannerText = $(if ($summary) { $summary } else { "A ação terminou com erro. Veja os detalhes técnicos." })
+        $view.BannerTitle = (Get-WinForgeText 'Terminou com erro')
+        $view.BannerText = $(if ($summary) { $summary } else { (Get-WinForgeText 'A ação terminou com erro. Veja os detalhes técnicos.') })
         $view.Taskbar = "Error"
     }
     else {
         switch ($kind) {
             "Ok" {
-                $view.Level = "Ok"; $view.StatusText = "Concluído"; $view.Taskbar = "Normal"
-                $view.ShowBanner = $true; $view.BannerTitle = "Tudo certo"; $view.BannerText = $summary
+                $view.Level = "Ok"; $view.StatusText = (Get-WinForgeText 'Concluído'); $view.Taskbar = "Normal"
+                $view.ShowBanner = $true; $view.BannerTitle = (Get-WinForgeText 'Tudo certo'); $view.BannerText = $summary
             }
             "Warning" {
-                $view.Level = "Warn"; $view.StatusText = "Concluído com ressalvas"; $view.Taskbar = "Paused"
-                $view.ShowBanner = $true; $view.BannerTitle = "Concluído com ressalvas"; $view.BannerText = $summary
+                $view.Level = "Warn"; $view.StatusText = (Get-WinForgeText 'Concluído com ressalvas'); $view.Taskbar = "Paused"
+                $view.ShowBanner = $true; $view.BannerTitle = (Get-WinForgeText 'Concluído com ressalvas'); $view.BannerText = $summary
             }
             "Failed" {
-                $view.Level = "Bad"; $view.StatusText = "Não foi concluído"; $view.Taskbar = "Error"
-                $view.ShowBanner = $true; $view.BannerTitle = "Não foi concluído"; $view.BannerText = $summary
+                $view.Level = "Bad"; $view.StatusText = (Get-WinForgeText 'Não foi concluído'); $view.Taskbar = "Error"
+                $view.ShowBanner = $true; $view.BannerTitle = (Get-WinForgeText 'Não foi concluído'); $view.BannerText = $summary
             }
             "Skipped" {
-                $view.Level = "Muted"; $view.StatusText = $(if ($title) { $title } else { "Nada a fazer" }); $view.Taskbar = "None"
+                $view.Level = "Muted"; $view.StatusText = $(if ($title) { $title } else { (Get-WinForgeText 'Nada a fazer') }); $view.Taskbar = "None"
                 $view.ShowBanner = $true; $view.BannerTitle = $view.StatusText; $view.BannerText = $summary
                 $view.Notify = $false
             }
             default {
                 # A ação só mostrou informações (consulta): não há veredito a destacar.
-                $view.Level = "Muted"; $view.StatusText = "Concluído"
+                $view.Level = "Muted"; $view.StatusText = (Get-WinForgeText 'Concluído')
                 $view.Notify = $false
             }
         }
@@ -1618,8 +1698,8 @@ function Get-WinForgeRunView {
         }
     }
 
-    $view.BannerText = ($view.BannerText + " Duração: $clock.").Trim()
-    $view.ResultText = (Get-WinForgeResultSentence -Status $Status -Outcome $Outcome -ShowBanner $view.ShowBanner) + " Duração: $clock."
+    $view.BannerText = ($view.BannerText + (Get-WinForgeText ' Duração: {0}.' "$clock")).Trim()
+    $view.ResultText = (Get-WinForgeResultSentence -Status $Status -Outcome $Outcome -ShowBanner $view.ShowBanner) + (Get-WinForgeText ' Duração: {0}.' "$clock")
     $view.ResultText = $view.ResultText.Trim()
 
     return [PSCustomObject]$view
@@ -1639,7 +1719,7 @@ function Get-WinForgeResultSentence {
     )
 
     if ($Status -eq "Stopped") {
-        return "O que já tinha sido feito continua feito; a etapa em andamento ficou incompleta."
+        return (Get-WinForgeText 'O que já tinha sido feito continua feito; a etapa em andamento ficou incompleta.')
     }
 
     $kind = "Done"
@@ -1672,17 +1752,17 @@ function Get-WinForgeResultSentence {
     }
 
     if ($Status -eq "Failed") {
-        if ($sentence.Length -eq 0) { $sentence = "A ação terminou com um erro inesperado. Veja os detalhes técnicos." }
+        if ($sentence.Length -eq 0) { $sentence = (Get-WinForgeText 'A ação terminou com um erro inesperado. Veja os detalhes técnicos.') }
         return $sentence
     }
 
     switch ($kind) {
-        "Ok" { if ($sentence.Length -eq 0) { $sentence = "Concluído com sucesso." } }
-        "Warning" { if ($sentence.Length -eq 0) { $sentence = "Algumas etapas pediram atenção; veja os detalhes técnicos." } }
-        "Failed" { if ($sentence.Length -eq 0) { $sentence = "Veja os detalhes técnicos para saber o motivo." } }
+        "Ok" { if ($sentence.Length -eq 0) { $sentence = (Get-WinForgeText 'Concluído com sucesso.') } }
+        "Warning" { if ($sentence.Length -eq 0) { $sentence = (Get-WinForgeText 'Algumas etapas pediram atenção; veja os detalhes técnicos.') } }
+        "Failed" { if ($sentence.Length -eq 0) { $sentence = (Get-WinForgeText 'Veja os detalhes técnicos para saber o motivo.') } }
         "Skipped" {
-            if ($detail -match "(?i)cancelad") { $sentence = "Operação cancelada." }
-            elseif ($sentence.Length -eq 0) { $sentence = "Não havia nada a fazer." }
+            if (Test-WinForgeCanceledText -Text $detail) { $sentence = (Get-WinForgeText 'Operação cancelada.') }
+            elseif ($sentence.Length -eq 0) { $sentence = (Get-WinForgeText 'Não havia nada a fazer.') }
         }
         default { $sentence = "" }
     }

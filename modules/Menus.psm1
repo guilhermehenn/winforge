@@ -12,7 +12,7 @@ function Read-WinForgeMenuKey {
 
         [switch]$ShowMenu,
 
-        [string]$Hint = "Digite o número e tecle Enter. 0 volta."
+        [string]$Hint = (Get-WinForgeText 'Digite o número e tecle Enter. 0 volta.')
     )
 
     try {
@@ -45,7 +45,7 @@ function Invoke-WinForgeNavItem {
     }
     catch {
         Write-Host ""
-        Write-WinForgeStatus -Type Error -Message "Ocorreu um erro em '$($Item.Label)': $($_.Exception.Message)"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro em ''{0}'': {1}' "$($Item.Label)" "$($_.Exception.Message)")
         Wait-WinForgeKey
     }
 }
@@ -82,10 +82,10 @@ function Show-WinForgePageMenu {
         }
 
         Write-Host ""
-        Write-WinForgeMenuItem -Key "0" -Label "Voltar" -Exit
+        Write-WinForgeMenuItem -Key "0" -Label (Get-WinForgeText 'Voltar') -Exit
         Write-Host ""
 
-        $options += @{ Key = "0"; Label = "Voltar"; Exit = $true }
+        $options += @{ Key = "0"; Label = (Get-WinForgeText 'Voltar'); Exit = $true }
 
         $choice = Read-WinForgeMenuKey -Options $options
 
@@ -94,6 +94,9 @@ function Show-WinForgePageMenu {
         }
 
         Invoke-WinForgeNavItem -Item $Page.Items[[int]$choice - 1]
+
+        # A atualização com um clique: o instalador espera este menu fechar para trocar os arquivos.
+        if (Get-WinForgeAppExitRequest) { return }
     }
 }
 
@@ -130,12 +133,18 @@ function Show-WinForgeTweaksMenu {
     while ($true) {
         Show-WinForgeHeader $page.Title
         Write-WinForgeWrappedLine -Text $page.Summary -Color DarkGray
-        Write-WinForgeWrappedLine -Text "Cada item mostra como o Windows está agora: ativado ou desativado (? = não identificado)." -Color DarkGray
+        Write-WinForgeWrappedLine -Text (Get-WinForgeText 'Cada item mostra como o Windows está agora: ativado ou desativado (? = não identificado).') -Color DarkGray
 
         $overview = @(Get-WinForgeTweakOverview -Page $PageId)
         $options = @()
         $lastCategory = ""
         $position = 0
+
+        # Elevado com outra conta, os do perfil do usuário mostrariam o perfil dessa conta: ficam com um traço, e a linha diz
+        # por quê (a página da janela diz o mesmo no alto).
+        if (@($overview | Where-Object { [bool](Get-WinForgeJsonValue -Object $_ -Name "OtherAccount" -Default $false) }).Count -gt 0) {
+            Write-WinForgeWrappedLine -Text (Get-WinForgeText 'O WinForge está elevado com outra conta: os ajustes do perfil do usuário (com -) ficam de fora.') -Color Yellow
+        }
 
         foreach ($tweak in $overview) {
             if ($tweak.Category -ne $lastCategory) {
@@ -148,16 +157,20 @@ function Show-WinForgeTweaksMenu {
 
             $state = Get-WinForgeTweakSwitchState -Status $tweak.Status -Inverted ([bool]$tweak.Inverted)
 
-            if ($tweak.Status -eq "Desconhecido") {
+            if ([bool](Get-WinForgeJsonValue -Object $tweak -Name "OtherAccount" -Default $false)) {
+                $badge = "[    -     ]"
+                $badgeColor = "DarkGray"
+            }
+            elseif ($tweak.Status -eq "Desconhecido") {
                 $badge = "[    ?     ]"
                 $badgeColor = "Yellow"
             }
             elseif ($state.IsOn) {
-                $badge = "[ativado   ]"
+                $badge = (Get-WinForgeText '[ativado   ]')
                 $badgeColor = "White"
             }
             else {
-                $badge = "[desativado]"
+                $badge = (Get-WinForgeText '[desativado]')
                 $badgeColor = "DarkGray"
             }
 
@@ -168,7 +181,7 @@ function Show-WinForgeTweaksMenu {
             Write-Host $tweak.Name -ForegroundColor Gray -NoNewline
 
             if (-not [string]::IsNullOrWhiteSpace($tweak.LaptopNote)) {
-                Write-Host "  (aviso para notebook ao escolher)" -ForegroundColor Yellow -NoNewline
+                Write-Host (Get-WinForgeText '  (aviso para notebook ao escolher)') -ForegroundColor Yellow -NoNewline
             }
 
             Write-Host ""
@@ -182,12 +195,12 @@ function Show-WinForgeTweaksMenu {
         }
 
         Write-Host ""
-        Write-WinForgeMenuItem -Key "0" -Label "Voltar" -Exit
+        Write-WinForgeMenuItem -Key "0" -Label (Get-WinForgeText 'Voltar') -Exit
         Write-Host ""
 
-        $options += @{ Key = "0"; Label = "Voltar"; Exit = $true }
+        $options += @{ Key = "0"; Label = (Get-WinForgeText 'Voltar'); Exit = $true }
 
-        $choice = Read-WinForgeMenuKey -Options $options -Hint "Digite o número de um item para ativar ou desativar, ou a letra de uma ação, e tecle Enter. 0 volta."
+        $choice = Read-WinForgeMenuKey -Options $options -Hint (Get-WinForgeText 'Digite o número de um item para ativar ou desativar, ou a letra de uma ação, e tecle Enter. 0 volta.')
 
         if ($null -eq $choice -or $choice -eq "0") {
             return
@@ -206,7 +219,7 @@ function Show-WinForgeTweaksMenu {
         }
         catch {
             Write-Host ""
-            Write-WinForgeStatus -Type Error -Message "Ocorreu um erro: $($_.Exception.Message)"
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Ocorreu um erro: {0}' "$($_.Exception.Message)")
             Wait-WinForgeKey
         }
     }
@@ -236,16 +249,16 @@ function Show-WinForgeMainMenu {
         }
 
         Write-Host ""
-        Write-WinForgeMenuItem -Key "0" -Label "Sair" -Exit
+        Write-WinForgeMenuItem -Key "0" -Label (Get-WinForgeText 'Sair') -Exit
         Write-Host ""
 
-        $options += @{ Key = "0"; Label = "Sair"; Exit = $true }
+        $options += @{ Key = "0"; Label = (Get-WinForgeText 'Sair'); Exit = $true }
 
-        $choice = Read-WinForgeMenuKey -Options $options -Hint "Digite o número e tecle Enter. 0 sai do WinForge."
+        $choice = Read-WinForgeMenuKey -Options $options -Hint (Get-WinForgeText 'Digite o número e tecle Enter. 0 sai do WinForge.')
 
         if ($null -eq $choice -or $choice -eq "0") {
             Write-Host ""
-            Write-Host "  Saindo do WinForge..." -ForegroundColor Yellow
+            Write-Host (Get-WinForgeText '  Saindo do WinForge...') -ForegroundColor Yellow
             return
         }
 
@@ -256,6 +269,14 @@ function Show-WinForgeMainMenu {
         }
         else {
             Show-WinForgePageMenu -Page $page
+        }
+
+        if (Get-WinForgeAppExitRequest) {
+            Write-Host ""
+            Write-Host (Get-WinForgeText '  Fechando para instalar a versão nova; o WinForge abre de novo em alguns segundos...') -ForegroundColor Yellow
+            # Um instante para a frase ser lida antes de a janela fechar.
+            Start-Sleep -Seconds 2
+            return
         }
     }
 }

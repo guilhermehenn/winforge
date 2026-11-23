@@ -27,11 +27,19 @@ endlocal
 exit /b 0
 
 :faltam
+rem Ainda sem o PowerShell, o aviso sai nos tres idiomas do WinForge.
 echo.
 echo   Faltam arquivos do WinForge nesta pasta.
-echo.
 echo   Abra o WinForge.zip, clique em "Extrair tudo" e depois abra
 echo   o WinForge.cmd que estiver na pasta nova.
+echo.
+echo   Some WinForge files are missing from this folder.
+echo   Open WinForge.zip, click "Extract all" and then open
+echo   WinForge.cmd from the new folder.
+echo.
+echo   Faltan archivos de WinForge en esta carpeta.
+echo   Abre WinForge.zip, haz clic en "Extraer todo" y luego abre
+echo   WinForge.cmd en la carpeta nueva.
 echo.
 pause
 endlocal & exit /b 1

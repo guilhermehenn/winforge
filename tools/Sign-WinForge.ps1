@@ -1,13 +1,17 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-    Assina digitalmente (Authenticode) todos os scripts do WinForge e gera SHA256SUMS.txt.
+    Assina digitalmente (Authenticode) todos os scripts do WinForge.
 
 .DESCRIPTION
     Use com um certificado de assinatura de código emitido por uma autoridade confiável
     (ou com Azure Trusted Signing). Scripts assinados reduzem avisos do SmartScreen/Defender
     e permitem usar ExecutionPolicy AllSigned. Certificado autoassinado só funciona nos PCs
     onde ele for instalado como confiável.
+
+    Depois de assinar, monte o zip com o tools\New-WinForgePackage.ps1: é ele que grava o SHA256SUMS.txt, a partir dos
+    arquivos como eles ficam no zip (com o CHANGELOG curto). Um SHA256SUMS.txt feito da pasta listaria também as
+    ferramentas e os documentos, que não vão para o PC, e o CHANGELOG inteiro.
 
 .EXAMPLE
     $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Select-Object -First 1
@@ -36,12 +40,4 @@ foreach ($file in $files) {
     }
 }
 
-$sumsPath = Join-Path $root "SHA256SUMS.txt"
-Get-ChildItem -LiteralPath $root -Recurse -File |
-    Where-Object { $_.Name -ne "SHA256SUMS.txt" -and $_.FullName -notmatch "[\\/]\.git[\\/]" } |
-    ForEach-Object {
-        $relative = $_.FullName.Substring($root.Length + 1)
-        "{0}  {1}" -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $relative
-    } | Set-Content -LiteralPath $sumsPath -Encoding ASCII
-
-Write-Host "Hashes gravados em $sumsPath" -ForegroundColor Cyan
+Write-Host "Agora monte o zip: .\tools\New-WinForgePackage.ps1 (ele grava o SHA256SUMS.txt)." -ForegroundColor Cyan

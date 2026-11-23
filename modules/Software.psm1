@@ -13,6 +13,11 @@ $script:WinForgeUninstallRecheckDelays = @(2, 5, 10)
 # leva alguns segundos). Os que passam disso ficam fora da lista.
 $script:WinForgeTruncatedIdQueryLimit = 5
 
+# A recusa do winget, de um processo elevado, a desinstalar e atualizar o que foi instalado só para a conta da pessoa
+# (APPINSTALLER_CLI_ERROR_ADMIN_CONTEXT_ACTION_PROHIBITED, 0x8A15007D, na tabela de códigos do winget).
+# Invoke-WinForgeWingetUserScope.
+$script:WinForgeWingetUserScopeCode = -1978335107
+
 
 # ---------------------------------------------------------------------------
 # Disponibilidade do winget
@@ -25,7 +30,21 @@ function Test-WinForgeWinget {
 
 function Get-WinForgeWingetMissingDetail {
     # O detalhe da faixa quando falta o winget, igual em todas as telas de Programas.
-    return "o Instalador de Aplicativo (winget) não está neste PC"
+    return (Get-WinForgeText 'o Instalador de Aplicativo (winget) não está neste PC')
+}
+
+
+function Get-WinForgeWingetMissingResult {
+    # A faixa das telas que usam o winget quando ele falta: o título diz o que falta, e a frase, de onde ele vem; o botão
+    # leva ao reparo (Repair-WinForgeWinget). O detalhe é o de sempre (Get-WinForgeWingetMissingDetail), que o Otimizar
+    # reconhece.
+    param ([string]$Title = "")
+
+    $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeWingetMissingDetail) -Title $Title
+
+    return (Set-WinForgeResultView -Result $result -Headline (Get-WinForgeText 'Falta o Instalador de Aplicativo') `
+            -Note (Get-WinForgeText 'Num Windows recém-instalado, ele chega quando a Microsoft Store se atualiza.') `
+            -Next "software.winget-repair" -NextLabel (Get-WinForgeText 'Reparar'))
 }
 
 
@@ -37,14 +56,17 @@ function Write-WinForgeWingetMissing {
     #>
     param ([switch]$OfferStore)
 
-    Write-WinForgeStatus -Type Error -Message "O Instalador de Aplicativo da Microsoft, que o WinForge usa para instalar programas, não está neste PC."
-    Write-WinForgeStatus -Type Info -Message "Num Windows recém-instalado, ele chega quando a Microsoft Store se atualiza. Abra a Store, deixe-a atualizar e tente de novo."
+    Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'O Instalador de Aplicativo da Microsoft, que o WinForge usa para instalar programas, não está neste PC.')
+    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Num Windows recém-instalado, ele chega quando a Microsoft Store se atualiza. Abra a Store, deixe-a atualizar e tente de novo.')
+
+    # Na janela, o botão da faixa leva ao reparo; no menu de texto, a linha diz onde ele fica.
+    if (-not (Test-WinForgeGuiMode)) { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Se ele já estiver instalado, use Programas > Reparar o Instalador de Aplicativo.') }
 
     if (-not $OfferStore) { return }
 
     Write-Host ""
 
-    if (Confirm-WinForgeAction -Message "Abrir o Instalador de Aplicativo na Microsoft Store agora?" -DefaultKey S) {
+    if (Confirm-WinForgeAction -Message (Get-WinForgeText 'Abrir o Instalador de Aplicativo na Microsoft Store agora?') -DefaultKey S -YesLabel (Get-WinForgeText 'Abrir') -NoLabel (Get-WinForgeText 'Agora não')) {
         [void](Open-WinForgeAppInstallerPage)
     }
 }
@@ -54,11 +76,11 @@ function Open-WinForgeAppInstallerPage {
     # A página do Instalador de Aplicativo (o winget) na Microsoft Store. Devolve $true se o Windows aceitou abrir.
     try {
         Start-Process -FilePath "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1" -ErrorAction Stop
-        Write-WinForgeStatus -Type Info -Notice -Message "Abrindo a Microsoft Store. Depois de instalar ou atualizar o Instalador de Aplicativo, use esta ação de novo."
+        Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Abrindo a Microsoft Store. Depois de instalar ou atualizar o Instalador de Aplicativo, use esta ação de novo.')
         return $true
     }
     catch {
-        Write-WinForgeStatus -Type Warning -Notice -Message "O Windows não abriu a Microsoft Store ($(([string]$_.Exception.Message).Trim().TrimEnd('.'))). Abra a Store pelo Menu Iniciar e procure por Instalador de Aplicativo."
+        Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText 'O Windows não abriu a Microsoft Store ({0}). Abra a Store pelo Menu Iniciar e procure por Instalador de Aplicativo.' "$(([string]$_.Exception.Message).Trim().TrimEnd('.'))")
         return $false
     }
 }
@@ -82,17 +104,17 @@ function Initialize-WinForgeWinget {
     }
 
     # O andamento vai para a barra de progresso; só um problema vira mensagem.
-    Write-Progress -Activity "Preparando o winget" -Status "atualizando a lista de pacotes"
+    Write-Progress -Activity (Get-WinForgeText 'Preparando o winget') -Status (Get-WinForgeText 'atualizando a lista de pacotes')
 
     try {
         $source = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("source", "update", "--name", "winget", "--disable-interactivity")
     }
     finally {
-        Write-Progress -Activity "Preparando o winget" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Preparando o winget') -Completed
     }
 
     if ($source.ExitCode -ne 0) {
-        Write-WinForgeStatus -Type Warning -Message "Não foi possível atualizar a lista de pacotes do winget; a consulta usa a lista guardada neste PC."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível atualizar a lista de pacotes do winget; a consulta usa a lista guardada neste PC.')
     }
 
     $script:WinForgeWingetReady = $true
@@ -115,12 +137,12 @@ function Write-WinForgeWingetUserWarning {
     $currentUser = "$([Environment]::UserDomainName)\$([Environment]::UserName)"
     $interactiveUser = Get-WinForgeInteractiveUser
 
-    Write-WinForgeStatus -Type Warning -Message "O WinForge está elevado como $currentUser."
+    Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado como {0}.' "$currentUser")
 
     switch ($Context) {
-        "Install" { Write-WinForgeStatus -Type Info -Message "Programas que se instalam só para o usuário ficam no perfil de $currentUser, não no de $interactiveUser." }
-        "Upgrade" { Write-WinForgeStatus -Type Info -Message "Programas instalados só para $interactiveUser podem não aparecer na lista de atualizações." }
-        default { Write-WinForgeStatus -Type Info -Message "Pacotes exclusivos de $interactiveUser podem não aparecer neste contexto." }
+        "Install" { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Programas que se instalam só para o usuário ficam no perfil de {0}, não no de {1}.' "$currentUser" "$interactiveUser") }
+        "Upgrade" { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Programas instalados só para {0} podem não aparecer na lista de atualizações.' "$interactiveUser") }
+        default { Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Pacotes exclusivos de {0} podem não aparecer neste contexto.' "$interactiveUser") }
     }
 
     Write-Host ""
@@ -239,7 +261,7 @@ function ConvertFrom-WinForgeWingetTable {
     for ($i = 0; $i -lt $lineArray.Count; $i++) {
         $line = $lineArray[$i]
 
-        if ($line -match "\bId\b" -and ($line -match "\bName\b" -or $line -match "\bNome\b") -and ($line -match "\bVersion\b" -or $line -match "Vers")) {
+        if ($line -match "\bId\b" -and $line -match "\b(Name|Nome|Nombre)\b" -and ($line -match "\bVersion\b" -or $line -match "Vers")) {
             $headerIndex = $i
             break
         }
@@ -250,12 +272,13 @@ function ConvertFrom-WinForgeWingetTable {
     }
 
     $header = $lineArray[$headerIndex]
-    $nameStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Name", "Nome")
+    # Os títulos das colunas do winget em inglês, português e espanhol (os textos dele, de cada idioma do Windows).
+    $nameStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Name", "Nome", "Nombre")
     $idStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Id")
-    $versionStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Version", "Versão", "Versao")
-    $availableStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Available", "Disponível", "Disponivel")
-    $matchStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Match", "Correspondência", "Correspondencia")
-    $sourceStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Source", "Fonte", "Origem")
+    $versionStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Version", "Versão", "Versao", "Versión")
+    $availableStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Available", "Disponível", "Disponivel", "Disponible")
+    $matchStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Match", "Correspondência", "Correspondencia", "Coincidencia")
+    $sourceStart = Get-WinForgeTextColumnIndex -Text $header -Names @("Source", "Fonte", "Origem", "Origen")
 
     if ($nameStart -lt 0 -or $idStart -lt 0 -or $versionStart -lt 0) {
         return @()
@@ -294,7 +317,7 @@ function ConvertFrom-WinForgeWingetTable {
             continue
         }
 
-        if ($line -match "^[0-9]+\s+(upgrades?|packages?|pacotes?|atualiza)" -or $line -match "Nenhuma atualiza" -or $line -match "No available upgrade") {
+        if ($line -match "^[0-9]+\s+(upgrades?|packages?|pacotes?|atualiza|actualizaci|paquetes?)" -or $line -match "Nenhuma atualiza|ninguna actualizaci" -or $line -match "No available upgrade") {
             if ($rowsStarted) { break }
             continue
         }
@@ -341,20 +364,49 @@ function ConvertFrom-WinForgeWingetTable {
 
 
 function Test-WinForgeWingetNoUpgradeOutput {
-    # "Não há o que atualizar", pelo código de saída do winget (0x8A150014 = nenhum pacote encontrado e 0x8A15002B =
-    # nenhuma atualização aplicável: não mudam com o idioma) ou, na falta dele, pelas frases em inglês e português.
+    <#
+    "Não há o que atualizar", pelo código de saída do winget (0x8A150014 = nenhum pacote encontrado e 0x8A15002B =
+    nenhuma atualização aplicável: não mudam com o idioma) ou, na falta dele, pelas frases em inglês, português e espanhol.
+    Também quando o "winget upgrade" só deixou programas de fora: os marcados para não atualizar (winget pin) e os de
+    versão desconhecida. Aí ele termina sem tabela e sem a frase de "nada a atualizar", só com o rodapé que conta os que
+    ficaram de fora, e esse rodapé traz, em todo idioma, a opção do próprio winget (--include-pinned ou
+    --include-unknown).
+    #>
     param (
         [string]$OutputText,
         [int]$ExitCode = 0
     )
 
-    return (
+    if (
         $ExitCode -in @(-1978335212, -1978335189) -or
         $OutputText -match "(?i)No installed package found matching input criteria" -or
         $OutputText -match "(?i)No available upgrade found" -or
         $OutputText -match "(?i)Nenhuma atualiza" -or
-        $OutputText -match "(?i)Nenhum pacote instalado"
-    )
+        $OutputText -match "(?i)Nenhum pacote instalado" -or
+        $OutputText -match "(?i)No se encontr.{1,3} ning.{1,3}n paquete|No se ha encontrado ninguna actualizaci"
+    ) {
+        return $true
+    }
+
+    if ($ExitCode -eq 0 -and $OutputText -match '(?m)^\s*\d+\s.*--include-(pinned|unknown)') {
+        return (@(ConvertFrom-WinForgeWingetTable -Lines @($OutputText -split "`r?`n")).Count -eq 0)
+    }
+
+    return $false
+}
+
+
+function Get-WinForgeWingetHeldCount {
+    # Quantos programas com versão nova o "winget upgrade" deixou de fora por estarem marcados para não atualizar (winget
+    # pin): o número do rodapé "{0} pacote(s) têm pinos que impedem a atualização...", que traz em todo idioma o
+    # --include-pinned do próprio winget. 0 sem esse rodapé.
+    param ([string[]]$Lines = @())
+
+    foreach ($line in @($Lines)) {
+        if ([string]$line -match '^\s*(\d+)\s.*--include-pinned') { return [int]$Matches[1] }
+    }
+
+    return 0
 }
 
 
@@ -373,19 +425,19 @@ function ConvertTo-WinForgeWingetPackageIdList {
         $packageId = $segment.Trim()
 
         if ([string]::IsNullOrWhiteSpace($packageId)) {
-            throw "Há uma vírgula sem um ID antes ou depois dela. Revise a lista informada."
+            throw (Get-WinForgeText 'Há uma vírgula sem um ID antes ou depois dela. Revise a lista informada.')
         }
 
         if ($packageId -match "\s") {
-            throw "O ID '$packageId' contém espaços. Separe vários IDs por vírgula."
+            throw (Get-WinForgeText 'O ID ''{0}'' contém espaços. Separe vários IDs por vírgula.' "$packageId")
         }
 
         if ($packageId.ToUpperInvariant() -in @("S", "N", "ID")) {
-            throw "A lista contém '$packageId', que é uma opção de menu e não um ID de pacote."
+            throw (Get-WinForgeText 'A lista contém ''{0}'', que é uma opção de menu e não um ID de pacote.' "$packageId")
         }
 
         if ($packageId -match '^-' -or $packageId -match '["`;|&<>]') {
-            throw "O ID '$packageId' contém caracteres que não fazem parte de um ID do winget."
+            throw (Get-WinForgeText 'O ID ''{0}'' contém caracteres que não fazem parte de um ID do winget.' "$packageId")
         }
 
         if (-not $packageIds.Contains($packageId)) {
@@ -458,65 +510,66 @@ function Get-WinForgeWingetExitResult {
     )
 
     $code = "0x{0:X8}" -f $ExitCode
-    $failed = { param ($Text) New-WinForgeResult -Kind Failed -Detail "$Text — erro $code" }
+    $failed = { param ($Text) New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText '{0} — erro {1}' "$Text" "$code") }
 
     switch ($code) {
         "0x00000000" { return (New-WinForgeResult -Kind Ok) }
-        "0x8A15002B" { return (New-WinForgeResult -Kind Ok -Detail "já está na versão mais recente") }
-        "0x8A150061" { return (New-WinForgeResult -Kind Ok -Detail "já estava instalado") }
-        "0x8A15010D" { return (New-WinForgeResult -Kind Ok -Detail "outra versão já estava instalada") }
-        "0x8A15010E" { return (New-WinForgeResult -Kind Ok -Detail "já há uma versão mais nova instalada") }
-        "0x8A150109" { return (New-WinForgeResult -Kind Warning -Detail "termina na próxima reinicialização" -Data @{ RebootRequired = $true }) }
-        "0x8A15010B" { return (New-WinForgeResult -Kind Warning -Detail "o instalador vai reiniciar o PC para terminar" -Data @{ RebootRequired = $true }) }
-        "0x8A150014" { return (New-WinForgeResult -Kind Failed -Detail "pacote não encontrado") }
-        "0x8A15002C" { return (& $failed "algum programa não foi atualizado") }
-        "0x8A150034" { return (& $failed "algum programa da lista não foi instalado") }
-        "0x8A150035" { return (& $failed "algum programa da lista não foi encontrado no winget") }
-        "0x8A150011" { return (& $failed "o instalador baixado não confere com o esperado") }
-        "0x8A150101" { return (& $failed "o programa está aberto; feche-o e tente de novo") }
-        "0x8A150103" { return (& $failed "há arquivos do programa em uso; feche-o e tente de novo") }
-        "0x8A150111" { return (& $failed "o programa está em uso por outro programa; feche-os e tente de novo") }
-        "0x8A150102" { return (& $failed "outra instalação está em andamento; tente mais tarde") }
-        "0x8A150105" { return (& $failed "falta espaço no disco") }
-        "0x8A150107" { return (& $failed "o instalador precisa de internet") }
-        "0x8A15010A" { return (& $failed "reinicie o PC e tente de novo") }
-        "0x8A15010C" { return (& $failed "a instalação foi cancelada no instalador") }
-        "0x8A150114" { return (& $failed "o instalador não atualiza por cima da versão instalada") }
-        "0x8A15003A" { return (& $failed "bloqueado por uma política do Windows") }
-        "0x8A15010F" { return (& $failed "uma política da organização impede a instalação; fale com o suporte de TI") }
-        "0x8A15001B" { return (& $failed "a Microsoft Store está bloqueada por uma política do Windows") }
-        "0x8A150104" { return (& $failed "falta no PC um componente de que o programa depende") }
-        "0x8A150110" { return (& $failed "não foi possível instalar os componentes de que o programa depende") }
-        "0x8A150106" { return (& $failed "falta memória livre; feche outros programas e tente de novo") }
-        "0x8A150113" { return (& $failed "o programa não é compatível com este PC ou com esta versão do Windows") }
-        "0x8A150108" { return (& $failed "o instalador do programa falhou; o fabricante sugere procurar o suporte dele") }
-        "0x8A150115" { return (& $failed "o instalador do programa falhou com um erro próprio") }
-        "0x8A150016" { return (& $failed "mais de um pacote corresponde a esse ID") }
-        "0x8A15007D" { return (& $failed "o programa foi instalado só para o seu usuário, e o winget não o altera como Administrador; para continuar sem Administrador, $(Get-WinForgeUnelevatedHint)") }
-        "0x8A150056" { return (& $failed "o instalador não roda como Administrador; para continuar sem Administrador, $(Get-WinForgeUnelevatedHint)") }
-        "0x8A150076" { return (& $failed "a fonte do pacote pede que você entre com uma conta") }
-        "0x8A15001C" { return (& $failed "uma política do Windows bloqueia esse aplicativo da Microsoft Store") }
-        "0x8A15008E" { return (& $failed "a versão nova usa outro tipo de instalador; desinstale a atual e instale de novo") }
-        "0x8A150015" { return (& $failed "o winget está sem fontes de pacotes configuradas") }
+        "0x8A15002B" { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já está na versão mais recente')) }
+        "0x8A150061" { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já estava instalado')) }
+        "0x8A15010D" { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'outra versão já estava instalada')) }
+        "0x8A15010E" { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já há uma versão mais nova instalada')) }
+        "0x8A150109" { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'termina na próxima reinicialização') -Data @{ RebootRequired = $true }) }
+        # O próprio instalador reinicia o PC (RebootStarted): oferecer o reinício de novo não faria sentido.
+        "0x8A15010B" { return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o instalador vai reiniciar o PC para terminar') -Data @{ RebootRequired = $true; RebootStarted = $true }) }
+        "0x8A150014" { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'pacote não encontrado')) }
+        "0x8A15002C" { return (& $failed (Get-WinForgeText 'algum programa não foi atualizado')) }
+        "0x8A150034" { return (& $failed (Get-WinForgeText 'algum programa da lista não foi instalado')) }
+        "0x8A150035" { return (& $failed (Get-WinForgeText 'algum programa da lista não foi encontrado no winget')) }
+        "0x8A150011" { return (& $failed (Get-WinForgeText 'o instalador baixado não confere com o esperado')) }
+        "0x8A150101" { return (& $failed (Get-WinForgeText 'o programa está aberto; feche-o e tente de novo')) }
+        "0x8A150103" { return (& $failed (Get-WinForgeText 'há arquivos do programa em uso; feche-o e tente de novo')) }
+        "0x8A150111" { return (& $failed (Get-WinForgeText 'o programa está em uso por outro programa; feche-os e tente de novo')) }
+        "0x8A150102" { return (& $failed (Get-WinForgeText 'outra instalação está em andamento; tente mais tarde')) }
+        "0x8A150105" { return (& $failed (Get-WinForgeText 'falta espaço no disco')) }
+        "0x8A150107" { return (& $failed (Get-WinForgeText 'o instalador precisa de internet')) }
+        "0x8A15010A" { return (& $failed (Get-WinForgeText 'reinicie o PC e tente de novo')) }
+        "0x8A15010C" { return (& $failed (Get-WinForgeText 'a instalação foi cancelada no instalador')) }
+        "0x8A150114" { return (& $failed (Get-WinForgeText 'o instalador não atualiza por cima da versão instalada')) }
+        "0x8A15003A" { return (& $failed (Get-WinForgeText 'bloqueado por uma política do Windows')) }
+        "0x8A15010F" { return (& $failed (Get-WinForgeText 'uma política da organização impede a instalação; fale com o suporte de TI')) }
+        "0x8A15001B" { return (& $failed (Get-WinForgeText 'a Microsoft Store está bloqueada por uma política do Windows')) }
+        "0x8A150104" { return (& $failed (Get-WinForgeText 'falta no PC um componente de que o programa depende')) }
+        "0x8A150110" { return (& $failed (Get-WinForgeText 'não foi possível instalar os componentes de que o programa depende')) }
+        "0x8A150106" { return (& $failed (Get-WinForgeText 'falta memória livre; feche outros programas e tente de novo')) }
+        "0x8A150113" { return (& $failed (Get-WinForgeText 'o programa não é compatível com este PC ou com esta versão do Windows')) }
+        "0x8A150108" { return (& $failed (Get-WinForgeText 'o instalador do programa falhou; o fabricante sugere procurar o suporte dele')) }
+        "0x8A150115" { return (& $failed (Get-WinForgeText 'o instalador do programa falhou com um erro próprio')) }
+        "0x8A150016" { return (& $failed (Get-WinForgeText 'mais de um pacote corresponde a esse ID')) }
+        "0x8A15007D" { return (& $failed (Get-WinForgeText 'o programa foi instalado só para o seu usuário, e o winget não o altera como Administrador; para continuar sem Administrador, {0}' "$(Get-WinForgeUnelevatedHint)")) }
+        "0x8A150056" { return (& $failed (Get-WinForgeText 'o instalador não roda como Administrador; para continuar sem Administrador, {0}' "$(Get-WinForgeUnelevatedHint)")) }
+        "0x8A150076" { return (& $failed (Get-WinForgeText 'a fonte do pacote pede que você entre com uma conta')) }
+        "0x8A15001C" { return (& $failed (Get-WinForgeText 'uma política do Windows bloqueia esse aplicativo da Microsoft Store')) }
+        "0x8A15008E" { return (& $failed (Get-WinForgeText 'a versão nova usa outro tipo de instalador; desinstale a atual e instale de novo')) }
+        "0x8A150015" { return (& $failed (Get-WinForgeText 'o winget está sem fontes de pacotes configuradas')) }
         # Desinstalar: o programa não registrou como se desinstala, ou o desinstalador dele terminou com erro (o que inclui
         # cancelar na janela dele). Os dois 0x80073xxx vêm do Windows ao remover um aplicativo da Microsoft Store.
-        "0x8A15002F" { return (& $failed "o programa não tem desinstalador registrado") }
-        "0x8A150030" { return (& $failed "o desinstalador terminou com erro ou foi cancelado") }
-        "0x80073CFA" { return (& $failed "o Windows não permite remover este aplicativo") }
-        "0x80073D02" { return (& $failed "o aplicativo está aberto; feche-o e tente de novo") }
+        "0x8A15002F" { return (& $failed (Get-WinForgeText 'o programa não tem desinstalador registrado')) }
+        "0x8A150030" { return (& $failed (Get-WinForgeText 'o desinstalador terminou com erro ou foi cancelado')) }
+        "0x80073CFA" { return (& $failed (Get-WinForgeText 'o Windows não permite remover este aplicativo')) }
+        "0x80073D02" { return (& $failed (Get-WinForgeText 'o aplicativo está aberto; feche-o e tente de novo')) }
         # Sem internet, ou com ela caindo no meio: o download do instalador falha (0x8A150008) ou o Windows nem chega ao
         # servidor (nome que não resolve, conexão recusada, tempo esgotado).
-        "0x8A150008" { return (& $failed "não foi possível baixar o instalador; confira a internet") }
-        "0x80072EE7" { return (& $failed "sem conexão com a internet") }
-        "0x80072EFD" { return (& $failed "sem conexão com a internet") }
-        "0x80072EE2" { return (& $failed "sem conexão com a internet") }
+        "0x8A150008" { return (& $failed (Get-WinForgeText 'não foi possível baixar o instalador; confira a internet')) }
+        "0x80072EE7" { return (& $failed (Get-WinForgeText 'sem conexão com a internet')) }
+        "0x80072EFD" { return (& $failed (Get-WinForgeText 'sem conexão com a internet')) }
+        "0x80072EE2" { return (& $failed (Get-WinForgeText 'sem conexão com a internet')) }
     }
 
     if ($ExitCode -lt 0) {
-        return (New-WinForgeResult -Kind Failed -Detail "erro $code")
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'erro {0}' "$code"))
     }
 
-    return (New-WinForgeResult -Kind Failed -Detail "código de saída $ExitCode")
+    return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'código de saída {0}' "$ExitCode"))
 }
 
 
@@ -544,12 +597,12 @@ function Get-WinForgeWingetVerbs {
     # o winget mostrou cortado.
     param ([Parameter(Mandatory)][ValidateSet("Install", "Upgrade", "Uninstall")][string]$Operation)
 
-    $truncated = "o winget mostrou o ID incompleto"
+    $truncated = (Get-WinForgeText 'o winget mostrou o ID incompleto')
 
     switch ($Operation) {
-        "Install"   { return @{ Activity = "Instalando programas"; One = "instalado"; Many = "instalados"; Truncated = "$truncated; busque de novo por um nome mais específico" } }
-        "Upgrade"   { return @{ Activity = "Atualizando programas"; One = "atualizado"; Many = "atualizados"; Truncated = "$truncated; atualize pelo próprio programa" } }
-        "Uninstall" { return @{ Activity = "Desinstalando programas"; One = "desinstalado"; Many = "desinstalados"; Truncated = "$truncated; desinstale em Programas > Aplicativos instalados" } }
+        "Install"   { return @{ Activity = (Get-WinForgeText 'Instalando programas'); One = (Get-WinForgeText 'instalado'); Many = (Get-WinForgeText 'instalados'); Truncated = (Get-WinForgeText '{0}; busque de novo por um nome mais específico' "$truncated") } }
+        "Upgrade"   { return @{ Activity = (Get-WinForgeText 'Atualizando programas'); One = (Get-WinForgeText 'atualizado'); Many = (Get-WinForgeText 'atualizados'); Truncated = (Get-WinForgeText '{0}; atualize pelo próprio programa' "$truncated") } }
+        "Uninstall" { return @{ Activity = (Get-WinForgeText 'Desinstalando programas'); One = (Get-WinForgeText 'desinstalado'); Many = (Get-WinForgeText 'desinstalados'); Truncated = (Get-WinForgeText '{0}; desinstale em Programas > Aplicativos instalados' "$truncated") } }
     }
 }
 
@@ -597,10 +650,10 @@ function Format-WinForgeWingetPackageDescription {
     $versions = [int](Get-WinForgeJsonValue -Object $Package -Name "Versoes" -Default 1)
 
     if ($versions -gt 1) {
-        $parts += "$versions versões"
+        $parts += (Get-WinForgeText '{0} versões' "$versions")
     }
     elseif ($version -and $version -notmatch '^(\?|Unknown|Desconhecid[ao])$') {
-        $parts += "versão $version"
+        $parts += (Get-WinForgeText 'versão {0}' "$version")
     }
 
     $source = Get-WinForgeWingetSourceLabel -Source ([string]$Package.Fonte)
@@ -610,7 +663,7 @@ function Format-WinForgeWingetPackageDescription {
     }
 
     if (Test-WinForgeWingetIdTruncated -Id $Package.Id) {
-        $parts += "ID incompleto na lista do winget"
+        $parts += (Get-WinForgeText 'ID incompleto na lista do winget')
     }
 
     return ($parts -join " · ")
@@ -642,7 +695,7 @@ function Test-WinForgeWingetComponent {
     $storeIds = '9WZDNCRFJBMP|9NBLGGH4NNS1|9WZDNCRFHVN5|9WZDNCRFJBH4|9MSMLRH6LZF3|9PCFS5B6T72H|9MZ95KL8MR0L|9N0DX20HK701|9WZDNCRD1HKW|9MWPM2CQNLHN|9PMMSR1CGPWG|9N4WGH0Z6VHQ|9N4D0MSMP0PT|9MVZQVXJBQ9V|9N95Q1ZZPMH4|9PG2DK419DRG|9NCTDW2W1BH8|9N5TDP8VCMHS'
 
     return ($id -match "^(Microsoft\.AppInstaller|$storeIds)$" -or
-        $name -match '^(Microsoft Store|Instalador de Aplicativo|App Installer|Segurança do Windows|Windows Security)$' -or
+        $name -match '^(Microsoft Store|Instalador de Aplicativo|App Installer|Segurança do Windows|Windows Security|Instalador de aplicaci.n|Seguridad de Windows)$' -or
         $id -match '^(MSIX\\)?Microsoft\.(VCLibs|UI\.Xaml|NET\.Native|WindowsAppRuntime|WinAppRuntime|DirectXRuntime|Services\.Store|WindowsStore|StorePurchaseApp|DesktopAppInstaller|SecHealthUI|Winget\.Source|LanguageExperiencePack|XboxIdentityProvider|XboxGameOverlay|XboxSpeechToTextOverlay|Xbox\.TCUI|GamingServices|WidgetsPlatformRuntime|(HEIF|Webp|Raw)ImageExtension|(HEVC|VP9|AV1|MPEG2|AVCEncoder)VideoExtension|WebMediaExtensions)' -or
         $id -match '^(MSIX\\)?MicrosoftCorporationII\.WinAppRuntime' -or
         $id -match '^(MSIX\\)?Microsoft\.(WindowsCalculator|Windows\.Photos|WindowsTerminal|WindowsNotepad|Paint|ScreenSketch)(_|$)' -or
@@ -693,30 +746,52 @@ function Get-WinForgeWingetPackageCaution {
 
     # "^AMD S\w+$" é o pacote do Adrenalin, que leva o driver de vídeo junto (o nome não tem mais nada).
     if ($name -match '(?i)\bdrivers?\b|chipset|management engine|serial io|rapid storage|bluetooth|wireless|wi-?fi|touchpad|adrenalin|^AMD S\w+$') {
-        return "driver de um aparelho do PC"
+        return (Get-WinForgeText 'driver de um aparelho do PC')
     }
 
     return ""
 }
 
 
+function Read-WinForgeWingetList {
+    <#
+    O "winget list", lido e entendido num lugar só: Rows (as linhas da tabela), ExitCode, Text e Lines. Toda leitura com
+    linhas guarda os IDs para as listas de instalar dizerem "já instalado" (Get-WinForgeInstalledWingetIds, por 2 minutos):
+    Listar programas instalados e Desinstalar programas, que leem a lista inteira, deixam a leitura pronta para Buscar e
+    instalar e Instalar programas essenciais logo depois, que não leem de novo. -Echo: a tabela vai também para os
+    detalhes técnicos. Lança o erro quando o winget nem roda.
+    #>
+    param ([switch]$Echo)
+
+    $listing = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("list", "--accept-source-agreements") -Echo:$Echo
+    $rows = @(ConvertFrom-WinForgeWingetTable -Lines $listing.Lines)
+
+    if ($rows.Count -gt 0) {
+        $ids = New-Object 'System.Collections.Generic.HashSet[string]'
+        foreach ($row in $rows) { [void]$ids.Add(([string]$row.Id).ToLowerInvariant()) }
+        $script:WinForgeInstalledIdsCache = [PSCustomObject]@{ At = (Get-Date); Ids = $ids }
+    }
+
+    return [PSCustomObject]@{ Rows = $rows; ExitCode = [int]$listing.ExitCode; Text = [string]$listing.Text; Lines = @($listing.Lines) }
+}
+
+
 function Get-WinForgeInstalledWingetIds {
     <#
     Os IDs (em minúsculas) do que o winget vê instalado, para as listas de instalar dizerem "já instalado". O "winget
-    list" leva alguns segundos: a leitura vale por 2 minutos (buscar de novo logo depois não lê outra vez) e é descartada
+    list" leva alguns segundos: a leitura (de qualquer tela, Read-WinForgeWingetList) vale por 2 minutos e é descartada
     quando o WinForge instala, atualiza ou desinstala algo. $null quando o winget não respondeu: aí as listas ficam sem
     a marca, como antes.
     #>
-    param ([string]$Activity = "Lendo os programas instalados")
+    param ([string]$Activity = (Get-WinForgeText 'Lendo os programas instalados'))
 
     $cache = $script:WinForgeInstalledIdsCache
     if ($null -ne $cache -and ((Get-Date) - $cache.At).TotalSeconds -lt 120) { return ,$cache.Ids }
 
-    Write-Progress -Activity $Activity -Status "conferindo o que já está instalado"
+    Write-Progress -Activity $Activity -Status (Get-WinForgeText 'conferindo o que já está instalado')
 
     try {
-        $listing = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("list", "--accept-source-agreements")
-        $packages = @(ConvertFrom-WinForgeWingetTable -Lines $listing.Lines)
+        $listing = Read-WinForgeWingetList
     }
     catch {
         return $null
@@ -725,14 +800,9 @@ function Get-WinForgeInstalledWingetIds {
         Write-Progress -Activity $Activity -Completed
     }
 
-    if ($packages.Count -eq 0) { return $null }
+    if (@($listing.Rows).Count -eq 0) { return $null }
 
-    $ids = New-Object 'System.Collections.Generic.HashSet[string]'
-    foreach ($package in $packages) { [void]$ids.Add(([string]$package.Id).ToLowerInvariant()) }
-
-    $script:WinForgeInstalledIdsCache = [PSCustomObject]@{ At = (Get-Date); Ids = $ids }
-
-    return ,$ids
+    return ,$script:WinForgeInstalledIdsCache.Ids
 }
 
 
@@ -766,14 +836,14 @@ function Write-WinForgeWingetOutcomeLine {
     $verbs = Get-WinForgeWingetVerbs -Operation $Operation
 
     if ($Result.Kind -eq "Ok" -and [string]::IsNullOrWhiteSpace($Result.Detail)) {
-        $done = $(if ($Operation -eq "Upgrade" -and $Available) { "atualizado para a versão $Available" } else { $verbs.One })
+        $done = $(if ($Operation -eq "Upgrade" -and $Available) { (Get-WinForgeText 'atualizado para a versão {0}' "$Available") } else { $verbs.One })
         Write-WinForgeStatus -Type Success -Message "${Name}: $done."
     }
     elseif ($Result.Kind -eq "Ok") {
         Write-WinForgeStatus -Type Success -Message "${Name}: $($Result.Detail)."
     }
     elseif ($Result.Kind -eq "Warning") {
-        Write-WinForgeStatus -Type Warning -Message "${Name}: $($verbs.One), mas $($Result.Detail)."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText '{0}: {1}, mas {2}.' "${Name}" "$($verbs.One)" "$($Result.Detail)")
     }
     else {
         Write-WinForgeStatus -Type Error -Message "${Name}: $($Result.Detail)."
@@ -851,14 +921,14 @@ function Test-WinForgeWingetPackageListed {
 function Get-WinForgeWingetInstalledRows {
     # O "winget list" lido de novo (a leitura guardada para as listas de instalar é descartada), para conferir o que saiu.
     # $null quando o winget não devolveu uma tabela legível: sem ela, nada pode ser dado como desinstalado.
-    param ([string]$Activity = "Desinstalando programas")
+    param ([string]$Activity = (Get-WinForgeText 'Desinstalando programas'))
 
     $script:WinForgeInstalledIdsCache = $null
-    Write-Progress -Activity $Activity -Status "conferindo o que saiu"
+    Write-Progress -Activity $Activity -Status (Get-WinForgeText 'conferindo o que saiu')
 
     try {
-        $listing = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("list", "--accept-source-agreements")
-        $rows = @(ConvertFrom-WinForgeWingetTable -Lines $listing.Lines)
+        $listing = Read-WinForgeWingetList
+        $rows = @($listing.Rows)
     }
     catch {
         return $null
@@ -897,7 +967,7 @@ function Wait-WinForgeUninstallResults {
     param (
         [Parameter(Mandatory)][object[]]$Packages,
         [Parameter(Mandatory)][object[]]$Results,
-        [string]$Activity = "Desinstalando programas"
+        [string]$Activity = (Get-WinForgeText 'Desinstalando programas')
     )
 
     $count = @($Packages).Count
@@ -922,7 +992,7 @@ function Wait-WinForgeUninstallResults {
     foreach ($delay in @($script:WinForgeUninstallRecheckDelays)) {
         if ($waiting.Count -eq 0) { break }
 
-        Write-Progress -Activity $Activity -Status "esperando o desinstalador terminar"
+        Write-Progress -Activity $Activity -Status (Get-WinForgeText 'esperando o desinstalador terminar')
         Start-Sleep -Seconds ([int]$delay)
         $rows = Get-WinForgeWingetInstalledRows -Activity $Activity
         $waiting = @(& $getWaiting $rows)
@@ -931,11 +1001,11 @@ function Wait-WinForgeUninstallResults {
     # A janela do desinstalador pode estar esperando a pessoa: ela termina lá e manda conferir de novo.
     for ($ask = 0; $ask -lt 5 -and $waiting.Count -gt 0; $ask++) {
         $names = Join-WinForgeList -Items @($waiting | ForEach-Object { [string]$Packages[$_].Nome })
-        $still = $(if ($waiting.Count -eq 1) { "ainda está instalado" } else { "ainda estão instalados" })
+        $still = $(if ($waiting.Count -eq 1) { (Get-WinForgeText 'ainda está instalado') } else { (Get-WinForgeText 'ainda estão instalados') })
 
-        Write-WinForgeStatus -Type Warning -Notice -Message "$names $still. Se abriu uma janela de desinstalação, conclua nela."
+        Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText '{0} {1}. Se abriu uma janela de desinstalação, conclua nela.' "$names" "$still")
 
-        if (-not (Confirm-WinForgeAction -Message "Conferir de novo?" -DefaultKey S)) { break }
+        if (-not (Confirm-WinForgeAction -Message (Get-WinForgeText 'Conferir de novo?') -DefaultKey S -YesLabel (Get-WinForgeText 'Conferir de novo') -NoLabel (Get-WinForgeText 'Deixar como está'))) { break }
 
         $rows = Get-WinForgeWingetInstalledRows -Activity $Activity
         $waiting = @(& $getWaiting $rows)
@@ -948,16 +1018,16 @@ function Wait-WinForgeUninstallResults {
 
         if ($ran[$i]) {
             if ($null -eq $rows) {
-                if ($result.Kind -ne "Failed") { $result = New-WinForgeResult -Kind Failed -Detail "não foi possível conferir se saiu" }
+                if ($result.Kind -ne "Failed") { $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível conferir se saiu') }
             }
             elseif (Test-WinForgeWingetPackageListed -Package $Packages[$i] -Rows $rows) {
                 # Pedir reinício e continuar na lista é o esperado; um erro do winget já diz o motivo.
-                if ($result.Kind -eq "Ok") { $result = New-WinForgeResult -Kind Failed -Detail "continua instalado" }
+                if ($result.Kind -eq "Ok") { $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'continua instalado') }
             }
             elseif ($result.Kind -eq "Failed") {
                 # Saiu da lista apesar do erro (o desinstalador avisou algo, mas removeu; ou o winget nem o achou mais).
                 $notFound = ([int](Get-WinForgeResultData -Result $result -Name "ExitCode") -eq -1978335212)
-                $result = $(if ($notFound) { New-WinForgeResult -Kind Ok -Detail "já não está instalado" } else { New-WinForgeResult -Kind Ok })
+                $result = $(if ($notFound) { New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já não está instalado') } else { New-WinForgeResult -Kind Ok })
             }
 
             $result.Etapa = [string]$Packages[$i].Nome
@@ -967,6 +1037,68 @@ function Wait-WinForgeUninstallResults {
     }
 
     return $final
+}
+
+
+function Invoke-WinForgeWingetUserScope {
+    <#
+    O que fazer quando o winget recusou um pacote por ele ser só da conta da pessoa (0x8A15007D): a recusa vem antes de
+    qualquer mudança, e o mesmo comando roda de novo com a conta dela, sem Administrador (Invoke-WinForgeLimited), quando
+    dá (Get-WinForgeLimitedRunState). Quando não dá, o resultado diz por quê, com o que fazer. Name: o nome do programa;
+    Arguments: os do winget. Devolve o WinForge.Result do pacote (Data.ExitCode e, quando rodou sem Administrador,
+    Data.Unelevated).
+    Nunca roda como Administrador o desinstalador gravado no registro da conta: é o que o winget bloqueia, porque qualquer
+    programa da conta pode trocá-lo.
+    #>
+    param (
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+
+    $code = "0x{0:X8}" -f $script:WinForgeWingetUserScopeCode
+    $failed = { param ($Text) New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText '{0} — erro {1}' "$Text" "$code") -Data @{ ExitCode = $script:WinForgeWingetUserScopeCode } }
+
+    switch (Get-WinForgeLimitedRunState) {
+        "OtherAccount" {
+            # O programa é da conta que abriu o WinForge como Administrador, e não de quem usa o PC.
+            return (& $failed (Get-WinForgeText 'o programa foi instalado só para a conta {0}, e o winget não o altera como Administrador; entre no Windows com essa conta para continuar' "$([Environment]::UserDomainName)\$([Environment]::UserName)"))
+        }
+        "NoLimitedToken" {
+            return (& $failed (Get-WinForgeText 'o programa foi instalado só para o seu usuário, e o winget não o altera como Administrador; com o Controle de Conta de Usuário desligado, o WinForge não consegue rodá-lo sem Administrador'))
+        }
+        "NotElevated" {
+            # Sem Administrador, o winget não recusa por isso: o código vale como veio.
+            $result = Get-WinForgeWingetExitResult -ExitCode $script:WinForgeWingetUserScopeCode
+            if ($result.Data -is [hashtable]) { $result.Data["ExitCode"] = $script:WinForgeWingetUserScopeCode }
+            return $result
+        }
+    }
+
+    Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0} foi instalado só para o seu usuário, e o winget não o altera como Administrador. Tentando de novo sem Administrador.' "$Name")
+    Write-Host ""
+    Write-WinForgeCommand -Command "winget $($Arguments -join ' ')"
+    Write-Host ""
+
+    $run = Invoke-WinForgeLimited -FilePath "winget" -Arguments $Arguments
+    Write-Host ""
+
+    if (-not $run.Ran) {
+        return (& $failed (Get-WinForgeText 'o programa foi instalado só para o seu usuário, e não foi possível rodar o winget sem Administrador ({0}); para continuar sem Administrador, {1}' "$($run.Reason)" "$(Get-WinForgeUnelevatedHint)"))
+    }
+
+    if ([int]$run.ExitCode -eq $script:WinForgeWingetUserScopeCode) {
+        # A mesma recusa, agora sem Administrador: o Windows não deu à tarefa a versão da conta sem Administrador.
+        return (& $failed (Get-WinForgeText 'o programa foi instalado só para o seu usuário, e o winget recusou também sem Administrador'))
+    }
+
+    $result = Get-WinForgeWingetExitResult -ExitCode ([int]$run.ExitCode)
+
+    if ($result.Data -is [hashtable]) {
+        $result.Data["ExitCode"] = [int]$run.ExitCode
+        $result.Data["Unelevated"] = $true
+    }
+
+    return $result
 }
 
 
@@ -1006,8 +1138,8 @@ function Invoke-WinForgeWingetPackages {
 
             # O andamento vai para a barra de progresso (na janela, o texto ao lado da barra). Um desinstalador pode abrir a
             # própria janela, que espera a pessoa.
-            $status = "$position de $($Packages.Count): $name"
-            if ($Operation -eq "Uninstall") { $status += " · se abrir uma janela, conclua nela" }
+            $status = (Get-WinForgeText '{0} de {1}: {2}' "$position" "$($Packages.Count)" "$name")
+            if ($Operation -eq "Uninstall") { $status += (Get-WinForgeText ' · se abrir uma janela, conclua nela') }
             Write-Progress -Activity $verbs.Activity -Status $status -PercentComplete ([int](($position - 1) * 100 / $Packages.Count))
 
             if (Test-WinForgeWingetIdTruncated -Id $package.Id) {
@@ -1020,8 +1152,15 @@ function Invoke-WinForgeWingetPackages {
                 Write-Host ""
 
                 $exitCode = Invoke-WinForgeNative -FilePath "winget" -Arguments $arguments -IgnoreExitCode -PassThru
-                $result = Get-WinForgeWingetExitResult -ExitCode $exitCode
-                if ($result.Data -is [hashtable]) { $result.Data["ExitCode"] = $exitCode }
+
+                if ([int]$exitCode -eq $script:WinForgeWingetUserScopeCode) {
+                    # Só da conta da pessoa: o winget não o altera como Administrador, e o comando roda de novo sem elevação.
+                    $result = Invoke-WinForgeWingetUserScope -Name $name -Arguments $arguments
+                }
+                else {
+                    $result = Get-WinForgeWingetExitResult -ExitCode $exitCode
+                    if ($result.Data -is [hashtable]) { $result.Data["ExitCode"] = $exitCode }
+                }
 
                 Write-Host ""
             }
@@ -1051,7 +1190,7 @@ function Invoke-WinForgeWingetPackages {
     # No console, a saída do winget se mistura às mensagens: o resumo junta tudo no fim. Na janela, cada programa já tem a
     # sua linha no resumo da execução, e a tabela só repetiria as mesmas linhas.
     if ($Packages.Count -gt 1 -and -not (Test-WinForgeGuiMode)) {
-        Write-WinForgeSection -Title "Resumo"
+        Write-WinForgeSection -Title (Get-WinForgeText 'Resumo')
         Write-WinForgeResultTable -Results $outcomes
     }
 
@@ -1062,14 +1201,21 @@ function Invoke-WinForgeWingetPackages {
     $data = @{
         SucceededIds = @(for ($i = 0; $i -lt $outcomes.Count; $i++) { if ($outcomes[$i].Kind -ne "Failed") { [string]$Packages[$i].Id } })
         ChangedIds   = @(for ($i = 0; $i -lt $outcomes.Count; $i++) { if ($outcomes[$i].Kind -eq "Warning" -or ($outcomes[$i].Kind -eq "Ok" -and -not $outcomes[$i].Detail)) { [string]$Packages[$i].Id } })
+        # O motivo do primeiro que falhou: a faixa de um programa só que não deu certo diz qual foi.
+        Reason       = $(if ($failed.Count -gt 0) { [string]$failed[0].Detail } else { "" })
     }
 
     if (@($outcomes | Where-Object { Test-WinForgeResultFlag -Result $_ -Name "RebootRequired" }).Count -gt 0) {
         $data["RebootRequired"] = $true
     }
 
+    # RebootStarted: algum instalador reinicia o PC por conta própria (Request-WinForgeProgramsRestart não oferece).
+    if (@($outcomes | Where-Object { Test-WinForgeResultFlag -Result $_ -Name "RebootStarted" }).Count -gt 0) {
+        $data["RebootStarted"] = $true
+    }
+
     if ($failed.Count -eq 0) {
-        $detail = Format-WinForgeCount -Count $outcomes.Count -One "programa $($verbs.One)" -Many "programas $($verbs.Many)"
+        $detail = Format-WinForgeCount -Count $outcomes.Count -One (Get-WinForgeText 'programa {0}' "$($verbs.One)") -Many (Get-WinForgeText 'programas {0}' "$($verbs.Many)")
 
         if ($outcomes.Count -eq 1) {
             $single = $outcomes[0]
@@ -1083,15 +1229,15 @@ function Invoke-WinForgeWingetPackages {
 
     if ($failed.Count -eq $outcomes.Count) {
         if ($outcomes.Count -eq 1) {
-            return (New-WinForgeResult -Kind Failed -Detail "$names não foi $($verbs.One): $($failed[0].Detail)" -Data $data)
+            return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText '{0} não foi {1}: {2}' "$names" "$($verbs.One)" "$($failed[0].Detail)") -Data $data)
         }
 
-        return (New-WinForgeResult -Kind Failed -Detail "nenhum programa foi $($verbs.One): $names" -Data $data)
+        return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'nenhum programa foi {0}: {1}' "$($verbs.One)" "$names") -Data $data)
     }
 
-    $verbText = $(if ($failed.Count -eq 1) { "não foi $($verbs.One)" } else { "não foram $($verbs.Many)" })
+    $verbText = $(if ($failed.Count -eq 1) { (Get-WinForgeText 'não foi {0}' "$($verbs.One)") } else { (Get-WinForgeText 'não foram {0}' "$($verbs.Many)") })
 
-    return (New-WinForgeResult -Kind Warning -Detail "$($failed.Count) de $($outcomes.Count) ${verbText}: $names" -Data $data)
+    return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText '{0} de {1} {2}: {3}' "$($failed.Count)" "$($outcomes.Count)" "${verbText}" "$names") -Data $data)
 }
 
 
@@ -1102,7 +1248,8 @@ function Set-WinForgeWingetPackagesView {
     lista); o que já estava e ganhou versão nova conta como atualizado; o que já estava e não mudou não conta. Com
     ressalvas, o título diz quantos deram certo, e a frase, quais não deram. Depois de desinstalar, o botão leva à busca de
     restos. A falha fica com a faixa de sempre ("7-Zip não foi instalado: ..."), que já diz qual e por quê. Devolve o
-    próprio resultado.
+    próprio resultado. Quando nenhum deu certo, o título diz isso, e a frase, o motivo (de um programa só) ou onde estão os
+    motivos (de vários).
     #>
     param (
         [Parameter(Mandatory)][ValidateSet("Install", "Uninstall")][string]$Operation,
@@ -1111,7 +1258,18 @@ function Set-WinForgeWingetPackagesView {
         $Installed = $null
     )
 
-    if ($null -eq $Result -or $Result.Kind -notin @("Ok", "Warning") -or $Packages.Count -eq 0) { return $Result }
+    if ($null -eq $Result -or $Packages.Count -eq 0) { return $Result }
+
+    if ($Result.Kind -eq "Failed") {
+        $one = ($Packages.Count -eq 1)
+        $reason = ([string](Get-WinForgeResultData -Result $Result -Name "Reason")).Trim().TrimEnd(".")
+        $headline = $(if ($Operation -eq "Install") { $(if ($one) { (Get-WinForgeText 'O programa não foi instalado') } else { (Get-WinForgeText 'Nenhum programa foi instalado') }) } else { $(if ($one) { (Get-WinForgeText 'O programa não foi desinstalado') } else { (Get-WinForgeText 'Nenhum programa foi desinstalado') }) })
+        $note = $(if ($one -and $reason) { "$([string]$Packages[0].Nome): $reason." } else { (Get-WinForgeText 'O motivo de cada um está no resumo.') })
+
+        return (Set-WinForgeResultView -Result $Result -Headline $headline -Note $note)
+    }
+
+    if ($Result.Kind -notin @("Ok", "Warning")) { return $Result }
 
     $succeeded = @(Get-WinForgeResultData -Result $Result -Name "SucceededIds")
     $changed = @(Get-WinForgeResultData -Result $Result -Name "ChangedIds")
@@ -1119,22 +1277,22 @@ function Set-WinForgeWingetPackagesView {
     $failed = @($Packages | Where-Object { $succeeded -notcontains [string]$_.Id } | ForEach-Object { [string]$_.Nome })
     $verbs = Get-WinForgeWingetVerbs -Operation $Operation
     $next = $(if ($Operation -eq "Uninstall") { "cleanup.leftovers" } else { "" })
-    $nextLabel = $(if ($Operation -eq "Uninstall") { "Procurar restos" } else { "" })
+    $nextLabel = $(if ($Operation -eq "Uninstall") { (Get-WinForgeText 'Procurar restos') } else { "" })
 
     if ($done.Count -eq 0) { return $Result }
 
     if ($failed.Count -gt 0) {
-        $verbText = $(if ($failed.Count -eq 1) { "não foi $($verbs.One)" } else { "não foram $($verbs.Many)" })
-        $reason = $(if ($failed.Count -eq 1) { "o motivo está no resumo" } else { "o motivo de cada um está no resumo" })
+        $verbText = $(if ($failed.Count -eq 1) { (Get-WinForgeText 'não foi {0}' "$($verbs.One)") } else { (Get-WinForgeText 'não foram {0}' "$($verbs.Many)") })
+        $reason = $(if ($failed.Count -eq 1) { (Get-WinForgeText 'o motivo está no resumo') } else { (Get-WinForgeText 'o motivo de cada um está no resumo') })
 
-        return (Set-WinForgeResultView -Result $Result -Headline "$($done.Count) de $($Packages.Count) programas $($verbs.Many)" `
+        return (Set-WinForgeResultView -Result $Result -Headline (Get-WinForgeText '{0} de {1} programas {2}' "$($done.Count)" "$($Packages.Count)" "$($verbs.Many)") `
                 -Note "$(Join-WinForgeShortList -Items $failed) ${verbText}; $reason." -Next $next -NextLabel $nextLabel)
     }
 
     if ($Operation -eq "Uninstall") {
         $names = @($done | ForEach-Object { [string]$_.Nome })
 
-        return (Set-WinForgeResultView -Result $Result -Headline (Format-WinForgeCount -Count $names.Count -One "programa desinstalado" -Many "programas desinstalados") `
+        return (Set-WinForgeResultView -Result $Result -Headline (Format-WinForgeCount -Count $names.Count -One (Get-WinForgeText 'programa desinstalado') -Many (Get-WinForgeText 'programas desinstalados')) `
                 -Note "$(Join-WinForgeShortList -Items $names)." -Next $next -NextLabel $nextLabel)
     }
 
@@ -1144,24 +1302,52 @@ function Set-WinForgeWingetPackagesView {
     $parts = @()
 
     if ($new.Count -gt 0) {
-        $headline = Format-WinForgeCount -Count $new.Count -One "programa instalado" -Many "programas instalados"
+        $headline = Format-WinForgeCount -Count $new.Count -One (Get-WinForgeText 'programa instalado') -Many (Get-WinForgeText 'programas instalados')
         $parts += "$(Join-WinForgeShortList -Items $new)."
-        if ($updated.Count -gt 0) { $parts += "$(if ($updated.Count -eq 1) { 'Atualizado' } else { 'Atualizados' }): $(Join-WinForgeShortList -Items $updated)." }
+        if ($updated.Count -gt 0) { $parts += $(if ($updated.Count -eq 1) { (Get-WinForgeText 'Atualizado: {0}.' "$(Join-WinForgeShortList -Items $updated)") } else { (Get-WinForgeText 'Atualizados: {0}.' "$(Join-WinForgeShortList -Items $updated)") }) }
     }
     elseif ($updated.Count -gt 0) {
-        $headline = Format-WinForgeCount -Count $updated.Count -One "programa atualizado" -Many "programas atualizados"
+        $headline = Format-WinForgeCount -Count $updated.Count -One (Get-WinForgeText 'programa atualizado') -Many (Get-WinForgeText 'programas atualizados')
         $parts += "$(Join-WinForgeShortList -Items $updated)."
     }
     else {
         # Nada mudou: o que foi marcado já estava no PC, e o winget não tinha versão nova.
-        $headline = "Nada para instalar"
-        $parts += "$(Join-WinForgeShortList -Items $same) já $(if ($same.Count -eq 1) { 'está instalado' } else { 'estão instalados' })."
+        $headline = (Get-WinForgeText 'Nada para instalar')
+        $parts += (Get-WinForgeText '{0} já {1}.' "$(Join-WinForgeShortList -Items $same)" "$(if ($same.Count -eq 1) { (Get-WinForgeText 'está instalado') } else { (Get-WinForgeText 'estão instalados') })")
         $same = @()
     }
 
-    if ($same.Count -gt 0) { $parts += "Já $(if ($same.Count -eq 1) { 'estava instalado' } else { 'estavam instalados' }): $(Join-WinForgeShortList -Items $same)." }
+    if ($same.Count -gt 0) { $parts += $(if ($same.Count -eq 1) { (Get-WinForgeText 'Já estava instalado: {0}.' "$(Join-WinForgeShortList -Items $same)") } else { (Get-WinForgeText 'Já estavam instalados: {0}.' "$(Join-WinForgeShortList -Items $same)") }) }
 
     return (Set-WinForgeResultView -Result $Result -Headline $headline -Note ($parts -join " "))
+}
+
+
+function Request-WinForgeProgramsRestart {
+    <#
+    Depois de instalar ou desinstalar, quando algum instalador pediu o reinício para terminar (Data.RebootRequired):
+    oferece reiniciar ali mesmo, com o Depois como padrão, como os recursos opcionais e as Atualizações. Não oferece
+    quando o próprio instalador já reinicia o PC (Data.RebootStarted) nem dentro do Otimizar (Test-WinForgeNestedAction),
+    que tem o próprio fim. Recusado, a faixa continua pedindo o reinício.
+    #>
+    param (
+        [Parameter(Mandatory)][ValidateSet("Install", "Uninstall")][string]$Operation,
+        $Result
+    )
+
+    if ($null -eq $Result -or $Result.Kind -notin @("Ok", "Warning")) { return }
+    if (-not (Test-WinForgeResultFlag -Result $Result -Name "RebootRequired")) { return }
+    if ((Test-WinForgeResultFlag -Result $Result -Name "RebootStarted") -or (Test-WinForgeNestedAction)) { return }
+
+    if ($Operation -eq "Install") {
+        Request-WinForgeInstallRestart -What (Get-WinForgeText 'os programas') -Later (Get-WinForgeText 'Os programas terminam de instalar quando você reiniciar o PC.')
+        return
+    }
+
+    Request-WinForgeRestartOffer -Reason (Get-WinForgeText 'Para terminar de desinstalar os programas, o Windows precisa reiniciar.') `
+        -Comment (Get-WinForgeText 'Reinicialização solicitada pelo WinForge para terminar de desinstalar programas.') `
+        -DeclinedMessage (Get-WinForgeText 'Reinicialização não iniciada. Os programas terminam de sair quando você reiniciar o PC.') `
+        -Fallback (Get-WinForgeText 'Reinicie o PC para terminar a desinstalação.')
 }
 
 
@@ -1177,21 +1363,66 @@ function Write-WinForgeWingetUpgradeList {
         [int]$Limit = 12
     )
 
-    Write-WinForgeSection -Title "Atualizações disponíveis"
+    Write-WinForgeSection -Title (Get-WinForgeText 'Atualizações disponíveis')
 
     foreach ($package in @($Packages | Select-Object -First $Limit)) {
         $name = [string]$package.Nome
         if ($name.Length -gt 48) { $name = $name.Substring(0, 45) + "..." }
 
-        $versions = $(if ([string]::IsNullOrWhiteSpace([string]$package.Disponivel)) { [string]$package.Versao } else { "$($package.Versao) para $($package.Disponivel)" })
+        $versions = $(if ([string]::IsNullOrWhiteSpace([string]$package.Disponivel)) { [string]$package.Versao } else { (Get-WinForgeText '{0} para {1}' "$($package.Versao)" "$($package.Disponivel)") })
         Write-WinForgeKeyValue -Label $name -Value $versions
     }
 
     $rest = @($Packages).Count - $Limit
 
     if ($rest -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "E mais $(Format-WinForgeCount -Count $rest -One 'programa' -Many 'programas')."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'E mais {0}.' "$(Format-WinForgeCount -Count $rest -One (Get-WinForgeText 'programa') -Many (Get-WinForgeText 'programas'))")
     }
+}
+
+
+# Quanto a consulta do "winget upgrade" em segundo plano (Start-WinForgeWingetUpgradeRead) pode levar, contado do começo
+# dela. A primeira do dia atualiza a lista de programas da fonte e, com a rede lenta, demora; sem resposta até lá (um
+# proxy que segura a conexão, a fonte travada, uma pergunta do winget esperando resposta), quem esperava segue sem ela,
+# em vez de ficar parado.
+$script:WinForgeWingetReadTimeoutSec = 120
+
+
+function Start-WinForgeWingetUpgradeRead {
+    <#
+    Começa em segundo plano a consulta dos programas com versão nova, sem esperar por ela: ela depende da rede e é
+    demorada, e quem a pede faz outra coisa enquanto isso (o Verificar o PC lê o resto do PC; o Otimizar espera a pessoa
+    nas telas do começo). É a consulta da tela Atualizar programas ("winget upgrade", que só lista, com o contrato da
+    fonte aceito). Receive-WinForgeWingetUpgradeRead recebe a resposta, com prazo. Sem o winget, $null.
+    #>
+    if (-not (Test-WinForgeWinget)) { return $null }
+
+    return (Start-WinForgeInBackground -ScriptBlock {
+            $lines = New-Object System.Collections.Generic.List[string]
+            $global:LASTEXITCODE = 0
+
+            & winget upgrade --accept-source-agreements 2>&1 | ForEach-Object { $lines.Add((([string]$_) -replace "`0", "")) }
+
+            [PSCustomObject]@{ ExitCode = $LASTEXITCODE; Lines = @($lines); Text = ($lines -join "`n") }
+        })
+}
+
+
+function Receive-WinForgeWingetUpgradeRead {
+    <#
+    Espera a consulta de Start-WinForgeWingetUpgradeRead até o prazo ($script:WinForgeWingetReadTimeoutSec, contado do
+    começo dela) e devolve Upgrade (ExitCode, Lines e Text, como Invoke-WinForgeCapture; $null sem resposta), TimedOut,
+    Error e TimeoutSeconds. A espera continua interrompível pelo Parar; sem resposta no prazo, a consulta é largada e o
+    winget, encerrado. Sem a tarefa (o winget sumiu entre a conferência de quem chama e o começo da consulta), sem resposta.
+    #>
+    param ([AllowNull()]$Task)
+
+    if ($null -eq $Task) { return [PSCustomObject]@{ Upgrade = $null; TimedOut = $false; Error = ""; TimeoutSeconds = $script:WinForgeWingetReadTimeoutSec } }
+
+    $received = Receive-WinForgeInBackground -Task $Task -TimeoutSeconds $script:WinForgeWingetReadTimeoutSec
+    $upgrade = $(if ($received.Completed) { @($received.Output | Where-Object { $null -ne $_ }) | Select-Object -Last 1 } else { $null })
+
+    return [PSCustomObject]@{ Upgrade = $upgrade; TimedOut = [bool]$received.TimedOut; Error = [string]$received.Error; TimeoutSeconds = $script:WinForgeWingetReadTimeoutSec }
 }
 
 
@@ -1203,39 +1434,65 @@ function Get-WinForgeWingetUpgradePlan {
     atualizar", e não uma falha do winget.
     -SkipBrowsers (o Otimizar): Edge, Chrome e Firefox saem da lista, porque a etapa dos navegadores os atualiza pelo
     atualizador de cada um (Test-WinForgeWingetBrowserId).
+    -Read (o Otimizar): a consulta já começada em segundo plano (Start-WinForgeWingetUpgradeRead), recebida aqui com o
+    prazo dela; sem resposta no prazo, ou com a consulta falhando, um erro, como o winget que não lista. Sem -Read, a
+    consulta roda agora, como na tela Atualizar programas.
     #>
-    param ([switch]$SkipBrowsers)
+    param (
+        [switch]$SkipBrowsers,
+        $Read = $null
+    )
 
     if (-not (Initialize-WinForgeWinget)) {
         return [PSCustomObject]@{ Action = "Unavailable"; Ids = @(); Packages = @() }
     }
 
     Write-WinForgeWingetUserWarning -Context Upgrade
-    Write-Progress -Activity "Procurando atualizações de programas" -Status "consultando o winget"
+    Write-Progress -Activity (Get-WinForgeText 'Procurando atualizações de programas') -Status (Get-WinForgeText 'consultando o winget')
 
     try {
-        $upgrade = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("upgrade", "--accept-source-agreements") -Echo
+        if ($null -eq $Read) {
+            $upgrade = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("upgrade", "--accept-source-agreements") -Echo
+        }
+        else {
+            $received = Receive-WinForgeWingetUpgradeRead -Task $Read
+
+            if ($received.TimedOut) { throw (Get-WinForgeText 'o Instalador de Aplicativo não respondeu em {0} segundos' "$($received.TimeoutSeconds)") }
+            if ($null -eq $received.Upgrade) { throw $(if ($received.Error) { $received.Error } else { (Get-WinForgeText 'o winget não respondeu') }) }
+
+            $upgrade = $received.Upgrade
+
+            # O que o winget escreveu vai para os detalhes técnicos, como na consulta de agora (-Echo), de uma vez.
+            $state = @{ Last = -1.0 }
+            foreach ($line in @($upgrade.Lines)) { if (Test-WinForgeEchoLine -Line ([string]$line) -State $state) { Write-Host $line } }
+        }
     }
     finally {
-        Write-Progress -Activity "Procurando atualizações de programas" -Completed
+        Write-Progress -Activity (Get-WinForgeText 'Procurando atualizações de programas') -Completed
     }
+
+    # Os marcados para ficar na versão atual (Atualizações > Manter programas na versão atual) não entram na lista: uma
+    # linha diz quantos ficaram de fora.
+    $held = Get-WinForgeWingetHeldCount -Lines $upgrade.Lines
+    $heldText = $(if ($held -gt 0) { Format-WinForgeCount -Count $held -One (Get-WinForgeText 'programa com versão nova ficou de fora: está marcado para não atualizar (Atualizações > Manter programas na versão atual).') -Many (Get-WinForgeText 'programas com versão nova ficaram de fora: estão marcados para não atualizar (Atualizações > Manter programas na versão atual).') } else { "" })
 
     if (Test-WinForgeWingetNoUpgradeOutput -OutputText $upgrade.Text -ExitCode $upgrade.ExitCode) {
         Write-Host ""
-        Write-WinForgeStatus -Type Success -Message "Os programas que o winget reconhece estão em dia."
-        return [PSCustomObject]@{ Action = "NoUpdates"; Ids = @(); Packages = @() }
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Os programas que o winget reconhece estão em dia.')
+        if ($heldText) { Write-WinForgeStatus -Type Info -Message $heldText }
+        return [PSCustomObject]@{ Action = "NoUpdates"; Ids = @(); Packages = @(); Held = $held }
     }
 
     $codeText = (Get-WinForgeWingetExitResult -ExitCode $upgrade.ExitCode).Detail
 
     if ($upgrade.ExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($upgrade.Text)) {
-        throw "o winget terminou sem dizer o motivo ($codeText)"
+        throw (Get-WinForgeText 'o winget terminou sem dizer o motivo ({0})' "$codeText")
     }
 
     $available = @(ConvertFrom-WinForgeWingetTable -Lines $upgrade.Lines)
 
     if ($available.Count -eq 0 -and $upgrade.ExitCode -ne 0) {
-        throw "o winget não conseguiu listar as atualizações ($codeText)"
+        throw (Get-WinForgeText 'o winget não conseguiu listar as atualizações ({0})' "$codeText")
     }
 
     if ($SkipBrowsers -and $available.Count -gt 0) {
@@ -1244,8 +1501,9 @@ function Get-WinForgeWingetUpgradePlan {
 
         if ($browsers.Count -gt 0 -and $available.Count -eq 0) {
             Write-Host ""
-            Write-WinForgeStatus -Type Success -Message "Os programas que o winget reconhece estão em dia; os navegadores têm a etapa deles."
-            return [PSCustomObject]@{ Action = "NoUpdates"; Ids = @(); Packages = @() }
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Os programas que o winget reconhece estão em dia; os navegadores têm a etapa deles.')
+            if ($heldText) { Write-WinForgeStatus -Type Info -Message $heldText }
+            return [PSCustomObject]@{ Action = "NoUpdates"; Ids = @(); Packages = @(); Held = $held }
         }
     }
 
@@ -1253,36 +1511,37 @@ function Get-WinForgeWingetUpgradePlan {
 
     if ($available.Count -gt 0) {
         Write-WinForgeWingetUpgradeList -Packages $available
+        if ($heldText) { Write-WinForgeStatus -Type Info -Message $heldText }
         $options = @(
-            @{ Key = "S"; Label = "Atualizar todos ($($available.Count))"; Accent = $true },
-            @{ Key = "E"; Label = "Escolher quais atualizar"; Description = "marque os programas na lista" },
-            @{ Key = "N"; Label = "Não atualizar"; Exit = $true }
+            @{ Key = "S"; Label = (Get-WinForgeText 'Atualizar todos ({0})' "$($available.Count)"); Accent = $true },
+            @{ Key = "E"; Label = (Get-WinForgeText 'Escolher quais atualizar'); Description = (Get-WinForgeText 'marque os programas na lista') },
+            @{ Key = "N"; Label = (Get-WinForgeText 'Não atualizar'); Exit = $true }
         )
     }
     else {
         # Sem tabela reconhecida (formato inesperado do winget): o que ele mostrou fica nos detalhes técnicos.
-        Write-WinForgeStatus -Type Warning -Message "Não foi possível ler a lista do winget; ela está nos detalhes técnicos."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível ler a lista do winget; ela está nos detalhes técnicos.')
         $options = @(
-            @{ Key = "S"; Label = "Atualizar tudo o que o winget oferecer"; Accent = $true },
-            @{ Key = "E"; Label = "Digitar os IDs"; Description = "um ou mais IDs do winget, separados por vírgula" },
-            @{ Key = "N"; Label = "Não atualizar"; Exit = $true }
+            @{ Key = "S"; Label = (Get-WinForgeText 'Atualizar tudo o que o winget oferecer'); Accent = $true },
+            @{ Key = "E"; Label = (Get-WinForgeText 'Digitar os IDs'); Description = (Get-WinForgeText 'um ou mais IDs do winget, separados por vírgula') },
+            @{ Key = "N"; Label = (Get-WinForgeText 'Não atualizar'); Exit = $true }
         )
     }
 
     # Só entram programas que o winget reconhece; o Windows Update e a Microsoft Store ficam nos outros itens da página
     # Atualizações. Um programa aberto pode não ser atualizado.
     if ($available.Count -gt 0) {
-        Write-WinForgeStatus -Type Info -Message "Feche os programas da lista antes de atualizar."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Feche os programas da lista antes de atualizar.')
     }
 
     Write-Host ""
 
     while ($true) {
         try {
-            $choice = Read-WinForgeChoice -Message "O que deseja atualizar?" -TextPrompt "Digite S, E ou N" -ShowMenu -Options $options
+            $choice = Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja atualizar?') -TextPrompt (Get-WinForgeText 'Digite S, E ou N') -ShowMenu -Options $options
         }
         catch {
-            Write-WinForgeStatus -Type Info -Message "Sem resposta: nenhum programa será atualizado."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Sem resposta: nenhum programa será atualizado.')
             return [PSCustomObject]@{ Action = "None"; Ids = @(); Packages = $available }
         }
 
@@ -1297,13 +1556,13 @@ function Get-WinForgeWingetUpgradePlan {
         if ($available.Count -gt 0) {
             $listOptions = @(
                 foreach ($package in $available) {
-                    $versions = $(if ([string]::IsNullOrWhiteSpace([string]$package.Disponivel)) { [string]$package.Versao } else { "$($package.Versao) para $($package.Disponivel)" })
+                    $versions = $(if ([string]::IsNullOrWhiteSpace([string]$package.Disponivel)) { [string]$package.Versao } else { (Get-WinForgeText '{0} para {1}' "$($package.Versao)" "$($package.Disponivel)") })
                     @{ Key = $package.Id; Label = $package.Nome; Description = "$($package.Id) · $versions" }
                 }
             )
 
             # Cancelar a lista volta para a pergunta anterior: o botão diz "Voltar".
-            $picked = Read-WinForgeMultiSelect -Message "Quais programas atualizar?" -Options $listOptions -ConfirmLabel "Atualizar" -CancelLabel "Voltar"
+            $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Quais programas atualizar?') -Options $listOptions -ConfirmLabel (Get-WinForgeText 'Atualizar') -CancelLabel (Get-WinForgeText 'Voltar')
 
             if ($null -eq $picked -or @($picked).Count -eq 0) {
                 continue
@@ -1312,9 +1571,9 @@ function Get-WinForgeWingetUpgradePlan {
             return [PSCustomObject]@{ Action = "Ids"; Ids = @($picked); Packages = $available }
         }
 
-        Write-WinForgeStatus -Type Info -Message "Para vários programas, separe os IDs por vírgula. Exemplo: Google.Chrome, Notepad++.Notepad++"
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para vários programas, separe os IDs por vírgula. Exemplo: Google.Chrome, Notepad++.Notepad++')
 
-        $packageInput = Read-WinForgeText -Message "Digite um ou mais IDs (vazio = voltar)"
+        $packageInput = Read-WinForgeText -Message (Get-WinForgeText 'Digite um ou mais IDs (vazio = voltar)')
 
         if ([string]::IsNullOrWhiteSpace($packageInput)) {
             continue
@@ -1352,19 +1611,24 @@ function Invoke-WinForgeWingetUpgradePlan {
 
     switch ($Plan.Action) {
         "Unavailable" {
-            return (New-WinForgeResult -Kind Failed -Detail "winget não encontrado")
+            return (Get-WinForgeWingetMissingResult)
         }
         "NoUpdates" {
-            return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail "os programas que o winget reconhece estão em dia") `
-                    -Headline "Os programas estão em dia" -Note "Nenhum programa que o winget reconhece tem versão nova.")
+            # Com programas marcados para não atualizar, "nenhum tem versão nova" não seria verdade: a frase diz quantos
+            # ficaram de fora.
+            $held = [int](Get-WinForgeJsonValue -Object $Plan -Name "Held" -Default 0)
+            $note = $(if ($held -gt 0) { Format-WinForgeCount -Count $held -One (Get-WinForgeText 'programa marcado para não atualizar ficou de fora.') -Many (Get-WinForgeText 'programas marcados para não atualizar ficaram de fora.') } else { (Get-WinForgeText 'Nenhum programa que o winget reconhece tem versão nova.') })
+
+            return (Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'os programas que o winget reconhece estão em dia')) `
+                    -Headline (Get-WinForgeText 'Os programas estão em dia') -Note $note)
         }
         "Error" {
             return (New-WinForgeResult -Kind Failed -Detail $Plan.Detail)
         }
         "None" {
             # Sozinha, a tela termina em "Cancelado"; na Manutenção, a etapa fica como ignorada.
-            Write-WinForgeStatus -Type Info -Message "Nenhum programa foi atualizado: você escolheu não atualizar."
-            return (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhum programa foi atualizado: você escolheu não atualizar.')
+            return (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário'))
         }
         { $_ -in "Ids", "All" } {
             $known = @($Plan.Packages)
@@ -1395,12 +1659,12 @@ function Invoke-WinForgeWingetUpgradePlan {
                 $names = @($packages | Where-Object { $changed -contains $_.Id } | ForEach-Object { [string]$_.Nome })
 
                 if ($names.Count -gt 0) {
-                    [void](Add-WinForgeChange -Action "Programas atualizados" -Text (Join-WinForgeList -Items $names))
+                    [void](Add-WinForgeChange -Action (Get-WinForgeText 'Programas atualizados') -Text (Join-WinForgeList -Items $names))
                 }
 
                 # Na janela, tudo certo: o título diz quantos, e a frase, quais.
                 if ($null -ne $result -and $result.Kind -eq "Ok" -and $names.Count -gt 0) {
-                    [void](Set-WinForgeResultView -Result $result -Headline (Format-WinForgeCount -Count $names.Count -One "programa atualizado" -Many "programas atualizados") `
+                    [void](Set-WinForgeResultView -Result $result -Headline (Format-WinForgeCount -Count $names.Count -One (Get-WinForgeText 'programa atualizado') -Many (Get-WinForgeText 'programas atualizados')) `
                             -Note "$(Join-WinForgeShortList -Items $names).")
                 }
 
@@ -1413,14 +1677,14 @@ function Invoke-WinForgeWingetUpgradePlan {
             Write-Host ""
             Write-WinForgeCommand -Command "winget $($arguments -join ' ')"
             Write-Host ""
-            Write-Progress -Activity "Atualizando programas" -Status "o winget atualiza tudo o que tiver atualização"
+            Write-Progress -Activity (Get-WinForgeText 'Atualizando programas') -Status (Get-WinForgeText 'o winget atualiza tudo o que tiver atualização')
             $script:WinForgeInstalledIdsCache = $null
 
             try {
                 $exitCode = Invoke-WinForgeNative -FilePath "winget" -Arguments $arguments -IgnoreExitCode -PassThru
             }
             finally {
-                Write-Progress -Activity "Atualizando programas" -Completed
+                Write-Progress -Activity (Get-WinForgeText 'Atualizando programas') -Completed
             }
 
             Write-Host ""
@@ -1430,28 +1694,28 @@ function Invoke-WinForgeWingetUpgradePlan {
 
             if ($exitResult.Kind -ne "Failed") {
                 # Só o código 0 diz que algo foi atualizado; "nenhuma atualização aplicável" também termina bem.
-                if ($exitCode -eq 0) { [void](Add-WinForgeChange -Action "Programas atualizados" -Text "o que o winget tinha para atualizar") }
-                Write-WinForgeStatus -Type Success -Message "O winget terminou a atualização."
-                return (New-WinForgeResult -Kind Ok -Detail "o winget atualizou o que tinha atualização" -Data $exitResult.Data)
+                if ($exitCode -eq 0) { [void](Add-WinForgeChange -Action (Get-WinForgeText 'Programas atualizados') -Text (Get-WinForgeText 'o que o winget tinha para atualizar')) }
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'O winget terminou a atualização.')
+                return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'o winget atualizou o que tinha atualização') -Data $exitResult.Data)
             }
 
             # O detalhe pode ser uma frase ("algum programa não foi atualizado — erro 0x8A15002C") ou só o código.
-            Write-WinForgeStatus -Type Warning -Message "O winget terminou com problemas: $($exitResult.Detail). Veja os detalhes técnicos."
-            return (New-WinForgeResult -Kind Warning -Detail "o winget terminou com problemas: $($exitResult.Detail)")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O winget terminou com problemas: {0}. Veja os detalhes técnicos.' "$($exitResult.Detail)")
+            return (New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o winget terminou com problemas: {0}' "$($exitResult.Detail)"))
         }
     }
 
     # Um plano que este código não conhece é um erro de programação, não um sucesso.
-    return (New-WinForgeResult -Kind Failed -Detail "ação desconhecida no plano: $($Plan.Action)")
+    return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'ação desconhecida no plano: {0}' "$($Plan.Action)"))
 }
 
 
 function Update-WinForgeSoftware {
-    Enter-WinForgeAction -Title "Atualizar programas (winget)"
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Atualizar programas (winget)')
 
     # O desfecho vem do resultado do plano, não da contagem de mensagens: "Não atualizar" não é ressalva, um erro depois
     # de a lista de pacotes ter sido atualizada continua sendo falha, e pacotes que falharam deixam a faixa vermelha.
-    $final = New-WinForgeResult -Kind Failed -Detail "o plano de atualização não devolveu resultado"
+    $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o plano de atualização não devolveu resultado')
 
     try {
         $plan = Get-WinForgeWingetUpgradePlan
@@ -1462,8 +1726,498 @@ function Update-WinForgeSoftware {
     }
     catch {
         Write-Host ""
-        Write-WinForgeStatus -Type Error -Message "Não foi possível atualizar os programas: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível atualizar os programas: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
+    }
+
+    Exit-WinForgeAction -Result $final
+}
+
+
+# ---------------------------------------------------------------------------
+# Reparar o Instalador de Aplicativo e manter programas na versão atual
+# ---------------------------------------------------------------------------
+
+function Get-WinForgeSoftwarePageStatus {
+    <#
+    O resumo no alto da página Programas (New-GuiPageStatus), só quando pede atenção: o Instalador de Aplicativo (o
+    winget) que falta, com o botão para o reparo. Quase todas as ações da página dependem dele, e o reparo não tem linha
+    própria na página. Com ele no PC, a página fica sem a faixa. Só procura o comando: nada roda.
+    #>
+    if (Test-WinForgeWinget) { return @() }
+
+    return @([PSCustomObject]@{ Label = "winget"; Text = (Get-WinForgeText 'falta o Instalador de Aplicativo'); Level = "Warn"; Opens = "software.winget-repair" })
+}
+
+
+function Get-WinForgeWingetVersion {
+    # A versão do winget ("v1.9.25200"), ou $null quando ele não está no PC ou não responde.
+    if (-not (Test-WinForgeWinget)) { return $null }
+
+    try {
+        $run = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("--version")
+    }
+    catch {
+        return $null
+    }
+
+    $version = [string](@($run.Lines | Where-Object { [string]$_ -match '^\s*v?\d+\.\d+' }) | Select-Object -First 1)
+
+    if ($run.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($version)) { return $null }
+
+    return $version.Trim()
+}
+
+
+function Register-WinForgeWinget {
+    <#
+    Registra de novo o Instalador de Aplicativo (o winget) para esta conta, com o comando que a Microsoft indica quando ele
+    não aparece (Add-AppxPackage -RegisterByFamilyName), e confere se ele passou a responder. Devolve Version (vazio
+    quando continua sem responder) e Problem (o erro do registro, quando houve). Quando ele volta, a próxima ação prepara
+    a lista de pacotes de novo, e o Histórico de mudanças anota. Usada pelo reparo, pela restauração de um backup e pelo
+    começo do Otimizar.
+    #>
+    param ([string]$Activity = (Get-WinForgeText 'Reparar o Instalador de Aplicativo'))
+
+    Write-WinForgeCommand -Command "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
+    Write-Progress -Activity $Activity -Status (Get-WinForgeText 'registrando o Instalador de Aplicativo')
+    $problem = ""
+
+    try {
+        Add-AppxPackage -RegisterByFamilyName -MainPackage "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe" -ErrorAction Stop
+    }
+    catch {
+        $problem = ([string]$_.Exception.Message).Trim().TrimEnd('.')
+    }
+    finally {
+        Write-Progress -Activity $Activity -Completed
+    }
+
+    $version = Get-WinForgeWingetVersion
+
+    if ($version) {
+        $script:WinForgeWingetReady = $false
+        $script:WinForgeInstalledIdsCache = $null
+        [void](Add-WinForgeChange -Action (Get-WinForgeText 'Reparar o Instalador de Aplicativo') -Text (Get-WinForgeText 'Instalador de Aplicativo registrado de novo para esta conta'))
+    }
+
+    return [PSCustomObject]@{ Version = [string]$version; Problem = $problem }
+}
+
+
+function Repair-WinForgeWinget {
+    <#
+    Reparar o Instalador de Aplicativo: registra de novo o winget para esta conta, com o comando que a Microsoft indica
+    quando ele não aparece (Add-AppxPackage -RegisterByFamilyName). Se o pacote não estiver no PC, ou o registro não
+    resolver, oferece a página dele na Microsoft Store. Com o winget respondendo, não mexe em nada. Elevado com outra
+    conta, não registra: o registro valeria para essa conta, e não para quem usa o PC.
+    #>
+    $title = (Get-WinForgeText 'Reparar o Instalador de Aplicativo')
+
+    Enter-WinForgeAction -Title $title
+
+    $final = New-WinForgeResult -Kind Ok -Title $title
+
+    try {
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'conferindo o winget')
+        try { $before = Get-WinForgeWingetVersion } finally { Write-Progress -Activity $title -Completed }
+
+        if ($before) {
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Versão do winget') -Value $before
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'O Instalador de Aplicativo já funciona neste PC.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'o winget já funcionava') -Title $title
+            Exit-WinForgeAction -Result (Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O Instalador de Aplicativo já funciona') -Note (Get-WinForgeText 'Nada foi mudado.'))
+            return
+        }
+
+        if (Test-WinForgeUserContextMismatch) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta: o registro valeria para ela, e não para {0}.' "$(Get-WinForgeInteractiveUser)")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para reparar, {0}.' "$(Get-WinForgeUnelevatedHint)")
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'o WinForge está elevado com outra conta') -Title $title)
+            return
+        }
+
+        $registration = Register-WinForgeWinget -Activity $title
+        $problem = $registration.Problem
+        $after = $registration.Version
+
+        if ($after) {
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Versão do winget') -Value $after
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'O Instalador de Aplicativo voltou a funcionar.')
+            $final = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'o winget voltou a funcionar ({0})' "$after") -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O Instalador de Aplicativo voltou a funcionar') -Note (Get-WinForgeText 'As telas de Programas e de Atualizações já podem usá-lo.'))
+        }
+        else {
+            Write-WinForgeStatus -Type Warning -Message $(if ($problem) { (Get-WinForgeText 'O registro não resolveu: {0}.' "$problem") } else { (Get-WinForgeText 'O registro terminou, mas o winget continua sem responder.') })
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Instale ou atualize o Instalador de Aplicativo pela Microsoft Store e use esta ação de novo.')
+            Write-Host ""
+
+            if (Confirm-WinForgeAction -Message (Get-WinForgeText 'Abrir o Instalador de Aplicativo na Microsoft Store agora?') -DefaultKey S -YesLabel (Get-WinForgeText 'Abrir') -NoLabel (Get-WinForgeText 'Agora não')) {
+                [void](Open-WinForgeAppInstallerPage)
+            }
+
+            $final = New-WinForgeResult -Kind Failed -Detail $(if ($problem) { (Get-WinForgeText 'o registro não resolveu: {0}' "$problem") } else { (Get-WinForgeText 'o winget continua sem responder') }) -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O Instalador de Aplicativo continua sem funcionar') -Note (Get-WinForgeText 'Instale ou atualize pela Microsoft Store e use esta ação de novo.'))
+        }
+    }
+    catch {
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível reparar o Instalador de Aplicativo: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
+        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
+    }
+
+    Exit-WinForgeAction -Result $final
+}
+
+
+function Test-WinForgeWingetPinId {
+    <#
+    Se um ID pode ir para o "winget pin": sem espaços nem caracteres de controle, sem começar por "-" (viraria uma opção
+    do winget), sem aspas nem símbolos de linha de comando, não cortado na tabela e de uma fonte do winget (os IDs que
+    ele inventa para o que só achou no Windows, "ARP\..." e "MSIX\...", ficam de fora). O desfazer confere com esta
+    regra o ID guardado no diário.
+    #>
+    param ([AllowEmptyString()][string]$Id)
+
+    if ([string]::IsNullOrWhiteSpace($Id) -or $Id.Length -gt 128) { return $false }
+    if ($Id -match '[\s\p{Cc}\p{Cf}]' -or $Id.StartsWith("-") -or $Id -match '["''`;|&<>]' -or $Id -match '^(ARP|MSIX)\\') { return $false }
+
+    return (-not (Test-WinForgeWingetIdTruncated -Id $Id))
+}
+
+
+function ConvertFrom-WinForgeWingetPinTable {
+    <#
+    Lê a tabela do "winget pin list": Nome, Id, Versao e Fonte (Get-WinForgeWingetTable) e o tipo do marcador (Pin) com a
+    faixa de versões (Gated). O tipo vem com o nome interno do winget em qualquer idioma do Windows ("Pinning", o comum;
+    "Blocking", que bloqueia também a atualização pedida pelo nome; "Gating", preso a uma faixa de versões): ele é achado
+    pelo nome, depois do ID na linha. Um programa com marcador em mais de uma fonte vira um só, com o tipo mais forte e,
+    sem uma fonte só, Fonte vazia. IDs que não servem para o "winget pin" (Test-WinForgeWingetPinId) ficam de fora.
+    #>
+    param ([string[]]$Lines = @())
+
+    $rows = @(ConvertFrom-WinForgeWingetTable -Lines $Lines | Where-Object { Test-WinForgeWingetPinId -Id ([string]$_.Id) })
+    $strength = @{ "Pinning" = 1; "Gating" = 2; "Blocking" = 3 }
+    $pins = [ordered]@{}
+
+    foreach ($row in $rows) {
+        $id = [string]$row.Id
+        if ($pins.Contains($id)) { continue }
+
+        $type = ""
+        $gated = ""
+        $sources = @()
+
+        foreach ($line in @($Lines)) {
+            $tokens = @(([string]$line).Trim() -split '\s+')
+            $at = [Array]::IndexOf([string[]]$tokens, $id)
+            if ($at -lt 0) { continue }
+
+            for ($i = $at + 1; $i -lt $tokens.Count; $i++) {
+                if ($strength.ContainsKey($tokens[$i])) {
+                    if (-not $type -or $strength[$tokens[$i]] -gt $strength[$type]) {
+                        $type = $tokens[$i]
+                        $gated = $(if ($type -eq "Gating" -and $i + 1 -lt $tokens.Count) { $tokens[$i + 1] } else { "" })
+                    }
+
+                    if ($i -gt $at + 1) { $sources += $tokens[$i - 1] }
+                    break
+                }
+            }
+        }
+
+        $sourceList = @($sources | Select-Object -Unique)
+
+        $pins[$id] = [PSCustomObject]@{
+            Id     = $id
+            Nome   = [string]$row.Nome
+            Versao = [string]$row.Versao
+            Fonte  = $(if ($sourceList.Count -eq 1) { [string]$sourceList[0] } else { "" })
+            Pin    = $(if ($type) { $type } else { "Pinning" })
+            Gated  = $gated
+        }
+    }
+
+    return @($pins.Values)
+}
+
+
+function Get-WinForgeWingetPins {
+    # Os programas marcados no winget ("winget pin list"): Pins (ConvertFrom-WinForgeWingetPinTable) e Problem (vazio
+    # quando leu). O winget antigo, sem o "pin", responde que a linha de comando é inválida (0x8A150002): Old diz isso.
+    $listing = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("pin", "list", "--accept-source-agreements")
+
+    if ($listing.ExitCode -ne 0) {
+        $old = (("0x{0:X8}" -f $listing.ExitCode) -eq "0x8A150002")
+        $problem = $(if ($old) { (Get-WinForgeText 'o winget deste PC é antigo e não marca programas') } else { (Get-WinForgeWingetExitResult -ExitCode $listing.ExitCode).Detail })
+        return [PSCustomObject]@{ Pins = @(); Problem = $problem; Old = $old }
+    }
+
+    return [PSCustomObject]@{ Pins = @(ConvertFrom-WinForgeWingetPinTable -Lines $listing.Lines); Problem = ""; Old = $false }
+}
+
+
+function Invoke-WinForgeWingetPin {
+    <#
+    Põe ou tira o marcador de um programa no winget e devolve um WinForge.Result. Add: Ok quando ficou marcado (com
+    Data.Existing quando ele já tinha um marcador de outro tipo, que fica como está: --force trocaria o marcador que a
+    pessoa pôs, e ele já segura o programa). Remove: Ok quando ficou sem marcador (Data.Missing quando já estava sem),
+    em todas as fontes. Pin e Gated (Add) refazem um marcador do mesmo tipo, para o desfazer.
+    #>
+    param (
+        [Parameter(Mandatory)][ValidateSet("Add", "Remove")][string]$Operation,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Id,
+        [AllowEmptyString()][string]$Source = "",
+        [ValidateSet("Pinning", "Blocking", "Gating")][string]$Pin = "Pinning",
+        [AllowEmptyString()][string]$Gated = ""
+    )
+
+    if (-not (Test-WinForgeWingetPinId -Id $Id)) { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'ID do winget inválido')) }
+    if ($Source -and $Source -notmatch '^[A-Za-z0-9._-]{1,64}$') { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'fonte do winget inválida')) }
+    if ($Operation -eq "Add" -and $Pin -eq "Gating" -and $Gated -notmatch '^[0-9A-Za-z.+*-]{1,64}$') { return (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'faixa de versões inválida')) }
+
+    $arguments = @("pin", $Operation.ToLowerInvariant(), "--id", $Id, "--exact")
+
+    if ($Operation -eq "Add") {
+        if ($Source) { $arguments += @("--source", $Source) }
+        if ($Pin -eq "Blocking") { $arguments += "--blocking" }
+        if ($Pin -eq "Gating") { $arguments += @("--version", $Gated) }
+    }
+
+    $arguments += "--accept-source-agreements"
+
+    $run = Invoke-WinForgeCapture -FilePath "winget" -Arguments $arguments
+
+    # 0x8A150062: outro marcador já existe; 0x8A150063: não há marcador para tirar.
+    $code = "0x{0:X8}" -f $run.ExitCode
+
+    if ($run.ExitCode -eq 0) { return (New-WinForgeResult -Kind Ok) }
+    if ($Operation -eq "Add" -and $code -eq "0x8A150062") { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já tinha um marcador do winget') -Data @{ Existing = $true }) }
+    if ($Operation -eq "Remove" -and $code -eq "0x8A150063") { return (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'já estava sem marcador') -Data @{ Missing = $true }) }
+
+    return (Get-WinForgeWingetExitResult -ExitCode $run.ExitCode)
+}
+
+
+function Get-WinForgeWingetPinJournalText {
+    # "ficam na versão atual: A e B; voltam a atualizar: C": o Histórico de mudanças e o resultado.
+    param (
+        [AllowEmptyCollection()][string[]]$Held = @(),
+        [AllowEmptyCollection()][string[]]$Released = @()
+    )
+
+    $parts = @()
+    if (@($Held).Count -eq 1) { $parts += (Get-WinForgeText 'fica na versão atual: {0}' "$($Held[0])") }
+    elseif (@($Held).Count -gt 1) { $parts += (Get-WinForgeText 'ficam na versão atual: {0}' "$(Join-WinForgeList -Items $Held)") }
+    if (@($Released).Count -eq 1) { $parts += (Get-WinForgeText 'volta a atualizar: {0}' "$($Released[0])") }
+    elseif (@($Released).Count -gt 1) { $parts += (Get-WinForgeText 'voltam a atualizar: {0}' "$(Join-WinForgeList -Items $Released)") }
+
+    return ($parts -join "; ")
+}
+
+
+function Set-WinForgeWingetPins {
+    <#
+    Manter programas na versão atual: uma lista com os programas que têm versão nova no winget e os que já estão marcados
+    para não atualizar (estes, marcados). Marcar põe o marcador do winget ("winget pin add", o tipo comum): o programa sai
+    do "winget upgrade" e, com ele, de Atualizar programas, do Otimizar, do monitor e do Verificar o PC. O tipo comum deixa
+    a atualização pedida pelo nome no próprio winget, de propósito: é uma escolha que a pessoa pode desfazer na hora.
+    Desmarcar tira o marcador, de qualquer tipo. Vai para o Histórico de mudanças com o desfazer, que refaz cada marcador
+    tirado com o mesmo tipo. Os marcadores ficam no perfil da conta: elevado com outra conta, nada é mudado.
+    #>
+    $title = (Get-WinForgeText 'Manter programas na versão atual')
+
+    Enter-WinForgeAction -Title $title
+
+    $final = New-WinForgeResult -Kind Ok -Title $title
+
+    try {
+        if (-not (Initialize-WinForgeWinget -OfferStore)) {
+            Exit-WinForgeAction -Result (Get-WinForgeWingetMissingResult -Title $title)
+            return
+        }
+
+        if (Test-WinForgeUserContextMismatch) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge está elevado com outra conta: os marcadores do winget ficariam nela, e não em {0}.' "$(Get-WinForgeInteractiveUser)")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para mudar, {0}.' "$(Get-WinForgeUnelevatedHint)")
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'o WinForge está elevado com outra conta') -Title $title)
+            return
+        }
+
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'consultando o winget')
+
+        try {
+            $read = Get-WinForgeWingetPins
+            $upgrade = $(if (-not $read.Problem) { Invoke-WinForgeCapture -FilePath "winget" -Arguments @("upgrade", "--accept-source-agreements") } else { $null })
+        }
+        finally {
+            Write-Progress -Activity $title -Completed
+        }
+
+        if ($read.Problem) {
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler os programas marcados: {0}.' "$($read.Problem)")
+            $final = New-WinForgeResult -Kind Failed -Detail $read.Problem -Title $title
+
+            # O winget antigo vem com o Instalador de Aplicativo: a Microsoft Store o atualiza.
+            if ($read.Old) {
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Atualize o Instalador de Aplicativo pela Microsoft Store e use esta ação de novo.')
+                [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'O winget deste PC é antigo') -Note (Get-WinForgeText 'Atualize o Instalador de Aplicativo pela Microsoft Store.') -Next "updates.store" -NextLabel (Get-WinForgeText 'Atualizar pela Store'))
+            }
+
+            Exit-WinForgeAction -Result $final
+            return
+        }
+
+        $pins = @($read.Pins)
+        $available = @()
+
+        if (-not (Test-WinForgeWingetNoUpgradeOutput -OutputText $upgrade.Text -ExitCode $upgrade.ExitCode)) {
+            $available = @(ConvertFrom-WinForgeWingetTable -Lines $upgrade.Lines)
+
+            if ($available.Count -eq 0) {
+                # Sem a lista de versões novas, a tela continua com os já marcados, que podem voltar a atualizar.
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível ler os programas com versão nova ({0}); a lista mostra só os já marcados.' "$((Get-WinForgeWingetExitResult -ExitCode $upgrade.ExitCode).Detail)")
+            }
+        }
+
+        # Só o que pode ser marcado (Test-WinForgeWingetPinId); o que já tem marcador fica uma vez só, como marcado.
+        $pinnedIds = @($pins | ForEach-Object { [string]$_.Id })
+        $available = @($available | Where-Object { (Test-WinForgeWingetPinId -Id ([string]$_.Id)) -and $pinnedIds -notcontains [string]$_.Id })
+
+        if ($pins.Count + $available.Count -eq 0) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhum programa tem versão nova no winget agora, e nenhum está marcado para não atualizar.')
+            $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhum programa com versão nova no winget') -Title $title
+            Exit-WinForgeAction -Result (Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'Nada para escolher agora') -Note (Get-WinForgeText 'Quando um programa tiver versão nova no winget, ele aparece aqui.'))
+            return
+        }
+
+        if (Test-WinForgeGuiPrompts) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Marcado fica na versão atual: o WinForge não o atualiza. Programas que se atualizam sozinhos continuam se atualizando.')
+        }
+        else {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Com * é o que já fica na versão atual. Digite os números de tudo o que deve ficar na versão atual: o que ficar de fora volta a atualizar. P deixa como está.')
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Programas que se atualizam sozinhos continuam se atualizando.')
+        }
+
+        $pool = @(
+            @($pins | Sort-Object -Property Nome | ForEach-Object { [PSCustomObject]@{ Item = $_; Pinned = $true } }) +
+            @($available | Sort-Object -Property Nome | ForEach-Object { [PSCustomObject]@{ Item = $_; Pinned = $false } })
+        )
+
+        $choices = @(
+            for ($i = 0; $i -lt $pool.Count; $i++) {
+                $item = $pool[$i].Item
+                $parts = @([string]$item.Id)
+                $version = ([string]$item.Versao).Trim()
+
+                if ($pool[$i].Pinned) {
+                    if ($version -and $version -notmatch '^(\?|Unknown|Desconhecid[ao])$') { $parts += (Get-WinForgeText 'versão {0}' "$version") }
+                    if ($item.Pin -eq "Blocking") { $parts += (Get-WinForgeText 'bloqueado no winget') }
+                    if ($item.Pin -eq "Gating") { $parts += (Get-WinForgeText 'só versões {0}' "$($item.Gated)") }
+                }
+                else {
+                    $parts += (Get-WinForgeText '{0} para {1}' "$version" "$($item.Disponivel)")
+                }
+
+                @{ Key = [string]$i; Label = [string]$item.Nome; Description = ($parts -join " · "); Selected = [bool]$pool[$i].Pinned }
+            }
+        )
+
+        # Sem "Marcar todos"; desmarcar tudo é uma resposta (todos voltam a atualizar): a lista volta vazia, e não $null.
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'O que deve ficar na versão atual') -Options $choices -NoSelectAll -AllowNone -ConfirmLabel (Get-WinForgeText 'Salvar')
+
+        if ($null -eq $picked) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário') -Title $title)
+            return
+        }
+
+        $changes = @(
+            for ($i = 0; $i -lt $pool.Count; $i++) {
+                $want = (@($picked) -contains [string]$i)
+                if ($want -ne [bool]$pool[$i].Pinned) { [PSCustomObject]@{ Item = $pool[$i].Item; Hold = $want } }
+            }
+        )
+
+        if ($changes.Count -eq 0) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nada foi mudado.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'você não mudou nada') -Title $title)
+            return
+        }
+
+        Write-Host ""
+
+        $held = @()
+        $released = @()
+        $undo = @()
+        $problems = @()
+
+        foreach ($change in $changes) {
+            $item = $change.Item
+            $name = [string]$item.Nome
+
+            if ($change.Hold) {
+                $source = [string](Get-WinForgeJsonValue -Object $item -Name "Fonte" -Default "")
+                $run = Invoke-WinForgeWingetPin -Operation Add -Id ([string]$item.Id) -Source $(if ($source -in @("winget", "msstore")) { $source } else { "" })
+            }
+            else {
+                $run = Invoke-WinForgeWingetPin -Operation Remove -Id ([string]$item.Id)
+            }
+
+            if ($run.Kind -ne "Ok") {
+                $problems += [PSCustomObject]@{ Name = $name; Detail = [string]$run.Detail }
+                Write-WinForgeStatus -Type Error -Message "${name}: $([string]$run.Detail)."
+                continue
+            }
+
+            if ($change.Hold) {
+                $held += $name
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: fica na versão atual.' "$name")
+
+                # Um marcador que já existia (de outro tipo, posto fora do WinForge) não foi posto agora: o desfazer não o tira.
+                if (-not (Test-WinForgeResultFlag -Result $run -Name "Existing")) { $undo += @{ Id = [string]$item.Id; Pin = "None"; Source = ""; Gated = "" } }
+            }
+            else {
+                $released += $name
+                Write-WinForgeStatus -Type Success -Message (Get-WinForgeText '{0}: volta a atualizar.' "$name")
+
+                if (-not (Test-WinForgeResultFlag -Result $run -Name "Missing")) { $undo += @{ Id = [string]$item.Id; Pin = [string]$item.Pin; Source = [string]$item.Fonte; Gated = [string]$item.Gated } }
+            }
+        }
+
+        $doneText = Get-WinForgeWingetPinJournalText -Held $held -Released $released
+
+        if ($doneText) {
+            if ($undo.Count -gt 0) {
+                [void](Add-WinForgeChange -Action $title -Text $doneText -Undo @{ Kind = "winget-pin"; Items = $undo })
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para desfazer, use Manutenção > Histórico de mudanças.')
+            }
+            else {
+                [void](Add-WinForgeChange -Action $title -Text $doneText)
+            }
+        }
+
+        $doneCount = $held.Count + $released.Count
+        $headline = $(
+            if ($released.Count -eq 0) { Format-WinForgeCount -Count $held.Count -One (Get-WinForgeText 'programa fica na versão atual') -Many (Get-WinForgeText 'programas ficam na versão atual') }
+            elseif ($held.Count -eq 0) { Format-WinForgeCount -Count $released.Count -One (Get-WinForgeText 'programa volta a atualizar') -Many (Get-WinForgeText 'programas voltam a atualizar') }
+            else { (Get-WinForgeText 'Lista salva') }
+        )
+
+        if ($problems.Count -eq 0) {
+            $final = New-WinForgeResult -Kind Ok -Detail $doneText -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline $headline -Note "$(ConvertTo-WinForgeHeadline -Text $doneText).")
+        }
+        else {
+            $names = Join-WinForgeList -Items @($problems | ForEach-Object { $_.Name })
+            $reason = [string]$problems[0].Detail
+            $kind = $(if ($doneCount -gt 0) { "Warning" } else { "Failed" })
+            $final = New-WinForgeResult -Kind $kind -Detail (Get-WinForgeText 'não mudou: {0} ({1})' "$names" "$reason") -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline $(if ($doneCount -gt 0) { (Get-WinForgeText 'Nem tudo foi mudado') } else { (Get-WinForgeText 'Nada foi mudado') }) -Note (Get-WinForgeText 'Não mudou: {0} ({1}).' "$names" "$reason"))
+        }
+    }
+    catch {
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível mudar os programas marcados: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
+        $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message.TrimEnd('.') -Title $title
     }
 
     Exit-WinForgeAction -Result $final
@@ -1544,20 +2298,20 @@ function Get-WinForgeBrowserOutcome {
         [switch]$Unconfirmed
     )
 
-    $reopen = $(if ($Pending) { "; vale ao abrir de novo" } else { "" })
+    $reopen = $(if ($Pending) { (Get-WinForgeText '; vale ao abrir de novo') } else { "" })
 
     if (-not [string]::IsNullOrWhiteSpace($After) -and $After -ne $Before) {
-        return [PSCustomObject]@{ Kind = "Ok"; Text = "atualizado para $After$reopen" }
+        return [PSCustomObject]@{ Kind = "Ok"; Text = (Get-WinForgeText 'atualizado para {0}{1}' "$After" "$reopen") }
     }
 
     if ($ExitCode -ne 0) {
-        $why = $(if ($FailText) { $FailText } else { "o atualizador terminou com o código $(Format-WinForgeExitCode -ExitCode $ExitCode)" })
-        return [PSCustomObject]@{ Kind = "Warning"; Text = "não atualizou ($why)" }
+        $why = $(if ($FailText) { $FailText } else { (Get-WinForgeText 'o atualizador terminou com o código {0}' "$(Format-WinForgeExitCode -ExitCode $ExitCode)") })
+        return [PSCustomObject]@{ Kind = "Warning"; Text = (Get-WinForgeText 'não atualizou ({0})' "$why") }
     }
 
-    if ($Unconfirmed) { return [PSCustomObject]@{ Kind = "Ok"; Text = "nenhuma versão nova instalada agora ($Before)$reopen" } }
+    if ($Unconfirmed) { return [PSCustomObject]@{ Kind = "Ok"; Text = (Get-WinForgeText 'nenhuma versão nova instalada agora ({0}){1}' "$Before" "$reopen") } }
 
-    return [PSCustomObject]@{ Kind = "Ok"; Text = "já na versão mais nova ($Before)$reopen" }
+    return [PSCustomObject]@{ Kind = "Ok"; Text = (Get-WinForgeText 'já na versão mais nova ({0}){1}' "$Before" "$reopen") }
 }
 
 
@@ -1573,7 +2327,7 @@ function Update-WinForgeEdgeBrowser {
 
     if ([string]::IsNullOrWhiteSpace($updater)) {
         $browser.Kind = "Warning"
-        $browser.Text = "atualizador não encontrado; atualize em Configurações, Sobre o Microsoft Edge"
+        $browser.Text = (Get-WinForgeText 'atualizador não encontrado; atualize em Configurações, Sobre o Microsoft Edge')
         return $browser
     }
 
@@ -1685,12 +2439,12 @@ function Update-WinForgeChromeBrowser {
     $browser.Installed = $true
 
     if ($install.PerUser) {
-        $browser.Text = "instalado só para um usuário; o Chrome se atualiza sozinho"
+        $browser.Text = (Get-WinForgeText 'instalado só para um usuário; o Chrome se atualiza sozinho')
         return $browser
     }
 
     if ($install.Blocked) {
-        $browser.Text = "a atualização é controlada por uma política"
+        $browser.Text = (Get-WinForgeText 'a atualização é controlada por uma política')
         return $browser
     }
 
@@ -1698,7 +2452,7 @@ function Update-WinForgeChromeBrowser {
 
     if ($null -eq $command) {
         $browser.Kind = "Warning"
-        $browser.Text = "atualizador não encontrado; atualize em Configurações, Sobre o Google Chrome"
+        $browser.Text = (Get-WinForgeText 'atualizador não encontrado; atualize em Configurações, Sobre o Google Chrome')
         return $browser
     }
 
@@ -1778,23 +2532,23 @@ function Update-WinForgeFirefoxBrowser {
     $browser.Installed = $true
 
     if ($install.Blocked) {
-        $browser.Text = "a atualização está desligada por uma política"
+        $browser.Text = (Get-WinForgeText 'a atualização está desligada por uma política')
         return $browser
     }
 
     if ($install.Esr) {
-        $browser.Text = "a versão ESR se atualiza sozinha"
+        $browser.Text = (Get-WinForgeText 'a versão ESR se atualiza sozinha')
         return $browser
     }
 
     if (-not (Test-WinForgeWinget)) {
-        $browser.Text = "sem o winget; o Firefox se atualiza sozinho ao abrir"
+        $browser.Text = (Get-WinForgeText 'sem o winget; o Firefox se atualiza sozinho ao abrir')
         return $browser
     }
 
     if (Test-WinForgeFirefoxRunning) {
         $browser.Kind = "Warning"
-        $browser.Text = "estava aberto; feche o Firefox para atualizar"
+        $browser.Text = (Get-WinForgeText 'estava aberto; feche o Firefox para atualizar')
         return $browser
     }
 
@@ -1810,7 +2564,7 @@ function Update-WinForgeFirefoxBrowser {
     if ($now -eq $install.Version -and $hex -eq "0x8A15002B") { $code = 0 }
 
     if ($now -eq $install.Version -and $hex -eq "0x8A150014") {
-        $browser.Text = "o winget não reconhece esta instalação; o Firefox se atualiza sozinho ao abrir"
+        $browser.Text = (Get-WinForgeText 'o winget não reconhece esta instalação; o Firefox se atualiza sozinho ao abrir')
         return $browser
     }
 
@@ -1834,7 +2588,7 @@ function Update-WinForgeBrowsers {
         [switch]$PassThru
     )
 
-    $title = "Atualizar os navegadores"
+    $title = (Get-WinForgeText 'Atualizar os navegadores')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
@@ -1848,7 +2602,7 @@ function Update-WinForgeBrowsers {
             $browsers += @(& $command)
         }
         catch {
-            $browsers += [PSCustomObject]@{ Name = $name; Installed = $true; Kind = "Failed"; Text = "não atualizou ($($_.Exception.Message.Trim().TrimEnd('.')))" }
+            $browsers += [PSCustomObject]@{ Name = $name; Installed = $true; Kind = "Failed"; Text = (Get-WinForgeText 'não atualizou ({0})' "$($_.Exception.Message.Trim().TrimEnd('.'))") }
         }
     }
 
@@ -1861,10 +2615,11 @@ function Update-WinForgeBrowsers {
         Write-WinForgeStatus -Type $type -Message "$($browser.Name): $($browser.Text)."
     }
 
-    $detail = (@($installed | ForEach-Object { "$(([string]$_.Name -split ' ')[-1]) $($_.Text)" }) -join "; ")
+    # No resumo e no histórico, o nome curto e o que houve: "Edge: atualizado para 131.0; Chrome: já na versão mais nova".
+    $detail = (@($installed | ForEach-Object { (Get-WinForgeText '{0}: {1}' "$(([string]$_.Name -split ' ')[-1])" "$($_.Text)") }) -join "; ")
 
     if ($installed.Count -eq 0) {
-        $final = New-WinForgeResult -Kind Skipped -Detail "nenhum navegador encontrado" -Title $title
+        $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhum navegador encontrado') -Title $title
     }
     elseif (@($installed | Where-Object { $_.Kind -eq "Failed" }).Count -eq $installed.Count) {
         $final = New-WinForgeResult -Kind Failed -Detail $detail -Title $title
@@ -1889,56 +2644,78 @@ function Update-WinForgeStoreApps {
     A etapa da Microsoft Store do Otimizar: o mesmo pedido do botão "Obter atualizações" da Store (o método
     UpdateScanMethod da ponte de gerenciamento do Windows). A Store baixa e instala em segundo plano; o WinForge não tem
     como acompanhar até o fim, e a faixa diz isso. Se o Windows recusar o pedido, a página de atualizações da Store abre
-    para a pessoa clicar.
+    para a pessoa clicar. Sem o modo Administrador o pedido nem é feito: a Microsoft documenta a ponte de gerenciamento só
+    num prompt elevado, e a recusa viraria um aviso à toa; a página abre direto.
     #>
     param (
         [switch]$Embedded,
         [switch]$PassThru
     )
 
-    $title = "Atualizar aplicativos da Microsoft Store"
+    $title = (Get-WinForgeText 'Atualizar aplicativos da Microsoft Store')
 
     Enter-WinForgeAction -Title $title -Embedded:$Embedded
 
     $final = $null
 
+    if (-not $Embedded -and -not (Test-WinForgeAdministrator)) {
+        if (Open-WinForgeShortcut -Name "MicrosoftStore") {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Na página da Store que abriu, clique em Obter atualizações.')
+            $final = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'a página de atualizações da Store foi aberta') -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'Clique em Obter atualizações') -Note (Get-WinForgeText 'A página de atualizações da Microsoft Store abriu.'))
+        }
+        else {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows não abriu a Microsoft Store.')
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows não abriu a Microsoft Store') -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A Microsoft Store não abriu') -Note (Get-WinForgeText 'Abra a Microsoft Store e clique em Obter atualizações.'))
+        }
+
+        if ($PassThru) { $final }
+        Exit-WinForgeAction -Embedded:$Embedded -Result $final
+        return
+    }
+
     try {
-        $instance = @(Get-CimInstance -Namespace "root\cimv2\mdm\dmmap" -ClassName "MDM_EnterpriseModernAppManagement_AppManagement01" -ErrorAction Stop) | Select-Object -First 1
+        $instance = @(Get-CimInstance -Namespace "root\cimv2\mdm\dmmap" -ClassName "MDM_EnterpriseModernAppManagement_AppManagement01" -OperationTimeoutSec 30 -ErrorAction Stop) | Select-Object -First 1
 
-        if ($null -eq $instance) { throw "o Windows não respondeu ao pedido" }
+        if ($null -eq $instance) { throw (Get-WinForgeText 'o Windows não respondeu ao pedido') }
 
-        $call = Invoke-CimMethod -InputObject $instance -MethodName "UpdateScanMethod" -ErrorAction Stop
+        $call = Invoke-CimMethod -InputObject $instance -MethodName "UpdateScanMethod" -OperationTimeoutSec 60 -ErrorAction Stop
         # O ReturnValue é UInt32: um código de erro (0x8xxxxxxx) não cabe no [int] e vira o negativo correspondente, como
         # os códigos de saída que Format-WinForgeExitCode mostra em hexadecimal.
         $raw = [int64](Get-WinForgeJsonValue -Object $call -Name "ReturnValue" -Default 0)
         if ($raw -gt [int]::MaxValue) { $raw -= 4294967296 }
         $code = [int]$raw
 
-        if ($code -ne 0) { throw "código $(Format-WinForgeExitCode -ExitCode $code)" }
+        if ($code -ne 0) { throw (Get-WinForgeText 'código {0}' "$(Format-WinForgeExitCode -ExitCode $code)") }
 
         # Ela baixa e instala em segundo plano (minutos). Pedida sozinha, a lista de downloads da Store abre em seguida, para
         # a pessoa acompanhar; no Otimizar, não (a Store abriria por cima das outras etapas).
-        Write-WinForgeStatus -Type Success -Message "Pedido enviado à Microsoft Store: ela instala as atualizações em segundo plano."
-        $final = New-WinForgeResult -Kind Ok -Detail "pedido enviado; a Store instala em segundo plano" -Title $title
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Pedido enviado à Microsoft Store: ela instala as atualizações em segundo plano.')
+        $final = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'pedido enviado; a Store instala em segundo plano') -Title $title
 
         if (-not $Embedded) {
-            $shown = $false
-            try { $shown = [bool](Open-WinForgeShortcut -Name "MicrosoftStore") } catch { $shown = $false }
+            # Open-WinForgeShortcut não lança erro: o que o Windows recusar vira uma linha na tela e $false.
+            $shown = [bool](Open-WinForgeShortcut -Name "MicrosoftStore")
 
-            [void](Set-WinForgeResultView -Result $final -Headline "Pedido enviado à Microsoft Store" `
-                    -Note "Ela baixa e instala as atualizações em segundo plano$(if ($shown) { '; a lista de downloads abriu para você acompanhar' } else { '' }).")
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'Pedido enviado à Microsoft Store') `
+                    -Note (Get-WinForgeText 'Ela baixa e instala as atualizações em segundo plano{0}.' "$(if ($shown) { (Get-WinForgeText '; a lista de downloads abriu para você acompanhar') } else { '' })"))
         }
     }
     catch {
         $reason = ([string]$_.Exception.Message).Trim().TrimEnd('.')
-        Write-WinForgeStatus -Type Warning -Message "O Windows não aceitou o pedido de atualização à Microsoft Store ($reason)."
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O Windows não aceitou o pedido de atualização à Microsoft Store ({0}).' "$reason")
 
-        if (Open-WinForgeShortcut -Name "MicrosoftStore") {
-            Write-WinForgeStatus -Type Info -Message "Na página da Store que abriu, clique em Obter atualizações."
-            $final = New-WinForgeResult -Kind Warning -Detail "o Windows não aceitou o pedido; a página de atualizações da Store foi aberta" -Title $title
+        # No Otimizar, a parte automática roda sem ninguém olhando: a Store não abre por cima das outras etapas (como no
+        # pedido que deu certo), e a frase diz o que fazer depois. Pedida sozinha, a página abre para a pessoa clicar.
+        if (-not $Embedded -and (Open-WinForgeShortcut -Name "MicrosoftStore")) {
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Na página da Store que abriu, clique em Obter atualizações.')
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows não aceitou o pedido; a página de atualizações da Store foi aberta') -Title $title
+            [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A Microsoft Store não aceitou o pedido') -Note (Get-WinForgeText 'Na página da Store que abriu, clique em Obter atualizações.'))
         }
         else {
-            $final = New-WinForgeResult -Kind Warning -Detail "o Windows não aceitou o pedido; abra a Store e clique em Obter atualizações" -Title $title
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'o Windows não aceitou o pedido; abra a Store e clique em Obter atualizações') -Title $title
+            if (-not $Embedded) { [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A Microsoft Store não aceitou o pedido') -Note (Get-WinForgeText 'Abra a Microsoft Store e clique em Obter atualizações.')) }
         }
     }
 
@@ -1972,33 +2749,33 @@ function Get-WinForgeInstalledSoftwareCounts {
 
 
 function Show-WinForgeInstalledSoftware {
-    Enter-WinForgeAction -Title "Listar programas instalados"
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Listar programas instalados')
 
     # Resultado explícito: sem ele, a faixa dependeria de a lista de pacotes já ter sido atualizada nesta sessão (a primeira
     # consulta registra um "sucesso" e as seguintes não), e a mesma tela terminaria verde numa vez e sem faixa na outra.
-    $final = New-WinForgeResult -Kind Failed -Detail "a listagem não devolveu resultado"
+    $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a listagem não devolveu resultado')
 
     try {
         if (-not (Initialize-WinForgeWinget -OfferStore)) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeWingetMissingDetail))
+            Exit-WinForgeAction -Result (Get-WinForgeWingetMissingResult)
             return
         }
 
         Write-WinForgeWingetUserWarning
 
         # A tabela vai para os detalhes técnicos como o winget a gera (no console, para a tela); o resumo traz as contas.
-        Write-Progress -Activity "Listando os programas instalados" -Status "consultando o winget"
+        Write-Progress -Activity (Get-WinForgeText 'Listando os programas instalados') -Status (Get-WinForgeText 'consultando o winget')
 
         try {
-            $listing = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("list", "--accept-source-agreements") -Echo
+            $listing = Read-WinForgeWingetList -Echo
         }
         finally {
-            Write-Progress -Activity "Listando os programas instalados" -Completed
+            Write-Progress -Activity (Get-WinForgeText 'Listando os programas instalados') -Completed
         }
 
         Write-Host ""
 
-        $all = @(ConvertFrom-WinForgeWingetTable -Lines $listing.Lines)
+        $all = @($listing.Rows)
         $exitResult = Get-WinForgeWingetExitResult -ExitCode $listing.ExitCode
 
         # Os componentes do Windows (VCLibs, a Store, o próprio winget) não são programas: ficam fora da conta.
@@ -2007,13 +2784,13 @@ function Show-WinForgeInstalledSoftware {
         if ($all.Count -eq 0) {
             if ($exitResult.Kind -eq "Ok" -and -not [string]::IsNullOrWhiteSpace($listing.Text)) {
                 # O winget respondeu, mas num formato que este código não lê: a tabela está nos detalhes técnicos.
-                Write-WinForgeStatus -Type Warning -Message "O WinForge não reconheceu a tabela do winget; ela está nos detalhes técnicos."
-                $final = New-WinForgeResult -Kind Warning -Detail "a tabela do winget não foi reconhecida"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O WinForge não reconheceu a tabela do winget; ela está nos detalhes técnicos.')
+                $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a tabela do winget não foi reconhecida')
             }
             else {
-                $reason = $(if ($exitResult.Kind -eq "Ok") { "o winget não respondeu" } else { $exitResult.Detail })
-                Write-WinForgeStatus -Type Error -Message "Não foi possível listar os programas: $reason."
-                $final = New-WinForgeResult -Kind Failed -Detail "não foi possível listar os programas: $reason"
+                $reason = $(if ($exitResult.Kind -eq "Ok") { (Get-WinForgeText 'o winget não respondeu') } else { $exitResult.Detail })
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível listar os programas: {0}.' "$reason")
+                $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível listar os programas: {0}' "$reason")
             }
 
             Exit-WinForgeAction -Result $final
@@ -2024,38 +2801,38 @@ function Show-WinForgeInstalledSoftware {
 
         # Na tela, só o total e as atualizações; a fonte, a versão e o ID de cada programa ficam na tabela do winget, nos
         # detalhes técnicos (no console, ela já apareceu acima).
-        Write-WinForgeSection -Title "Programas instalados"
-        Write-WinForgeKeyValue -Label "Total" -Value (Format-WinForgeCount -Count $counts.Total -One "programa" -Many "programas") -LabelWidth 16
-        if ($counts.Updates -gt 0) { Write-WinForgeKeyValue -Label "Com atualização" -Value $counts.Updates -LabelWidth 16 }
+        Write-WinForgeSection -Title (Get-WinForgeText 'Programas instalados')
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Total') -Value (Format-WinForgeCount -Count $counts.Total -One (Get-WinForgeText 'programa') -Many (Get-WinForgeText 'programas')) -LabelWidth 16
+        if ($counts.Updates -gt 0) { Write-WinForgeKeyValue -Label (Get-WinForgeText 'Com atualização') -Value $counts.Updates -LabelWidth 16 }
         Write-Host ""
 
-        $detail = Format-WinForgeCount -Count $counts.Total -One "programa instalado" -Many "programas instalados"
+        $detail = Format-WinForgeCount -Count $counts.Total -One (Get-WinForgeText 'programa instalado') -Many (Get-WinForgeText 'programas instalados')
 
         if ($counts.Updates -gt 0) {
-            $detail += "; $($counts.Updates) com atualização no winget"
+            $detail += (Get-WinForgeText '; {0} com atualização no winget' "$($counts.Updates)")
         }
 
         if ($exitResult.Kind -eq "Ok") {
             # Na janela, o título diz quantos; a frase, quantos têm versão nova; e o botão leva a atualizá-los.
             $final = New-WinForgeResult -Kind Ok -Detail $detail -Data @{ Count = $counts.Total }
-            $updatesText = $(if ($counts.Updates -gt 0) { "$(Format-WinForgeNumber -Value $counts.Updates) com versão nova no winget" } else { "Nenhum com versão nova no winget" })
-            [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $counts.Total -One "programa instalado" -Many "programas instalados") `
-                    -Note "$updatesText; a lista completa está nos detalhes técnicos." `
-                    -Next $(if ($counts.Updates -gt 0) { "updates.winget" } else { "" }) -NextLabel $(if ($counts.Updates -gt 0) { "Atualizar programas" } else { "" }))
+            $updatesText = $(if ($counts.Updates -gt 0) { (Get-WinForgeText '{0} com versão nova no winget' "$(Format-WinForgeNumber -Value $counts.Updates)") } else { (Get-WinForgeText 'Nenhum com versão nova no winget') })
+            [void](Set-WinForgeResultView -Result $final -Headline (Format-WinForgeCount -Count $counts.Total -One (Get-WinForgeText 'programa instalado') -Many (Get-WinForgeText 'programas instalados')) `
+                    -Note (Get-WinForgeText '{0}; a lista completa está nos detalhes técnicos.' "$updatesText") `
+                    -Next $(if ($counts.Updates -gt 0) { "updates.winget" } else { "" }) -NextLabel $(if ($counts.Updates -gt 0) { (Get-WinForgeText 'Atualizar programas') } else { "" }))
         }
         else {
-            Write-WinForgeStatus -Type Warning -Message "O winget terminou com problemas ($($exitResult.Detail)); a lista pode estar incompleta."
-            $final = New-WinForgeResult -Kind Warning -Detail "a lista pode estar incompleta: $($exitResult.Detail)" -Data @{ Count = $counts.Total }
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'O winget terminou com problemas ({0}); a lista pode estar incompleta.' "$($exitResult.Detail)")
+            $final = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'a lista pode estar incompleta: {0}' "$($exitResult.Detail)") -Data @{ Count = $counts.Total }
         }
 
         if ($counts.Updates -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "Para atualizar, use Atualizações > Atualizar programas (winget)."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para atualizar, use Atualizações > Atualizar programas (winget).')
         }
 
-        Write-WinForgeStatus -Type Info -Message "Para remover programas, use Programas > Desinstalar programas."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para remover programas, use Programas > Desinstalar programas.')
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível listar os programas: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível listar os programas: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -2065,29 +2842,29 @@ function Show-WinForgeInstalledSoftware {
 
 function Find-WinForgeSoftware {
     # Busca no winget, deixa o usuário marcar os resultados e instala os escolhidos.
-    Enter-WinForgeAction -Title "Buscar e instalar programas"
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Buscar e instalar programas')
 
     # O desfecho vem do que aconteceu, não da contagem de mensagens: desistir é "Cancelado", a busca sem resultado é "nada a
     # fazer" (cinza) e o único pacote que não instala é falha (vermelho), nunca "ressalva".
-    $final = New-WinForgeResult -Kind Failed -Detail "a busca não devolveu resultado"
+    $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a busca não devolveu resultado')
 
     try {
         if (-not (Initialize-WinForgeWinget -OfferStore)) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeWingetMissingDetail))
+            Exit-WinForgeAction -Result (Get-WinForgeWingetMissingResult)
             return
         }
 
         Write-WinForgeWingetUserWarning -Context Install
         Write-Host ""
-        $term = Read-WinForgeText -Message "Nome (ou ID) do programa que deseja buscar"
+        $term = Read-WinForgeText -Message (Get-WinForgeText 'Nome (ou ID) do programa que deseja buscar')
 
         # Aspas dentro do termo quebram a passagem de argumentos no Windows PowerShell 5.1.
         $term = ($term -replace '["`]', " ").Trim()
 
         # Campo vazio é desistência (o botão Cancelar da janela devolve o mesmo vazio).
         if ([string]::IsNullOrWhiteSpace($term)) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário'))
             return
         }
 
@@ -2095,13 +2872,13 @@ function Find-WinForgeSoftware {
             $term = $term.Substring(0, 100)
         }
 
-        Write-Progress -Activity "Buscando programas" -Status "procurando '$term' no winget"
+        Write-Progress -Activity (Get-WinForgeText 'Buscando programas') -Status (Get-WinForgeText 'procurando ''{0}'' no winget' "$term")
 
         try {
             $search = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("search", "--query", $term, "--accept-source-agreements")
         }
         finally {
-            Write-Progress -Activity "Buscando programas" -Completed
+            Write-Progress -Activity (Get-WinForgeText 'Buscando programas') -Completed
         }
 
         # O mesmo ID pode vir duas vezes (o nome e uma etiqueta batem com a busca): uma opção por ID, na ordem do winget.
@@ -2120,42 +2897,44 @@ function Find-WinForgeSoftware {
             $notFound = ($search.ExitCode -eq 0 -or $search.ExitCode -eq -1978335212)
 
             if ($notFound) {
-                Write-WinForgeStatus -Type Warning -Message "Nenhum programa encontrado para '$term'."
-                Write-WinForgeStatus -Type Info -Message "Tente outro nome, uma parte do nome ou o ID do programa (por exemplo, 7zip.7zip)."
-                $final = New-WinForgeResult -Kind Skipped -Detail "nenhum programa encontrado para '$term'"
+                Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Nenhum programa encontrado para ''{0}''.' "$term")
+                Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Tente outro nome, uma parte do nome ou o ID do programa (por exemplo, 7zip.7zip).')
+                $final = New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhum programa encontrado para ''{0}''' "$term")
+                [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'Nenhum programa encontrado') -Note (Get-WinForgeText 'Tente outro nome, uma parte do nome ou o ID do programa (por exemplo, 7zip.7zip).'))
             }
             else {
                 $reason = (Get-WinForgeWingetExitResult -ExitCode $search.ExitCode).Detail
-                Write-WinForgeStatus -Type Error -Message "A busca por '$term' falhou: $reason."
-                $final = New-WinForgeResult -Kind Failed -Detail "a busca falhou: $reason"
+                Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'A busca por ''{0}'' falhou: {1}.' "$term" "$reason")
+                $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a busca falhou: {0}' "$reason")
+                [void](Set-WinForgeResultView -Result $final -Headline (Get-WinForgeText 'A busca não funcionou') -Note "$(([string]$reason).Substring(0, 1).ToUpper())$(([string]$reason).Substring(1)).")
             }
 
             Exit-WinForgeAction -Result $final
             return
         }
 
-        $installedIds = Get-WinForgeInstalledWingetIds -Activity "Buscando programas"
+        $installedIds = Get-WinForgeInstalledWingetIds -Activity (Get-WinForgeText 'Buscando programas')
 
         $options = @(
             foreach ($package in $results) {
                 $description = Format-WinForgeWingetPackageDescription -Package $package
-                @{ Key = $package.Id; Label = $package.Nome; Description = $(if (Test-WinForgeWingetIdInstalled -Installed $installedIds -Id $package.Id) { "já instalado · $description" } else { $description }) }
+                @{ Key = $package.Id; Label = $package.Nome; Description = $(if (Test-WinForgeWingetIdInstalled -Installed $installedIds -Id $package.Id) { (Get-WinForgeText 'já instalado · {0}' "$description") } else { $description }) }
             }
         )
 
         # Antes da lista: durante a pergunta de marcar, a janela mostra o resumo, e os detalhes técnicos ficam recolhidos.
-        Write-WinForgeStatus -Type Info -Message "Alguns instaladores podem pedir para fechar programas abertos ou reiniciar o PC."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Alguns instaladores podem pedir para fechar programas abertos ou reiniciar o PC.')
         if (@($results | Where-Object { Test-WinForgeWingetIdInstalled -Installed $installedIds -Id $_.Id }).Count -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "O que aparece como já instalado é atualizado, se houver versão nova."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O que aparece como já instalado é atualizado, se houver versão nova.')
         }
         Write-Host ""
 
-        $found = Format-WinForgeCount -Count $results.Count -One "resultado" -Many "resultados"
-        $picked = Read-WinForgeMultiSelect -Message "$found para '$term'. Marque o que deseja instalar" -Options $options
+        $found = Format-WinForgeCount -Count $results.Count -One (Get-WinForgeText 'resultado') -Many (Get-WinForgeText 'resultados')
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText '{0} para ''{1}''. Marque o que deseja instalar' "$found" "$term") -Options $options -ConfirmLabel (Get-WinForgeText 'Instalar')
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário'))
             return
         }
 
@@ -2164,10 +2943,11 @@ function Find-WinForgeSoftware {
         if ($null -ne $result) {
             $final = Set-WinForgeWingetPackagesView -Operation Install -Packages $packages -Result $result -Installed $installedIds
             Add-WinForgeInstalledProgramsChange -Packages $packages -Result $result -Installed $installedIds
+            Request-WinForgeProgramsRestart -Operation Install -Result $final
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível buscar ou instalar: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível buscar ou instalar: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -2497,14 +3277,14 @@ function Write-WinForgeUninstallPreview {
     #>
     param ([Parameter(Mandatory)][object[]]$Packages)
 
-    Write-WinForgeSection -Title "Vão ser desinstalados"
+    Write-WinForgeSection -Title (Get-WinForgeText 'Vão ser desinstalados')
 
     foreach ($package in $Packages) {
         $name = ([string]$package.Nome).Trim()
         if ($name.Length -gt 48) { $name = $name.Substring(0, 45) + "..." }
         $version = ([string]$package.Versao).Trim()
         $versions = [int](Get-WinForgeJsonValue -Object $package -Name "Versoes" -Default 1)
-        $versionText = $(if ($versions -gt 1) { "$versions versões" } elseif ($version -and $version -notmatch '^(\?|Unknown|Desconhecid[ao])$') { "versão $version" } else { "versão não informada" })
+        $versionText = $(if ($versions -gt 1) { (Get-WinForgeText '{0} versões' "$versions") } elseif ($version -and $version -notmatch '^(\?|Unknown|Desconhecid[ao])$') { (Get-WinForgeText 'versão {0}' "$version") } else { (Get-WinForgeText 'versão não informada') })
 
         Write-WinForgeKeyValue -Label $name -Value $versionText -LabelWidth 32
     }
@@ -2514,46 +3294,46 @@ function Write-WinForgeUninstallPreview {
     $drivers = @($Packages | Where-Object { Get-WinForgeWingetPackageCaution -Package $_ } | ForEach-Object { [string]$_.Nome })
 
     if ($drivers.Count -eq 1) {
-        Write-WinForgeStatus -Type Warning -Notice -Message "$($drivers[0]) é driver de um aparelho do PC: o aparelho pode parar de funcionar."
+        Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText '{0} é driver de um aparelho do PC: o aparelho pode parar de funcionar.' "$($drivers[0])")
     }
     elseif ($drivers.Count -gt 1) {
-        Write-WinForgeStatus -Type Warning -Notice -Message "$(Join-WinForgeList -Items $drivers) são drivers de aparelhos do PC: os aparelhos podem parar de funcionar."
+        Write-WinForgeStatus -Type Warning -Notice -Message (Get-WinForgeText '{0} são drivers de aparelhos do PC: os aparelhos podem parar de funcionar.' "$(Join-WinForgeList -Items $drivers)")
     }
 }
 
 
 function Uninstall-WinForgeSoftware {
-    Enter-WinForgeAction -Title "Desinstalar programas"
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Desinstalar programas')
 
     # Mesmo critério de "Buscar e instalar": desistir é "Cancelado"; o programa que não sai é falha.
-    $final = New-WinForgeResult -Kind Failed -Detail "a desinstalação não devolveu resultado"
+    $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a desinstalação não devolveu resultado')
 
     try {
         if (-not (Initialize-WinForgeWinget -OfferStore)) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeWingetMissingDetail))
+            Exit-WinForgeAction -Result (Get-WinForgeWingetMissingResult)
             return
         }
 
         Write-WinForgeWingetUserWarning
-        Write-Progress -Activity "Desinstalar programas" -Status "lendo a lista de programas instalados"
+        Write-Progress -Activity (Get-WinForgeText 'Desinstalar programas') -Status (Get-WinForgeText 'lendo a lista de programas instalados')
 
         try {
-            $listing = Invoke-WinForgeCapture -FilePath "winget" -Arguments @("list", "--accept-source-agreements")
-            $all = @(ConvertFrom-WinForgeWingetTable -Lines $listing.Lines)
+            $listing = Read-WinForgeWingetList
+            $all = @($listing.Rows)
 
             # Só entra o que o WinForge consegue de fato desinstalar; o que fica de fora, e por quê, está em
             # Get-WinForgeUninstallCandidates (componentes do Windows, bibliotecas, entradas sem desinstalador...).
             $installed = @(Get-WinForgeUninstallCandidates -Packages $all)
         }
         finally {
-            Write-Progress -Activity "Desinstalar programas" -Completed
+            Write-Progress -Activity (Get-WinForgeText 'Desinstalar programas') -Completed
         }
 
         Write-Host ""
 
         if ($all.Count -gt 0 -and $installed.Count -eq 0) {
-            Write-WinForgeStatus -Type Info -Message "Nenhum programa para desinstalar."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "nenhum programa para desinstalar")
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Nenhum programa para desinstalar.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'nenhum programa para desinstalar'))
             return
         }
 
@@ -2562,10 +3342,10 @@ function Uninstall-WinForgeSoftware {
             Write-Host ""
 
             $exitResult = Get-WinForgeWingetExitResult -ExitCode $listing.ExitCode
-            $reason = $(if ($exitResult.Kind -ne "Ok") { $exitResult.Detail } elseif ([string]::IsNullOrWhiteSpace($listing.Text)) { "o winget não respondeu" } else { "o WinForge não reconheceu a tabela do winget" })
+            $reason = $(if ($exitResult.Kind -ne "Ok") { $exitResult.Detail } elseif ([string]::IsNullOrWhiteSpace($listing.Text)) { (Get-WinForgeText 'o winget não respondeu') } else { (Get-WinForgeText 'o WinForge não reconheceu a tabela do winget') })
 
-            Write-WinForgeStatus -Type Error -Message "Não foi possível ler a lista de programas: $reason."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail "não foi possível ler a lista de programas: $reason")
+            Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível ler a lista de programas: {0}.' "$reason")
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'não foi possível ler a lista de programas: {0}' "$reason"))
             return
         }
 
@@ -2573,17 +3353,17 @@ function Uninstall-WinForgeSoftware {
             foreach ($package in $installed) {
                 $caution = Get-WinForgeWingetPackageCaution -Package $package
                 $description = Format-WinForgeWingetPackageDescription -Package $package
-                @{ Key = $package.Id; Label = $package.Nome; Description = $(if ($caution -and $description) { "Atenção: $caution · $description" } elseif ($caution) { "Atenção: $caution" } else { $description }) }
+                @{ Key = $package.Id; Label = $package.Nome; Description = $(if ($caution -and $description) { (Get-WinForgeText 'Atenção: {0} · {1}' "$caution" "$description") } elseif ($caution) { (Get-WinForgeText 'Atenção: {0}' "$caution") } else { $description }) }
             }
         )
 
         # Sem "Marcar todos": desinstalar é de um em um, e um clique não pode marcar a lista inteira.
-        $count = Format-WinForgeCount -Count $installed.Count -One "programa instalado" -Many "programas instalados"
-        $picked = Read-WinForgeMultiSelect -Message "O que desinstalar? ($count)" -Options $options -NoSelectAll -ConfirmLabel "Desinstalar"
+        $count = Format-WinForgeCount -Count $installed.Count -One (Get-WinForgeText 'programa instalado') -Many (Get-WinForgeText 'programas instalados')
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'O que desinstalar? ({0})' "$count") -Options $options -NoSelectAll -ConfirmLabel (Get-WinForgeText 'Desinstalar')
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário'))
             return
         }
 
@@ -2593,11 +3373,11 @@ function Uninstall-WinForgeSoftware {
         # cinza. Até três nomes, a própria pergunta os diz; com mais, ela aponta para a lista.
         Write-WinForgeUninstallPreview -Packages $packages
         $names = @($packages | ForEach-Object { [string]$_.Nome })
-        $question = $(if ($names.Count -le 3) { Get-WinForgeSelectionQuestion -Verb "Desinstalar" -Names $names -Many "programas" } else { "Desinstalar os $($names.Count) programas listados acima?" })
+        $question = $(if ($names.Count -le 3) { Get-WinForgeSelectionQuestion -Verb (Get-WinForgeText 'Desinstalar') -Names $names -Many (Get-WinForgeText 'programas') } else { (Get-WinForgeText 'Desinstalar os {0} programas listados acima?' "$($names.Count)") })
 
-        if (-not (Confirm-WinForgeAction $question -DefaultKey N)) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário")
+        if (-not (Confirm-WinForgeAction $question -DefaultKey N -YesLabel (Get-WinForgeText 'Desinstalar') -NoLabel (Get-WinForgeText 'Cancelar'))) {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário'))
             return
         }
 
@@ -2609,15 +3389,17 @@ function Uninstall-WinForgeSoftware {
         $removed = @($packages | Where-Object { $doneIds -contains [string]$_.Id })
 
         if ($final.Kind -in @("Ok", "Warning") -and $removed.Count -gt 0) {
-            [void](Add-WinForgeChange -Action "Programas desinstalados" -Text (Join-WinForgeList -Items @($removed | ForEach-Object { [string]$_.Nome })))
+            [void](Add-WinForgeChange -Action (Get-WinForgeText 'Programas desinstalados') -Text (Join-WinForgeList -Items @($removed | ForEach-Object { [string]$_.Nome })))
 
             foreach ($package in $removed) { Add-WinForgeUninstalledProgram -Name ([string]$package.Nome) -Id ([string]$package.Id) }
 
-            Write-WinForgeStatus -Type Info -Message "Para procurar restos, use Limpeza > Restos de programas desinstalados."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Para procurar restos, use Limpeza > Restos de programas desinstalados.')
         }
+
+        Request-WinForgeProgramsRestart -Operation Uninstall -Result $final
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível desinstalar: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível desinstalar: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 
@@ -2645,8 +3427,8 @@ function Add-WinForgeInstalledProgramsChange {
     $updated = @($done | Where-Object { Test-WinForgeWingetIdInstalled -Installed $Installed -Id $_.Id } | ForEach-Object { [string]$_.Nome })
     $new = @($done | Where-Object { -not (Test-WinForgeWingetIdInstalled -Installed $Installed -Id $_.Id) } | ForEach-Object { [string]$_.Nome })
 
-    if ($new.Count -gt 0) { [void](Add-WinForgeChange -Action "Programas instalados" -Text (Join-WinForgeList -Items $new)) }
-    if ($updated.Count -gt 0) { [void](Add-WinForgeChange -Action "Programas atualizados" -Text (Join-WinForgeList -Items $updated)) }
+    if ($new.Count -gt 0) { [void](Add-WinForgeChange -Action (Get-WinForgeText 'Programas instalados') -Text (Join-WinForgeList -Items $new)) }
+    if ($updated.Count -gt 0) { [void](Add-WinForgeChange -Action (Get-WinForgeText 'Programas atualizados') -Text (Join-WinForgeList -Items $updated)) }
 }
 
 
@@ -2665,6 +3447,7 @@ function Get-WinForgeEssentialCategoryRank {
     #>
     param ([string]$Category)
 
+    # As categorias são as do catálogo, em português (a tela traduz na hora de mostrar).
     $order = @("Básico", "Comunicação e mídia", "Produtividade", "Jogos")
     $index = [array]::IndexOf($order, [string]$Category)
 
@@ -2676,14 +3459,14 @@ function Get-WinForgeEssentialCategoryRank {
 
 
 function Install-WinForgeEssentialSoftware {
-    Enter-WinForgeAction -Title "Instalar programas essenciais"
+    Enter-WinForgeAction -Title (Get-WinForgeText 'Instalar programas essenciais')
 
     # Mesmo critério de "Buscar e instalar": desistir é "Cancelado"; o único programa que não instala é falha.
-    $final = New-WinForgeResult -Kind Failed -Detail "a instalação não devolveu resultado"
+    $final = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'a instalação não devolveu resultado')
 
     try {
         if (-not (Initialize-WinForgeWinget -OfferStore)) {
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Failed -Detail (Get-WinForgeWingetMissingDetail))
+            Exit-WinForgeAction -Result (Get-WinForgeWingetMissingResult)
             return
         }
 
@@ -2692,31 +3475,32 @@ function Install-WinForgeEssentialSoftware {
         $catalog = @(Get-WinForgeEssentialSoftwareCatalog | Sort-Object @{ Expression = { Get-WinForgeEssentialCategoryRank -Category $_.Categoria } }, Categoria, Nome)
 
         # Quem já tem o programa vê isso na lista, em vez de reinstalar sem saber.
-        $installedIds = Get-WinForgeInstalledWingetIds -Activity "Instalar programas essenciais"
+        $installedIds = Get-WinForgeInstalledWingetIds -Activity (Get-WinForgeText 'Instalar programas essenciais')
         $already = @($catalog | Where-Object { Test-WinForgeWingetIdInstalled -Installed $installedIds -Id $_.Id })
 
         $options = @(
             foreach ($entry in $catalog) {
-                $description = "$($entry.Categoria) · $($entry.Descricao)"
-                @{ Key = $entry.Id; Label = $entry.Nome; Description = $(if (Test-WinForgeWingetIdInstalled -Installed $installedIds -Id $entry.Id) { "já instalado · $description" } else { $description }) }
+                # O catálogo vem em português (o embutido e o baixado): a categoria e a descrição se traduzem aqui.
+                $description = "$(Get-WinForgeText ([string]$entry.Categoria)) · $(Get-WinForgeText ([string]$entry.Descricao))"
+                @{ Key = $entry.Id; Label = $entry.Nome; Description = $(if (Test-WinForgeWingetIdInstalled -Installed $installedIds -Id $entry.Id) { (Get-WinForgeText 'já instalado · {0}' "$description") } else { $description }) }
             }
         )
 
         # Antes da lista: durante a pergunta de marcar, a janela mostra o resumo, e os detalhes técnicos ficam recolhidos.
-        Write-WinForgeStatus -Type Info -Message "Alguns instaladores podem pedir para fechar programas abertos ou reiniciar o PC."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Alguns instaladores podem pedir para fechar programas abertos ou reiniciar o PC.')
         if ($already.Count -gt 0) {
-            Write-WinForgeStatus -Type Info -Message "$(if ($already.Count -eq 1) { '1 programa da lista já está instalado: marcado, ele é atualizado' } else { "$($already.Count) programas da lista já estão instalados: marcados, eles são atualizados" }) se houver versão nova."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText '{0} se houver versão nova.' "$(if ($already.Count -eq 1) { (Get-WinForgeText '1 programa da lista já está instalado: marcado, ele é atualizado') } else { (Get-WinForgeText '{0} programas da lista já estão instalados: marcados, eles são atualizados' "$($already.Count)") })")
         }
         else {
-            Write-WinForgeStatus -Type Info -Message "O que já estiver instalado é atualizado, se houver versão nova."
+            Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O que já estiver instalado é atualizado, se houver versão nova.')
         }
         Write-Host ""
 
-        $picked = Read-WinForgeMultiSelect -Message "Escolha os programas para instalar" -Options $options
+        $picked = Read-WinForgeMultiSelect -Message (Get-WinForgeText 'Escolha os programas para instalar') -Options $options -ConfirmLabel (Get-WinForgeText 'Instalar')
 
         if ($null -eq $picked -or @($picked).Count -eq 0) {
-            Write-WinForgeStatus -Type Warning -Message "Operação cancelada."
-            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail "cancelado pelo usuário")
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Operação cancelada.')
+            Exit-WinForgeAction -Result (New-WinForgeResult -Kind Skipped -Detail (Get-WinForgeText 'cancelado pelo usuário'))
             return
         }
 
@@ -2726,10 +3510,11 @@ function Install-WinForgeEssentialSoftware {
         if ($null -ne $result) {
             $final = Set-WinForgeWingetPackagesView -Operation Install -Packages $packages -Result $result -Installed $installedIds
             Add-WinForgeInstalledProgramsChange -Packages $packages -Result $result -Installed $installedIds
+            Request-WinForgeProgramsRestart -Operation Install -Result $final
         }
     }
     catch {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível instalar: $($_.Exception.Message.TrimEnd('.'))."
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível instalar: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
         $final = New-WinForgeResult -Kind Failed -Detail $_.Exception.Message
     }
 

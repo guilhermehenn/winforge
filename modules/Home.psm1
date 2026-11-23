@@ -1,11 +1,11 @@
-﻿# Tela inicial (Início): os cartões do estado do PC, a nota de saúde e os atalhos de "Por onde começar".
+﻿# Tela inicial (Início): a nota de saúde, os cartões do estado do PC e o que o WinForge já fez ("Histórico neste PC").
 #
 # A leitura é dividida em etapas independentes (Read-WinForgeHomeStep): a janela lê uma etapa por vez num runspace à
 # parte e mostra cada cartão assim que a etapa dele termina; a verificação rápida da linha de comando
 # (Get-WinForgeHomeStatus) e o relatório leem todas de uma vez. Uma etapa que falha vira "Não foi possível ler" e não
 # apaga as outras; se ela entra na nota, a nota diz que ficou sem essa leitura.
 #
-# Os cartões só mostram e levam à tela do assunto; quem muda o PC são os botões da nota (Otimizar e Verificar vírus) e
+# Os cartões só mostram e levam à tela do assunto; quem muda o PC são os botões da nota (Otimizar e Verificar o PC) e
 # os de cada ponto de atenção.
 
 
@@ -13,15 +13,16 @@
 # leitura do sistema terminar, e Get-WinForgeHomeStatus preenche os mesmos Ids. Primeiro o que pode pedir atenção
 # (espaço, proteção, suporte do Windows), depois o cuidado com o PC; a bateria fecha a lista: em desktops o cartão some,
 # e no fim isso não muda o lugar de nenhum outro. Só tem cartão o que diz como o PC está: o nome do computador e da
-# conta ficam em Sobre este PC (um atalho de "Por onde começar") e no relatório, e a manutenção agendada, que é opcional,
-# só aparece quando pede atenção, como um ponto da nota.
+# conta ficam em Sobre este PC (Consertar > Diagnóstico) e no relatório, e a manutenção agendada, que é opcional,
+# só aparece quando pede atenção, como um ponto da nota. Na janela, o disco, a proteção e o sistema são cartões grandes;
+# a última manutenção, o reinício pendente e a bateria ficam numa linha embaixo deles.
 $script:WinForgeHomeFactLabels = [ordered]@{
-    disk        = "Disco do sistema"
-    security    = "Proteção"
-    windows     = "Windows"
-    reboot      = "Reinício pendente"
-    maintenance = "Última manutenção"
-    battery     = "Bateria"
+    disk        = (Get-WinForgeText 'Disco do sistema')
+    security    = (Get-WinForgeText 'Proteção')
+    windows     = (Get-WinForgeText 'Sistema')
+    reboot      = (Get-WinForgeText 'Reinício pendente')
+    maintenance = (Get-WinForgeText 'Última manutenção')
+    battery     = (Get-WinForgeText 'Bateria')
 }
 
 # Para onde cada cartão leva ao ser clicado (Id de um item da tabela de navegação). Vazio = o cartão só informa. Os
@@ -58,7 +59,7 @@ $script:WinForgeHomeScoredSteps = @("disk", "reboot", "maintenance", "security")
 # O que fica sem leitura quando a etapa da sessão falha: o suporte do Windows (o prazo das atualizações de segurança e
 # se elas estão em dia) entra na nota, e um Windows sem atualizações não pode passar por "tudo em dia" só porque a
 # leitura falhou.
-$script:WinForgeHomeSupportLabel = "Suporte do Windows"
+$script:WinForgeHomeSupportLabel = (Get-WinForgeText 'Suporte do Windows')
 
 # Um Windows sem a atualização mensal registrada no catálogo, passado o prazo dela (Get-WinForgeWindowsUpdateLag), está
 # sem correções de segurança: é um ponto grave.
@@ -147,7 +148,7 @@ function New-WinForgeHomeFact {
 
     # Um valor vazio (por exemplo, variável de ambiente ausente) não pode virar um cartão em branco.
     if ([string]::IsNullOrWhiteSpace($Text)) {
-        $Text = "Não disponível"
+        $Text = (Get-WinForgeText 'Não disponível')
     }
 
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -212,15 +213,15 @@ function Get-WinForgeHealthScore {
         $score = [Math]::Min($score, $script:WinForgeHealthSevereCap)
     }
 
-    if ($score -ge 90) { $label = "Ótima"; $level = "Ok" }
-    elseif ($score -ge 75) { $label = "Boa"; $level = "Ok" }
-    elseif ($score -ge 50) { $label = "Pede atenção"; $level = "Warn" }
-    else { $label = "Crítica"; $level = "Bad" }
+    if ($score -ge 90) { $label = (Get-WinForgeText 'Ótima'); $level = "Ok" }
+    elseif ($score -ge 75) { $label = (Get-WinForgeText 'Boa'); $level = "Ok" }
+    elseif ($score -ge 50) { $label = (Get-WinForgeText 'Pede atenção'); $level = "Warn" }
+    else { $label = (Get-WinForgeText 'Crítica'); $level = "Bad" }
 
     # Com alguma leitura faltando, uma nota alta não pode parecer um atestado: um antivírus que não respondeu (ou o
     # suporte do Windows) poderia esconder justamente o problema. O número continua o do que foi lido, mas sem o verde.
     if (@($Unread | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -and $level -eq "Ok") {
-        $label = "Incompleta"
+        $label = (Get-WinForgeText 'Incompleta')
         $level = "Warn"
     }
 
@@ -261,23 +262,23 @@ function Get-WinForgeHealthSummary {
         $text = ""
     }
     elseif ($count -eq 0) {
-        $text = $(if ($unread.Count -gt 0) { "Nada pedindo atenção no que foi lido." } else { "Nada pedindo atenção agora." })
+        $text = $(if ($unread.Count -gt 0) { (Get-WinForgeText 'Nada pedindo atenção no que foi lido.') } else { (Get-WinForgeText 'Nada pedindo atenção agora.') })
     }
     elseif ([int](Get-WinForgeJsonValue -Object $Health -Name "Score" -Default 0) -ge 75) {
         # Com a nota no verde ("Seu PC está em ótima forma", ou "parece bem" quando algo ficou sem leitura), "pede atenção"
         # desdiria a frase de cima (e é o nome da faixa amarela): o que sobrou são detalhes, sem pressa. Vale a nota, e não
         # a cor: a leitura incompleta tira o verde, mas não muda o tamanho dos pontos.
-        $text = $(if ($count -eq 1) { "1 detalhe para quando puder." } else { "$count detalhes para quando puder." })
+        $text = $(if ($count -eq 1) { (Get-WinForgeText '1 detalhe para quando puder.') } else { (Get-WinForgeText '{0} detalhes para quando puder.' "$count") })
     }
     elseif ($count -eq 1) {
-        $text = "1 ponto pede atenção."
+        $text = (Get-WinForgeText '1 ponto pede atenção.')
     }
     else {
-        $text = "$count pontos pedem atenção."
+        $text = (Get-WinForgeText '{0} pontos pedem atenção.' "$count")
     }
 
     if ($unread.Count -gt 0) {
-        $text = ("$text Não foi possível ler: $($unread -join ', ').").Trim()
+        $text = ((Get-WinForgeText '{0} Não foi possível ler: {1}.' "$text" "$($unread -join ', ')")).Trim()
     }
 
     return $text
@@ -344,11 +345,14 @@ function Get-WinForgeUserDisplayName {
 
 
 function Get-WinForgeHomeWindowsShortName {
-    # O nome do Windows no cartão: "Windows 11 Pro" vira "Windows 11" (a edição fica na frase inteira, que aparece ao
-    # passar o mouse), para a versão caber ao lado. Outros nomes (Windows Server 2022...) ficam inteiros.
+    # O nome do Windows no cartão: "Windows 11 Pro" vira "Windows 11" e "Windows Server 2022 Standard", "Windows Server
+    # 2022" (a edição fica na frase inteira, que aparece ao passar o mouse), para a versão caber ao lado.
     param ([AllowEmptyString()][string]$Name)
 
     if ($Name -match '^(Windows 1[0-9])(\s|$)') { return $Matches[1] }
+
+    # "Windows Server 2022 Standard" vira "Windows Server 2022": o nome inteiro não cabe no cartão.
+    if ($Name -match '^(Windows Server [0-9]{4}( R2)?)(\s|$)') { return $Matches[1] }
 
     return $Name
 }
@@ -366,7 +370,7 @@ function Read-WinForgeHomeSession {
     try {
         $session = Get-WinForgeSessionInfo
 
-        if ($null -eq $session) { throw "sem dados" }
+        if ($null -eq $session) { throw (Get-WinForgeText 'sem dados') }
 
         # O nome completo ("Windows 11 Pro") e a versão (24H2) vêm da sessão quando o Windows os informa; senão, o nome curto.
         $name = [string](Get-WinForgeJsonValue -Object $session -Name "WindowsName" -Default "")
@@ -377,13 +381,14 @@ function Read-WinForgeHomeSession {
 
         $windowsText = $name
         if ($version) { $windowsText += " $version" }
-        if ($build -gt 0) { $windowsText += " (build $build)" }
+        if ($build -gt 0) { $windowsText += (Get-WinForgeText ' (build {0})' "$build") }
 
         # No cartão, o Windows e a versão ("Windows 11 24H2") e, embaixo, o prazo do suporte quando ele é conhecido, que é
         # o que importa; sem ele, a build. A edição fica na frase inteira (Text).
+        # No Windows Server, o ano já é a versão ("Windows Server 2022"), e o 21H2 ao lado não caberia.
         $windowsValue = (Get-WinForgeHomeWindowsShortName -Name $name)
-        if ($version) { $windowsValue += " $version" }
-        $windowsDetail = $(if ($build -gt 0) { "build $build" } else { "" })
+        if ($version -and $windowsValue -notmatch '^Windows Server') { $windowsValue += " $version" }
+        $windowsDetail = $(if ($build -gt 0) { (Get-WinForgeText 'build {0}' "$build") } else { "" })
 
         $windowsLevel = "Normal"
 
@@ -408,22 +413,16 @@ function Read-WinForgeHomeSession {
 
         if ($null -ne $support) {
             $supportIssue = Get-WinForgeWindowsSupportIssue -Status $support
-            $endDate = Get-WinForgeJsonValue -Object $support -Name "EndDate" -Default $null
-            $esuEnd = Get-WinForgeJsonValue -Object $support -Name "EsuEnd" -Default $null
+            $supportShort = Get-WinForgeWindowsSupportShortText -Status $support
 
-            if ([string]$support.State -eq "Supported" -and $endDate -is [datetime]) {
-                $windowsDetail = "suporte até $(Format-WinForgeDateTime -When $endDate -Pattern 'dd/MM/yyyy')"
+            if ([string]$support.State -eq "Supported" -and $supportShort) {
+                $windowsDetail = $supportShort
             }
 
             if ($null -ne $supportIssue) {
                 $issues += $supportIssue
                 $windowsLevel = "Warn"
-                $esuUnchecked = ([string]$support.State -eq "EsuAvailable" -and -not [bool](Get-WinForgeJsonValue -Object $support -Name "EsuChecked" -Default $true))
-                $windowsDetail = switch ([string]$support.State) {
-                    "EndingSoon" { "suporte até $(Format-WinForgeDateTime -When $endDate -Pattern 'dd/MM/yyyy')" }
-                    "Esu" { $(if ($esuEnd -is [datetime]) { "ESU até $(Format-WinForgeDateTime -When $esuEnd -Pattern 'dd/MM/yyyy')" } else { "ESU da organização" }) }
-                    default { $(if ($esuUnchecked) { "suporte não conferido" } else { "sem suporte de segurança" }) }
-                }
+                $windowsDetail = $supportShort
                 $windowsText += " · $($supportIssue.Text.Substring(0, 1).ToLowerInvariant())$($supportIssue.Text.Substring(1))"
             }
 
@@ -436,10 +435,10 @@ function Read-WinForgeHomeSession {
                 try { $lag = Get-WinForgeWindowsUpdateLag -Build $build } catch { $lag = $null }
 
                 if ($lag -eq $true) {
-                    $issues += New-WinForgeHealthIssue -Id "updates" -Text "Faltam atualizações de segurança do Windows" -Weight $script:WinForgeHomeUpdateLagWeight -Target "updates.install" -ButtonText "Atualizar"
+                    $issues += New-WinForgeHealthIssue -Id "updates" -Text (Get-WinForgeText 'Faltam atualizações de segurança do Windows') -Weight $script:WinForgeHomeUpdateLagWeight -Target "updates.install" -ButtonText (Get-WinForgeText 'Atualizar')
                     $windowsLevel = "Warn"
-                    $windowsDetail = "atualizações atrasadas"
-                    $windowsText += " · faltam atualizações de segurança"
+                    $windowsDetail = (Get-WinForgeText 'atualizações atrasadas')
+                    $windowsText += (Get-WinForgeText ' · faltam atualizações de segurança')
                 }
             }
         }
@@ -449,11 +448,11 @@ function Read-WinForgeHomeSession {
         if ($session.UserMismatch) {
             # O nome vem do Windows: numa linha só, e sem ele a frase não fica com um buraco.
             $user = ConvertTo-WinForgeHomeLine -Text (Get-WinForgeUserDisplayName -Name ([string]$session.User) -Computer $computer)
-            $who = $(if ($user) { "a conta $user" } else { "outra conta" })
+            $who = $(if ($user) { (Get-WinForgeText 'a conta {0}' "$user") } else { (Get-WinForgeText 'outra conta') })
 
             $notices += [PSCustomObject]@{
                 Level = "Warn"
-                Text  = "O WinForge foi aberto com $who, não com a que está em uso: a limpeza e os ajustes do Windows valem só para ela."
+                Text  = (Get-WinForgeText 'O WinForge foi aberto com {0}, não com a que está em uso: a limpeza e os ajustes do Windows valem só para ela.' "$who")
             }
         }
     }
@@ -462,7 +461,7 @@ function Read-WinForgeHomeSession {
         $notices = @()
         $issues = @()
         $unread = @($script:WinForgeHomeSupportLabel)
-        $facts = @(New-WinForgeHomeFact -Id "windows" -Text "Não foi possível ler" -Level Muted)
+        $facts = @(New-WinForgeHomeFact -Id "windows" -Text (Get-WinForgeText 'Não foi possível ler') -Level Muted)
     }
 
     return New-WinForgeHomeStepResult -Step "session" -Facts $facts -Notices $notices -Issues $issues -Unread $unread
@@ -480,36 +479,45 @@ function Read-WinForgeHomeDisk {
     try {
         $space = Get-WinForgeSystemDriveSpace
 
-        if ($null -eq $space) { throw "sem dados" }
+        if ($null -eq $space) { throw (Get-WinForgeText 'sem dados') }
 
         $level = Get-WinForgeDiskSpaceLevel -FreeBytes $space.FreeBytes -TotalBytes $space.TotalBytes
 
         # Um espaço livre que não é número (ou negativo) não vira "0 B livres" num cartão tranquilo: é leitura que falhou.
-        if ($level -eq "Unknown") { throw "espaço livre desconhecido" }
+        if ($level -eq "Unknown") { throw (Get-WinForgeText 'espaço livre desconhecido') }
 
         $free = Format-WinForgeBytes -Bytes $space.FreeBytes
         $total = Format-WinForgeBytes -Bytes $space.TotalBytes
-        $text = "$free livres de $total"
-        $detail = "de $total"
+        $text = (Get-WinForgeText '{0} livres de {1}' "$free" "$total")
+        $detail = (Get-WinForgeText 'de {0}' "$total")
         $level = $(switch ($level) { "Critical" { "Critical" } "Low" { "Low" } default { "Normal" } })
 
+        # No cartão, o complemento fica "de 237 GB": o amarelo do valor e da barra, o "99% em uso" ao lado e o ponto da nota
+        # já dizem que falta espaço, e " · quase cheio" a mais pedia uma coluna mais larga que a dos três cartões lado a
+        # lado (eles iam um embaixo do outro justo com o disco cheio). A frase inteira (Text) continua dizendo.
         switch ($level) {
             "Critical" {
-                $text += " (quase cheio)"; $detail += " · quase cheio"; $level = "Warn"
-                $issues += New-WinForgeHealthIssue -Id "disk" -Text "O disco do sistema está quase cheio" -Weight 25 -Target "cleanup.custom" -ButtonText "Liberar espaço"
+                $text += (Get-WinForgeText ' (quase cheio)'); $level = "Warn"
+                $issues += New-WinForgeHealthIssue -Id "disk" -Text (Get-WinForgeText 'O disco do sistema está quase cheio') -Weight 25 -Target "cleanup.custom" -ButtonText (Get-WinForgeText 'Liberar espaço')
             }
             "Low" {
-                $text += " (pouco espaço)"; $detail += " · pouco espaço"; $level = "Warn"
-                $issues += New-WinForgeHealthIssue -Id "disk" -Text "Pouco espaço livre no disco do sistema" -Weight 12 -Target "cleanup.custom" -ButtonText "Liberar espaço"
+                $text += (Get-WinForgeText ' (pouco espaço)'); $level = "Warn"
+                $issues += New-WinForgeHealthIssue -Id "disk" -Text (Get-WinForgeText 'Pouco espaço livre no disco do sistema') -Weight 12 -Target "cleanup.custom" -ButtonText (Get-WinForgeText 'Liberar espaço')
             }
         }
 
-        $fact = New-WinForgeHomeFact -Id "disk" -Text $text -Value "$free livres" -Detail $detail -Level $level
+        $fact = New-WinForgeHomeFact -Id "disk" -Text $text -Value (Get-WinForgeText '{0} livres' "$free") -Detail $detail -Level $level
+
+        # Quanto do disco está em uso, de 0 a 100, para a barra do cartão (a janela; a verificação rápida não leva).
+        if ([double]$space.TotalBytes -gt 0) {
+            $used = 100.0 * ([double]$space.TotalBytes - [double]$space.FreeBytes) / [double]$space.TotalBytes
+            $fact | Add-Member -NotePropertyName Usage -NotePropertyValue ([int][Math]::Max(0, [Math]::Min(100, [Math]::Round($used, [MidpointRounding]::AwayFromZero))))
+        }
     }
     catch {
         $issues = @()
         $unread = @($script:WinForgeHomeFactLabels["disk"])
-        $fact = New-WinForgeHomeFact -Id "disk" -Text "Não foi possível ler" -Level Muted
+        $fact = New-WinForgeHomeFact -Id "disk" -Text (Get-WinForgeText 'Não foi possível ler') -Level Muted
     }
 
     return New-WinForgeHomeStepResult -Step "disk" -Facts @($fact) -Issues $issues -Unread $unread
@@ -523,17 +531,17 @@ function Read-WinForgeHomeReboot {
 
     try {
         if (Test-WinForgePendingReboot) {
-            $fact = New-WinForgeHomeFact -Id "reboot" -Text "Sim, reinicie o PC" -Value "Sim" -Detail "reinicie quando puder" -Level Warn
-            $issues += New-WinForgeHealthIssue -Id "reboot" -Text "Há um reinício pendente" -Weight 8 -Target "diagnostics.pending-reboot" -ButtonText "Ver"
+            $fact = New-WinForgeHomeFact -Id "reboot" -Text (Get-WinForgeText 'Sim, reinicie o PC') -Value (Get-WinForgeText 'Sim') -Detail (Get-WinForgeText 'reinicie quando puder') -Level Warn
+            $issues += New-WinForgeHealthIssue -Id "reboot" -Text (Get-WinForgeText 'Há um reinício pendente') -Weight 8 -Target "diagnostics.pending-reboot" -ButtonText (Get-WinForgeText 'Ver')
         }
         else {
-            $fact = New-WinForgeHomeFact -Id "reboot" -Text "Não" -Level Ok
+            $fact = New-WinForgeHomeFact -Id "reboot" -Text (Get-WinForgeText 'Não') -Level Ok
         }
     }
     catch {
         $issues = @()
         $unread = @($script:WinForgeHomeFactLabels["reboot"])
-        $fact = New-WinForgeHomeFact -Id "reboot" -Text "Não foi possível ler" -Level Muted
+        $fact = New-WinForgeHomeFact -Id "reboot" -Text (Get-WinForgeText 'Não foi possível ler') -Level Muted
     }
 
     return New-WinForgeHomeStepResult -Step "reboot" -Facts @($fact) -Issues $issues -Unread $unread
@@ -608,32 +616,32 @@ function Read-WinForgeHomeMaintenance {
         $care = Get-WinForgeLastCare -Strict -Now $Now
         $last = $care.Maintenance
         # A segunda linha do cartão cabe pouco mais de 25 letras: "verificado há 45 minutos".
-        $checkupNote = $(if ($care.CheckupFresh) { "verificado $(Format-WinForgeRelativeTime -When $care.CheckupAt -Now $Now)" } else { "" })
+        $checkupNote = $(if ($care.CheckupFresh) { (Get-WinForgeText 'verificado {0}' "$(Format-WinForgeRelativeTime -When $care.CheckupAt -Now $Now)") } else { "" })
 
         if ($null -eq $last) {
             if ($care.CheckupFresh) {
-                $fact = New-WinForgeHomeFact -Id "maintenance" -Text "Ainda não executada · $checkupNote" -Value "Ainda não executada" -Detail $checkupNote -Level Muted
+                $fact = New-WinForgeHomeFact -Id "maintenance" -Text (Get-WinForgeText 'Ainda não executada · {0}' "$checkupNote") -Value (Get-WinForgeText 'Ainda não executada') -Detail $checkupNote -Level Muted
             }
             else {
-                $fact = New-WinForgeHomeFact -Id "maintenance" -Text "Ainda não executada" -Detail "o ideal é uma por mês" -Level Muted
-                $issues += New-WinForgeHealthIssue -Id "maintenance" -Text "O PC ainda não foi verificado nem passou por uma manutenção" -Weight 5 -Target "maintenance.checkup" -ButtonText "Verificar o PC"
+                $fact = New-WinForgeHomeFact -Id "maintenance" -Text (Get-WinForgeText 'Ainda não executada') -Detail (Get-WinForgeText 'o ideal é uma por mês') -Level Muted
+                $issues += New-WinForgeHealthIssue -Id "maintenance" -Text (Get-WinForgeText 'O PC ainda não foi verificado nem passou por uma manutenção') -Weight 5 -Target "maintenance.checkup" -ButtonText (Get-WinForgeText 'Verificar o PC')
             }
         }
         else {
             $startedAt = $care.MaintenanceAt
-            $date = $startedAt.ToString("dd/MM/yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+            $date = Format-WinForgeDateTime -When $startedAt
 
             if ($care.MaintenanceInFuture) {
                 # Não dá para saber qual das duas datas está errada (a do registro ou a do relógio de agora): o texto diz
                 # só que elas não batem.
-                $text = "registrada em $date, depois da data de hoje no relógio do Windows"
+                $text = (Get-WinForgeText 'registrada em {0}, depois da data de hoje no relógio do Windows' "$date")
 
                 if ($care.CheckupFresh) {
-                    $fact = New-WinForgeHomeFact -Id "maintenance" -Text "$text · $checkupNote" -Value "Data no futuro" -Detail $checkupNote -Level Normal
+                    $fact = New-WinForgeHomeFact -Id "maintenance" -Text "$text · $checkupNote" -Value (Get-WinForgeText 'Data no futuro') -Detail $checkupNote -Level Normal
                 }
                 else {
-                    $fact = New-WinForgeHomeFact -Id "maintenance" -Text $text -Value "Data no futuro" -Detail "confira o relógio" -Level Warn
-                    $issues += New-WinForgeHealthIssue -Id "maintenance" -Text "A data da última manutenção não bate com o relógio do Windows" -Weight 8 -Target "maintenance.checkup" -ButtonText "Verificar o PC"
+                    $fact = New-WinForgeHomeFact -Id "maintenance" -Text $text -Value (Get-WinForgeText 'Data no futuro') -Detail (Get-WinForgeText 'confira o relógio') -Level Warn
+                    $issues += New-WinForgeHealthIssue -Id "maintenance" -Text (Get-WinForgeText 'A data da última manutenção não bate com o relógio do Windows') -Weight 8 -Target "maintenance.checkup" -ButtonText (Get-WinForgeText 'Verificar o PC')
                 }
             }
             elseif ($care.CheckupFresh) {
@@ -644,24 +652,24 @@ function Read-WinForgeHomeMaintenance {
                 $problems = @(@($last.Results) | Where-Object { $null -ne $_ -and $null -ne $_.PSObject.Properties["Kind"] -and [string]$_.Kind -in @("Warning", "Failed") }).Count
                 $old = (($Now - $startedAt).TotalDays -ge 30)
                 $when = Format-WinForgeRelativeTime -When $startedAt -Now $Now
-                $steps = Format-WinForgeCount -Count $problems -One "etapa" -Many "etapas"
+                $steps = Format-WinForgeCount -Count $problems -One (Get-WinForgeText 'etapa') -Many (Get-WinForgeText 'etapas')
                 $notes = @()
 
-                if ($problems -gt 0) { $notes += "$steps com atenção" }
+                if ($problems -gt 0) { $notes += (Get-WinForgeText '{0} com atenção' "$steps") }
 
                 # Uma manutenção por mês mantém o PC em dia; depois disso vale lembrar.
                 if ($old) {
-                    $notes += "já passou de um mês"
+                    $notes += (Get-WinForgeText 'já passou de um mês')
 
                     # Antiga e com problemas é um ponto só, com o peso maior (o de estar atrasada): uma manutenção velha que
                     # ainda por cima pediu atenção não pode descontar menos que uma velha que correu bem.
-                    $issueText = $(if ($problems -gt 0) { "Faz mais de um mês desde a última manutenção ($steps com atenção)" } else { "Faz mais de um mês desde a última manutenção" })
-                    $issues += New-WinForgeHealthIssue -Id "maintenance" -Text $issueText -Weight 8 -Target "maintenance.checkup" -ButtonText "Verificar o PC"
+                    $issueText = $(if ($problems -gt 0) { (Get-WinForgeText 'Faz mais de um mês desde a última manutenção ({0} com atenção)' "$steps") } else { (Get-WinForgeText 'Faz mais de um mês desde a última manutenção') })
+                    $issues += New-WinForgeHealthIssue -Id "maintenance" -Text $issueText -Weight 8 -Target "maintenance.checkup" -ButtonText (Get-WinForgeText 'Verificar o PC')
                 }
                 elseif ($problems -gt 0) {
                     # O que pediu atenção está no histórico (cada etapa com o motivo); refazer a manutenção inteira, uma hora
                     # de trabalho, só para rever duas etapas seria demais.
-                    $issues += New-WinForgeHealthIssue -Id "maintenance" -Text "A última manutenção terminou com $steps pedindo atenção" -Weight 6 -Target "maintenance.history" -ButtonText "Ver"
+                    $issues += New-WinForgeHealthIssue -Id "maintenance" -Text (Get-WinForgeText 'A última manutenção terminou com {0} pedindo atenção' "$steps") -Weight 6 -Target "maintenance.history" -ButtonText (Get-WinForgeText 'Ver')
                 }
 
                 $text = "$when ($date)"
@@ -676,7 +684,7 @@ function Read-WinForgeHomeMaintenance {
     catch {
         $issues = @()
         $unread = @($script:WinForgeHomeFactLabels["maintenance"])
-        $fact = New-WinForgeHomeFact -Id "maintenance" -Text "Não foi possível ler" -Level Muted
+        $fact = New-WinForgeHomeFact -Id "maintenance" -Text (Get-WinForgeText 'Não foi possível ler') -Level Muted
     }
 
     return New-WinForgeHomeStepResult -Step "maintenance" -Facts @($fact) -Issues $issues -Unread $unread
@@ -694,21 +702,21 @@ function Get-WinForgeHomeAntivirusText {
 
     switch ([string]$Antivirus.Mode) {
         "Active" {
-            if ($Antivirus.RealTime -eq $false) { return "Defender sem tempo real" }
+            if ($Antivirus.RealTime -eq $false) { return (Get-WinForgeText 'Defender sem tempo real') }
             return "Windows Defender"
         }
         "Other" {
             $others = @(@(Get-WinForgeJsonValue -Object $Antivirus -Name "Others" -Default @()) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { ConvertTo-WinForgeHomeLine -Text ([string]$_) })
 
-            if ($others.Count -eq 0) { return "outro antivírus" }
+            if ($others.Count -eq 0) { return (Get-WinForgeText 'outro antivírus') }
             if ($Full -or $others.Count -eq 1) { return ($others -join ", ") }
             return "$($others[0]) +$($others.Count - 1)"
         }
-        "Passive" { return "Defender em modo passivo" }
-        "Off" { return "antivírus desligado" }
+        "Passive" { return (Get-WinForgeText 'Defender em modo passivo') }
+        "Off" { return (Get-WinForgeText 'antivírus desligado') }
     }
 
-    return "antivírus não lido"
+    return (Get-WinForgeText 'antivírus não lido')
 }
 
 
@@ -728,7 +736,7 @@ function Read-WinForgeHomeSecurity {
     try {
         $protection = Get-WinForgeSecurityStatus
 
-        if ($null -eq $protection) { throw "sem dados" }
+        if ($null -eq $protection) { throw (Get-WinForgeText 'sem dados') }
 
         # O aviso "antivírus sem leitura" é leitura que falhou, e não um ponto de atenção: o cartão diz "Leitura incompleta".
         $warnings = @($protection.Findings | Where-Object { $_.Level -eq "Warning" -and [string](Get-WinForgeJsonValue -Object $_ -Name "Id" -Default "") -ne "antivirus-unreadable" })
@@ -744,38 +752,38 @@ function Read-WinForgeHomeSecurity {
             $count = @($threats).Count
 
             if ($mode -eq "Other") {
-                $issues += New-WinForgeHealthIssue -Id "threats" -Text "O Defender guarda $(Format-WinForgeCount -Count $count -One 'ameaça' -Many 'ameaças'); confira no outro antivírus" -Weight 10 -Target "security.status" -ButtonText "Ver"
+                $issues += New-WinForgeHealthIssue -Id "threats" -Text (Get-WinForgeText 'O Defender guarda {0}; confira no outro antivírus' "$(Format-WinForgeCount -Count $count -One (Get-WinForgeText 'ameaça') -Many (Get-WinForgeText 'ameaças'))") -Weight 10 -Target "security.status" -ButtonText (Get-WinForgeText 'Ver')
             }
             else {
-                $issues += New-WinForgeHealthIssue -Id "threats" -Text "$(Format-WinForgeCount -Count $count -One 'ameaça ativa' -Many 'ameaças ativas') no antivírus" -Weight 30 -Target "WindowsSecurityThreats" -ButtonText "Segurança do Windows"
+                $issues += New-WinForgeHealthIssue -Id "threats" -Text (Get-WinForgeText '{0} no antivírus' "$(Format-WinForgeCount -Count $count -One (Get-WinForgeText 'ameaça ativa') -Many (Get-WinForgeText 'ameaças ativas'))") -Weight 30 -Target "WindowsSecurityThreats" -ButtonText (Get-WinForgeText 'Segurança do Windows')
             }
         }
 
         if ($mode -eq "Off") {
-            $issues += New-WinForgeHealthIssue -Id "antivirus" -Text "Nenhum antivírus ativo foi encontrado" -Weight 25 -Target "WindowsSecurityThreats" -ButtonText "Segurança do Windows"
+            $issues += New-WinForgeHealthIssue -Id "antivirus" -Text (Get-WinForgeText 'Nenhum antivírus ativo foi encontrado') -Weight 25 -Target "WindowsSecurityThreats" -ButtonText (Get-WinForgeText 'Segurança do Windows')
         }
         elseif ($mode -eq "Passive") {
             # Modo passivo sem outro antivírus identificado: pode haver um que o Windows não lista, então não é "sem
             # antivírus", mas pede conferência.
-            $issues += New-WinForgeHealthIssue -Id "antivirus-passive" -Text "O Defender está em modo passivo, sem outro antivírus à vista" -Weight 15 -Target "security.status" -ButtonText "Ver"
+            $issues += New-WinForgeHealthIssue -Id "antivirus-passive" -Text (Get-WinForgeText 'O Defender está em modo passivo, sem outro antivírus à vista') -Weight 15 -Target "security.status" -ButtonText (Get-WinForgeText 'Ver')
         }
         elseif ($mode -eq "Active" -and $antivirus.RealTime -eq $false) {
-            $issues += New-WinForgeHealthIssue -Id "realtime" -Text "A proteção em tempo real está desligada" -Weight 20 -Target "WindowsSecurityThreats" -ButtonText "Segurança do Windows"
+            $issues += New-WinForgeHealthIssue -Id "realtime" -Text (Get-WinForgeText 'A proteção em tempo real está desligada') -Weight 20 -Target "WindowsSecurityThreats" -ButtonText (Get-WinForgeText 'Segurança do Windows')
         }
 
         if ($mode -eq "Active") {
             $age = Get-WinForgeJsonValue -Object $antivirus -Name "SignatureAgeDays" -Default $null
 
             if ([bool](Get-WinForgeJsonValue -Object $antivirus -Name "SignaturesNeverUpdated" -Default $false)) {
-                $issues += New-WinForgeHealthIssue -Id "signatures" -Text "O antivírus nunca foi atualizado" -Weight 10 -Target "security.signatures" -ButtonText "Atualizar"
+                $issues += New-WinForgeHealthIssue -Id "signatures" -Text (Get-WinForgeText 'O antivírus nunca foi atualizado') -Weight 10 -Target "security.signatures" -ButtonText (Get-WinForgeText 'Atualizar')
             }
             elseif ($null -ne $age -and [int]$age -gt 7) {
-                $issues += New-WinForgeHealthIssue -Id "signatures" -Text "O antivírus não é atualizado há $([int]$age) dias" -Weight 10 -Target "security.signatures" -ButtonText "Atualizar"
+                $issues += New-WinForgeHealthIssue -Id "signatures" -Text (Get-WinForgeText 'O antivírus não é atualizado há {0} dias' "$([int]$age)") -Weight 10 -Target "security.signatures" -ButtonText (Get-WinForgeText 'Atualizar')
             }
         }
 
         if ($null -ne $protection.Firewall -and @(Get-WinForgeFirewallGaps -Firewall $protection.Firewall).Count -gt 0) {
-            $issues += New-WinForgeHealthIssue -Id "firewall" -Text "O firewall está desligado em algum perfil de rede" -Weight 15 -Target "WindowsSecurityFirewall" -ButtonText "Segurança do Windows"
+            $issues += New-WinForgeHealthIssue -Id "firewall" -Text (Get-WinForgeText 'O firewall está desligado em algum perfil de rede') -Weight 15 -Target "WindowsSecurityFirewall" -ButtonText (Get-WinForgeText 'Segurança do Windows')
         }
 
         # "Protegido" só quando o antivírus, o firewall e (com o Defender ativo) as ameaças foram lidos: sem isso, a tela
@@ -787,7 +795,7 @@ function Read-WinForgeHomeSecurity {
 
         if ($incomplete) { $unread = @($script:WinForgeHomeFactLabels["security"]) }
 
-        $value = $(if ($warnings.Count -gt 0) { Format-WinForgeCount -Count $warnings.Count -One "ponto de atenção" -Many "pontos de atenção" } elseif ($incomplete) { "Leitura incompleta" } else { "Protegido" })
+        $value = $(if ($warnings.Count -gt 0) { Format-WinForgeCount -Count $warnings.Count -One (Get-WinForgeText 'ponto de atenção') -Many (Get-WinForgeText 'pontos de atenção') } elseif ($incomplete) { (Get-WinForgeText 'Leitura incompleta') } else { (Get-WinForgeText 'Protegido') })
         $level = $(if ($warnings.Count -gt 0 -or $incomplete) { "Warn" } else { "Ok" })
 
         # A frase inteira leva o nome de todos os antivírus: no cartão, um nome comprido termina em "...".
@@ -799,7 +807,7 @@ function Read-WinForgeHomeSecurity {
     catch {
         $issues = @()
         $unread = @($script:WinForgeHomeFactLabels["security"])
-        $fact = New-WinForgeHomeFact -Id "security" -Text "Não foi possível ler" -Level Muted
+        $fact = New-WinForgeHomeFact -Id "security" -Text (Get-WinForgeText 'Não foi possível ler') -Level Muted
     }
 
     return New-WinForgeHomeStepResult -Step "security" -Facts @($fact) -Issues $issues -Unread $unread
@@ -808,14 +816,16 @@ function Read-WinForgeHomeSecurity {
 
 function Read-WinForgeHomeBattery {
     # Bateria: só em notebooks. Num desktop, um nobreak ligado pelo USB aparece no Windows como bateria: o cartão some,
-    # como quando não há bateria ou ela não pôde ser lida.
+    # como quando não há bateria ou ela não pôde ser lida. Se é notebook vem da leitura da sessão (a primeira etapa, que
+    # já perguntou ao Windows): perguntar de novo seriam mais duas consultas ao WMI a cada leitura do Início.
     $fact = $null
 
     try {
-        $battery = $(if (Test-WinForgeLaptop) { Get-WinForgeBatteryState } else { $null })
+        $laptop = [bool](Get-WinForgeJsonValue -Object (Get-WinForgeSessionInfo) -Name "IsLaptop" -Default $false)
+        $battery = $(if ($laptop) { Get-WinForgeBatteryState } else { $null })
 
         if ($null -eq $battery) {
-            $fact = New-WinForgeHomeFact -Id "battery" -Text "Sem bateria" -Level Muted -Visible $false
+            $fact = New-WinForgeHomeFact -Id "battery" -Text (Get-WinForgeText 'Sem bateria') -Level Muted -Visible $false
         }
         else {
             # Alguns drivers informam valores fora de 0 a 100 (255, por exemplo) quando não sabem a carga; a mesma regra da
@@ -823,18 +833,19 @@ function Read-WinForgeHomeBattery {
             $charge = ConvertTo-WinForgeBatteryPercent -Value (Get-WinForgeJsonValue -Object $battery -Name "ChargePercent" -Default $null)
 
             $state = [string](Get-WinForgeJsonValue -Object $battery -Name "State" -Default "")
-            $value = $(if ($null -ne $charge) { "$charge%" } else { "Carga desconhecida" })
+            $value = $(if ($null -ne $charge) { "$charge%" } else { (Get-WinForgeText 'Carga desconhecida') })
             $text = $value
             if ($state) { $text += " · $state" }
 
             # Pouca carga e longe da tomada: o cartão fica amarelo (a nota não muda; é o momento, não a saúde do PC).
-            $level = $(if ($null -ne $charge -and $charge -le $script:WinForgeLowBatteryPercent -and $state -eq "Usando a bateria") { "Warn" } else { "Normal" })
+            $onBattery = ([string](Get-WinForgeJsonValue -Object $battery -Name "Code" -Default "") -eq "Battery")
+            $level = $(if ($null -ne $charge -and $charge -le $script:WinForgeLowBatteryPercent -and $onBattery) { "Warn" } else { "Normal" })
 
             $fact = New-WinForgeHomeFact -Id "battery" -Text $text -Value $value -Detail $state.ToLowerInvariant() -Level $level
         }
     }
     catch {
-        $fact = New-WinForgeHomeFact -Id "battery" -Text "Sem bateria" -Level Muted -Visible $false
+        $fact = New-WinForgeHomeFact -Id "battery" -Text (Get-WinForgeText 'Sem bateria') -Level Muted -Visible $false
     }
 
     return New-WinForgeHomeStepResult -Step "battery" -Facts @($fact)
@@ -847,33 +858,43 @@ function Read-WinForgeHomeSchedule {
     e não está rodando (desligada no Agendador de Tarefas, apontando para um WinForge que sumiu ou mudou de pasta, ou com
     a última execução falha) vira um ponto leve da nota, com o botão para a tela que recria o agendamento. Sem leitura,
     nada: a nota não depende dela.
+    ScheduleSetup: o passo da configuração inicial está feito (a tarefa existe e roda o WinForge desta pasta; sem conseguir
+    ler o script dela, vale ela existir). A janela o usa no lugar de consultar o Agendador na thread dela
+    (Get-WinForgeSetupChecklist -ScheduleDone).
     #>
     $issues = @()
+    $setup = $false
 
     try {
         $schedule = Get-WinForgeScheduleStatus
 
         if ($null -ne $schedule -and [bool](Get-WinForgeJsonValue -Object $schedule -Name "Installed" -Default $false)) {
+            $setup = ([string](Get-WinForgeJsonValue -Object $schedule -Name "ScriptPath" -Default "") -eq "" -or -not [bool](Get-WinForgeJsonValue -Object $schedule -Name "Stale" -Default $false))
+
             $text = ""
 
             if (-not [bool](Get-WinForgeJsonValue -Object $schedule -Name "Enabled" -Default $true)) {
-                $text = "A manutenção agendada está desligada no Agendador de Tarefas"
+                $text = (Get-WinForgeText 'A manutenção agendada está desligada no Agendador de Tarefas')
             }
             elseif ([bool](Get-WinForgeJsonValue -Object $schedule -Name "NeedsAttention" -Default $false)) {
                 $moved = ([bool](Get-WinForgeJsonValue -Object $schedule -Name "ScriptMissing" -Default $false) -or [bool](Get-WinForgeJsonValue -Object $schedule -Name "Stale" -Default $false))
-                $text = $(if ($moved) { "A manutenção agendada usa um WinForge de outra pasta" } else { "A última manutenção agendada falhou" })
+                $text = $(if ($moved) { (Get-WinForgeText 'A manutenção agendada usa um WinForge de outra pasta') } else { (Get-WinForgeText 'A última manutenção agendada falhou') })
             }
 
             if ($text) {
-                $issues += New-WinForgeHealthIssue -Id "schedule" -Text $text -Weight 3 -Target "maintenance.schedule" -ButtonText "Ver"
+                $issues += New-WinForgeHealthIssue -Id "schedule" -Text $text -Weight 3 -Target "maintenance.schedule" -ButtonText (Get-WinForgeText 'Ver')
             }
         }
     }
     catch {
         $issues = @()
+        $setup = $false
     }
 
-    return New-WinForgeHomeStepResult -Step "schedule" -Issues $issues
+    $result = New-WinForgeHomeStepResult -Step "schedule" -Issues $issues
+    $result | Add-Member -NotePropertyName ScheduleSetup -NotePropertyValue ([bool]$setup)
+
+    return $result
 }
 
 
@@ -887,7 +908,7 @@ function Read-WinForgeHomeStep {
     param ([Parameter(Mandatory)][string]$Name)
 
     if (-not $script:WinForgeHomeStepFacts.Contains($Name)) {
-        throw "Etapa da tela inicial desconhecida: $Name"
+        throw (Get-WinForgeText 'Etapa da tela inicial desconhecida: {0}' "$Name")
     }
 
     try {
@@ -914,8 +935,8 @@ function New-WinForgeHomeStepFailure {
 
     $facts = @(
         foreach ($id in $script:WinForgeHomeStepFacts[$Name]) {
-            if ($id -eq "battery") { New-WinForgeHomeFact -Id $id -Text "Sem bateria" -Level Muted -Visible $false }
-            else { New-WinForgeHomeFact -Id $id -Text "Não foi possível ler" -Level Muted }
+            if ($id -eq "battery") { New-WinForgeHomeFact -Id $id -Text (Get-WinForgeText 'Sem bateria') -Level Muted -Visible $false }
+            else { New-WinForgeHomeFact -Id $id -Text (Get-WinForgeText 'Não foi possível ler') -Level Muted }
         }
     )
 
@@ -958,17 +979,92 @@ function Get-WinForgeHomeStatus {
 }
 
 
-function Get-WinForgeHomeActions {
-    # Atalhos da tela inicial ("Por onde começar"): o que a maioria das pessoas procura primeiro. O Otimizar e Verificar
-    # vírus já são os botões da nota de saúde; repetir aqui só empurraria as outras opções para baixo. Verificar o PC, a
-    # correção de um clique, fica aqui, e Sobre este PC, que não tem mais cartão. O Acelerar agora saiu: os mesmos ajustes
-    # estão no Otimizar, e um atalho de "acelerar" no Início promete mais do que eles entregam num PC comum.
-    return @(
-        "maintenance.checkup",
-        "cleanup.quick",
-        "updates.install",
-        "diagnostics.about"
-    ) | ForEach-Object { Get-WinForgeNavItem -Id $_ }
+function Get-WinForgeSetupChecklist {
+    <#
+    A configuração inicial, no fim do Início: o atalho, o monitor na bandeja e a manutenção mensal, cada um com Done
+    (já feito), o item da navegação que o faz (NavId) e, quando o cartão roda algo diferente do item, Command. Visible:
+    o cartão aparece (algum passo falta e ele não foi fechado). Ele fecha de vez com "Agora não" ou quando os três ficam
+    feitos (a preferência SetupCardClosed): desligar o monitor depois não o traz de volta. Só leituras rápidas (arquivos e
+    registro), para o Início não esperar.
+    ScheduleDone: a manutenção mensal desta pasta está agendada. Vem da leitura do Início (Read-WinForgeHomeSchedule), que
+    consulta o Agendador de Tarefas fora da thread da janela e com prazo: um Agendador travado não congela a janela. A
+    tarefa conta quando roda o WinForge desta pasta (uma que abre outra pasta, a extraída do zip ou uma que já foi apagada,
+    falharia sem ninguém ver).
+    #>
+    param ([bool]$ScheduleDone = $false)
+
+    $closed = [bool](Get-WinForgeSetting -Name "SetupCardClosed" -Default $false)
+    $root = Get-WinForgeAppRoot
+
+    $shortcut = $false
+    try {
+        $shortcut = (@(Get-WinForgeShortcutState | Where-Object { $_.Exists -and $_.Current }).Count -gt 0) -or
+            (@(Get-WinForgeCommonShortcutPaths | Where-Object { Test-WinForgeShortcutOpens -Path $_.Path -Root $root }).Count -gt 0)
+    }
+    catch { $shortcut = $false }
+
+    $monitor = $false
+    try { $monitor = ((Get-WinForgeAgentRunState) -eq "On") } catch { $monitor = $false }
+
+    $schedule = ((-not $closed) -and $ScheduleDone)
+
+    $steps = @(
+        [PSCustomObject]@{ Id = "shortcut"; Icon = "link"; Done = $shortcut; NavId = "app.shortcut"; Command = ""; Admin = $false
+            Label = (Get-WinForgeText 'Atalho do WinForge'); Description = (Get-WinForgeText 'Para abrir pelo Menu Iniciar ou pela Área de Trabalho'); Button = (Get-WinForgeText 'Criar') },
+        [PSCustomObject]@{ Id = "monitor"; Icon = "bell"; Done = $monitor; NavId = "app.monitor"; Command = "Set-WinForgeMonitor -Choose On"; Admin = $false
+            Label = (Get-WinForgeText 'Monitor na bandeja'); Description = (Get-WinForgeText 'Avisa quando o disco enche, a proteção desliga ou o disco começa a falhar'); Button = (Get-WinForgeText 'Ligar') },
+        [PSCustomObject]@{ Id = "schedule"; Icon = "calendar"; Done = $schedule; NavId = "maintenance.schedule"; Command = ""; Admin = $true
+            Label = (Get-WinForgeText 'Manutenção mensal'); Description = (Get-WinForgeText 'Uma vez por mês, apaga os temporários e salva um relatório'); Button = (Get-WinForgeText 'Agendar') }
+    )
+
+    $pending = @($steps | Where-Object { -not $_.Done }).Count
+
+    if (-not $closed -and $pending -eq 0) {
+        [void](Set-WinForgeSetting -Name "SetupCardClosed" -Value $true)
+        $closed = $true
+    }
+
+    return [PSCustomObject]@{ Visible = (-not $closed -and $pending -gt 0); Steps = @($steps) }
+}
+
+
+function Close-WinForgeSetupCard {
+    # "Agora não": a configuração inicial não volta (os passos continuam em Sobre o WinForge e em Manutenção).
+    [void](Set-WinForgeSetting -Name "SetupCardClosed" -Value $true)
+}
+
+
+function Get-WinForgeHomeValueSummary {
+    <#
+    "Histórico neste PC", no Início: o que o WinForge já fez aqui, só com o que ele mesmo anotou.
+    Freed: a soma do que as etapas das manutenções disseram ter liberado ($null quando nenhuma mediu, ou nada foi
+    liberado; as gravadas antes da 4.0 não têm a medida). Runs: as manutenções no histórico, o mesmo número da tela
+    Histórico de manutenções (Full: o histórico chegou ao limite e guarda só as últimas). Changes: as mudanças anotadas; Undoable: quantas ainda
+    têm desfazer. Visible: há algo a mostrar. Só leituras de dois arquivos pequenos, para o Início não esperar.
+    #>
+    # A gravação já troca a entrada de uma execução gravada de novo (o RunId): cada entrada é uma manutenção.
+    $runs = @(Get-WinForgeMaintenanceHistory | Where-Object { $null -ne $_ })
+
+    $freed = $null
+    $measured = @($runs | ForEach-Object { Get-WinForgeJsonValue -Object $_ -Name "Freed" } | Where-Object { $null -ne $_ })
+
+    if ($measured.Count -gt 0) {
+        $total = [int64]0
+        foreach ($bytes in $measured) { if ([int64]$bytes -gt 0) { $total += [int64]$bytes } }
+        if ($total -gt 0) { $freed = $total }
+    }
+
+    $changes = @(Get-WinForgeChanges)
+    $undoable = @($changes | Where-Object { Test-WinForgeChangeUndoable -Change $_ }).Count
+
+    return [PSCustomObject]@{
+        Visible  = ($null -ne $freed -or $runs.Count -gt 0 -or $changes.Count -gt 0)
+        Freed    = $freed
+        Runs     = $runs.Count
+        Full     = ($runs.Count -ge (Get-WinForgeMaintenanceHistoryLimit))
+        Changes  = $changes.Count
+        Undoable = $undoable
+    }
 }
 
 

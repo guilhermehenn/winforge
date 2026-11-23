@@ -10,13 +10,13 @@ function Get-WinForgeReportSystemItems {
 
     $system = Get-WinForgeCimOrNull -ClassName "Win32_ComputerSystem" | Select-Object -First 1
 
-    @{ Label = "Computador"; Value = $(if ([string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) { [Environment]::MachineName } else { $env:COMPUTERNAME }) }
-    @{ Label = "Usuário"; Value = $(if ([string]::IsNullOrWhiteSpace($env:USERNAME)) { [Environment]::UserName } else { $env:USERNAME }) }
+    @{ Label = (Get-WinForgeText 'Computador'); Value = $(if ([string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) { [Environment]::MachineName } else { $env:COMPUTERNAME }) }
+    @{ Label = (Get-WinForgeText 'Usuário'); Value = $(if ([string]::IsNullOrWhiteSpace($env:USERNAME)) { [Environment]::UserName } else { $env:USERNAME }) }
 
     # Fabricante e modelo do PC, como em Sobre este PC: é o que um técnico pergunta primeiro (drivers, BIOS, garantia).
     $machine = Get-WinForgeMachineModelText -System $system
 
-    if ($machine) { @{ Label = "Fabricante e modelo"; Value = $machine } }
+    if ($machine) { @{ Label = (Get-WinForgeText 'Fabricante e modelo'); Value = $machine } }
 
     if ($os) {
         # O mesmo texto do cartão Windows da tela inicial: "Windows 11 Pro 24H2 (build 26100)".
@@ -25,23 +25,26 @@ function Get-WinForgeReportSystemItems {
         $version = Get-WinForgeWindowsDisplayVersion
 
         if ($version) { $windows += " $version" }
-        if ($build -gt 0) { $windows += " (build $build)" }
+        if ($build -gt 0) { $windows += (Get-WinForgeText ' (build {0})' "$build") }
 
-        @{ Label = "Sistema operacional"; Value = $windows.Trim() }
-        @{ Label = "Tempo ligado"; Value = (Get-WinForgeUptimeText -LastBootTime $os.LastBootUpTime) }
+        @{ Label = (Get-WinForgeText 'Sistema operacional'); Value = $windows.Trim() }
+        @{ Label = (Get-WinForgeText 'Tempo ligado'); Value = (Get-WinForgeUptimeText -LastBootTime $os.LastBootUpTime) }
     }
     else {
-        @{ Label = "Sistema operacional"; Value = "Não foi possível ler" }
+        @{ Label = (Get-WinForgeText 'Sistema operacional'); Value = (Get-WinForgeText 'Não foi possível ler') }
     }
 
     # O veredito da tela Suporte do Windows: num laudo, "este Windows ainda recebe correções?" é a primeira pergunta.
     try {
         $support = Get-WinForgeWindowsSupportStatus
-        @{ Label = "Suporte do Windows"; Value = $(if ($support.Text) { [string]$support.Text } else { "Não foi possível conferir" }) }
+        @{ Label = (Get-WinForgeText 'Suporte do Windows'); Value = $(if ($support.Text) { [string]$support.Text } else { (Get-WinForgeText 'Não foi possível conferir') }) }
     }
     catch {
-        @{ Label = "Suporte do Windows"; Value = "Não foi possível conferir" }
+        @{ Label = (Get-WinForgeText 'Suporte do Windows'); Value = (Get-WinForgeText 'Não foi possível conferir') }
     }
+
+    # A ativação, como em Sobre este PC: é a pergunta seguinte de quem recebe o laudo.
+    @{ Label = (Get-WinForgeText 'Ativação do Windows'); Value = (Get-WinForgeWindowsActivationText -State (Get-WinForgeWindowsActivation)) }
 
     # O mesmo veredito das telas: só os sinais fortes dizem "sim". Os fracos (arquivos esperando substituição) aparecem
     # em muitos PCs sem que o reinício seja necessário, e sozinhos não viram motivo.
@@ -49,10 +52,10 @@ function Get-WinForgeReportSystemItems {
     $strong = @($pending | Where-Object { $_.Strong })
     $rebootText = $(
         if ($strong.Count -gt 0) { ($strong | ForEach-Object { $_.Reason }) -join "; " }
-        elseif ($pending.Count -gt 0) { "Não (só sinais que aparecem em quase todo PC; reiniciar não é obrigatório)" }
-        else { "Não" }
+        elseif ($pending.Count -gt 0) { (Get-WinForgeText 'Não (só sinais que aparecem em quase todo PC; reiniciar não é obrigatório)') }
+        else { (Get-WinForgeText 'Não') }
     )
-    @{ Label = "Reinício pendente"; Value = $rebootText }
+    @{ Label = (Get-WinForgeText 'Reinício pendente'); Value = $rebootText }
 }
 
 
@@ -64,18 +67,18 @@ function Get-WinForgeReportHardwareItems {
     $bios = Get-WinForgeCimOrNull -ClassName "Win32_BIOS" | Select-Object -First 1
 
     if ($cpu) {
-        $items += @{ Label = "Processador"; Value = ([string]$cpu.Name).Trim() }
+        $items += @{ Label = (Get-WinForgeText 'Processador'); Value = ([string]$cpu.Name).Trim() }
     }
 
     if ($memory.Count -gt 0) {
         $totalRam = Format-WinForgeBytes -Bytes (($memory | Measure-Object -Property Capacity -Sum).Sum) -ZeroText "?"
         $memoryType = Convert-WinForgeMemoryType -Type ([int]($memory | Select-Object -First 1).SMBIOSMemoryType)
         $modules = Get-WinForgeMemoryModulesText -Modules $memory
-        $items += @{ Label = "Memória"; Value = "$totalRam $memoryType$(if ($modules) { " ($modules)" })" }
+        $items += @{ Label = (Get-WinForgeText 'Memória'); Value = "$totalRam $memoryType$(if ($modules) { " ($modules)" })" }
     }
 
     if ($board) {
-        $items += @{ Label = "Placa-mãe"; Value = "$($board.Manufacturer) $($board.Product)".Trim() }
+        $items += @{ Label = (Get-WinForgeText 'Placa-mãe'); Value = "$($board.Manufacturer) $($board.Product)".Trim() }
     }
 
     if ($bios) {
@@ -83,11 +86,11 @@ function Get-WinForgeReportHardwareItems {
     }
 
     foreach ($gpu in @(Get-WinForgeCimOrNull -ClassName "Win32_VideoController" | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) -and $_.Name -notmatch "Microsoft Basic|Remote|Parsec" })) {
-        $items += @{ Label = "Vídeo"; Value = ([string]$gpu.Name).Trim() }
+        $items += @{ Label = (Get-WinForgeText 'Vídeo'); Value = ([string]$gpu.Name).Trim() }
     }
 
     if ($items.Count -eq 0) {
-        $items += @{ Label = "Hardware"; Value = "Não foi possível ler" }
+        $items += @{ Label = (Get-WinForgeText 'Hardware'); Value = (Get-WinForgeText 'Não foi possível ler') }
     }
 
     return $items
@@ -102,23 +105,24 @@ function Get-WinForgeReportDiskItems {
     $summary = @(Get-WinForgeDiskSummary)
     $healthList = @(Get-WinForgeDiskHealth)
 
-    if ($summary.Count -eq 0) { $items += @{ Label = "Unidades"; Value = "Não foi possível ler" } }
+    if ($summary.Count -eq 0) { $items += @{ Label = (Get-WinForgeText 'Unidades'); Value = (Get-WinForgeText 'Não foi possível ler') } }
 
     foreach ($disk in $summary) {
         $items += @{ Label = $disk.Unidade; Value = (Get-WinForgeDiskSummaryText -Disk $disk) }
     }
 
-    if ($healthList.Count -eq 0) { $items += @{ Label = "Saúde dos discos"; Value = "Não foi possível ler (em alguns PCs, requer Administrador)" } }
+    if ($healthList.Count -eq 0) { $items += @{ Label = (Get-WinForgeText 'Saúde dos discos'); Value = (Get-WinForgeText 'Não foi possível ler (em alguns PCs, requer Administrador)') } }
 
     foreach ($health in $healthList) {
         $status = Get-WinForgeDiskHealthStatusText -Status $health.HealthStatus
-        if ($status -eq "Desconhecido") { $status = "Estado desconhecido" }
+        if ($status -eq (Get-WinForgeText 'Desconhecido')) { $status = (Get-WinForgeText 'Estado desconhecido') }
 
-        $text = if ($health.Notes.Count -gt 0) { "$status. Alertas: $($health.Notes -join '; ')" }
-        elseif ($health.CountersAvailable) { "$status, sem alertas" }
-        else { "$status, sem contadores de confiabilidade" }
+        $text = if ($health.Notes.Count -gt 0) { (Get-WinForgeText '{0}. Alertas: {1}' "$status" "$($health.Notes -join '; ')") }
+        elseif ($health.CountersAvailable) { (Get-WinForgeText '{0}, sem alertas' "$status") }
+        elseif ([bool](Get-WinForgeJsonValue -Object $health -Name "CountersTimedOut" -Default $false)) { (Get-WinForgeText '{0}; os contadores não vieram (o Windows não respondeu a tempo)' "$status") }
+        else { (Get-WinForgeText '{0}, sem contadores de confiabilidade' "$status") }
         $drives = @(Get-WinForgeJsonValue -Object $health -Name "Drives" -Default @())
-        $items += @{ Label = "Saúde: $($health.Name)$(if ($drives.Count -gt 0) { " ($($drives -join ', '))" })"; Value = $text }
+        $items += @{ Label = (Get-WinForgeText 'Saúde: {0}{1}' "$($health.Name)" "$(if ($drives.Count -gt 0) { " ($($drives -join ', '))" })"); Value = $text }
     }
 
     return $items
@@ -142,13 +146,54 @@ function Get-WinForgeReportEventItems {
     $summary = @(ConvertTo-WinForgeEventSummary -Events @(Get-WinForgeRecentCriticalEvents -Days 7) -Top 10)
 
     if ($summary.Count -eq 0) {
-        $items += @{ Label = "Últimos 7 dias"; Value = "Nenhum evento crítico ou de erro" }
+        $items += @{ Label = (Get-WinForgeText 'Últimos 7 dias'); Value = (Get-WinForgeText 'Nenhum evento crítico ou de erro') }
     }
 
     foreach ($entry in $summary) {
         $value = Format-WinForgeEventOccurrences -Entry $entry
         if ($entry.Hint) { $value += " - $($entry.Hint)" }
-        $items += @{ Label = "$(Get-WinForgeEventProviderText -Provider $entry.Provider) (ID $($entry.Id))"; Value = $value }
+        $items += @{ Label = (Get-WinForgeText '{0} (ID {1})' "$(Get-WinForgeEventProviderText -Provider $entry.Provider)" "$($entry.Id)"); Value = $value }
+    }
+
+    return $items
+}
+
+
+function Get-WinForgeReportStabilityItems {
+    # As telas azuis dos últimos 90 dias e o último teste de memória, como em Diagnóstico > Telas azuis e Teste de memória.
+    $items = @()
+    $label = (Get-WinForgeText 'Telas azuis (90 dias)')
+
+    try {
+        $screens = @(Get-WinForgeBlueScreens -Days 90)
+
+        if ($screens.Count -eq 0) {
+            $items += @{ Label = $label; Value = (Get-WinForgeText 'Nenhuma') }
+        }
+        else {
+            $about = Get-WinForgeBugCheckCauseText -Cause (Get-WinForgeBlueScreenMainCause -Screens $screens).Cause
+            $latest = $screens[0]
+            $code = "0x{0:X8}" -f [uint32]$latest.Code
+            $count = Format-WinForgeCount -Count $screens.Count -One (Get-WinForgeText 'tela azul') -Many (Get-WinForgeText 'telas azuis')
+
+            $items += @{ Label = $label; Value = (Get-WinForgeText '{0}; causa mais provável: {1}' "$count" "$($about.Cause)") }
+            $items += @{ Label = (Get-WinForgeText 'A mais recente'); Value = (Get-WinForgeText '{0} ({1})' "$(Format-WinForgeDateTime -When $latest.When)" "$(if ($latest.Info.Name) { "$code $($latest.Info.Name)" } else { $code })") }
+        }
+    }
+    catch {
+        $items += @{ Label = $label; Value = (Get-WinForgeText 'Não foi possível ler') }
+    }
+
+    try {
+        $memory = Get-WinForgeMemoryTestResult
+        $value = $(if ($null -eq $memory) { (Get-WinForgeText 'nenhum no último ano') }
+            elseif ($memory.Errors) { (Get-WinForgeText '{0}: {1}' "$(Format-WinForgeDateTime -When $memory.When)" "$(Get-WinForgeText 'encontrou erros na memória')") }
+            else { (Get-WinForgeText '{0}: {1}' "$(Format-WinForgeDateTime -When $memory.When)" "$(Get-WinForgeText 'nenhum erro')") })
+
+        $items += @{ Label = (Get-WinForgeText 'Último teste de memória'); Value = $value }
+    }
+    catch {
+        Write-Verbose "Teste de memória: $($_.Exception.Message)"
     }
 
     return $items
@@ -160,30 +205,30 @@ function Get-WinForgeReportBatteryItems {
     $info = Get-WinForgeBatteryInfo
 
     if (-not $info.Present) {
-        return @(@{ Label = "Bateria"; Value = "Nenhuma bateria encontrada" })
+        return @(@{ Label = (Get-WinForgeText 'Bateria'); Value = (Get-WinForgeText 'Nenhuma bateria encontrada') })
     }
 
     $now = @()
     if ($null -ne $info.State.ChargePercent) { $now += "$($info.State.ChargePercent)%" }
     if ($info.State.State) { $now += $info.State.State }
-    if ($now.Count -gt 0) { $items += @{ Label = "Agora"; Value = ($now -join ", ") } }
+    if ($now.Count -gt 0) { $items += @{ Label = (Get-WinForgeText 'Agora'); Value = ($now -join ", ") } }
 
     foreach ($reading in @($info.Readings)) {
-        $label = $(if ($reading.Name) { $reading.Name } else { "Bateria" })
+        $label = $(if ($reading.Name) { $reading.Name } else { (Get-WinForgeText 'Bateria') })
         $assessment = Get-WinForgeBatteryAssessment -HealthPercent $reading.HealthPercent -Missing $(if ($null -ne $reading.DesignMwh -and $null -eq $reading.FullMwh) { "full" } else { "design" })
 
         $capacity = @()
         if ($null -ne $reading.FullMwh -and $null -ne $reading.DesignMwh -and -not [bool](Get-WinForgeJsonValue -Object $reading -Name "Relative" -Default $false)) {
-            $capacity += "$(Format-WinForgeWattHours -MilliwattHours $reading.FullMwh) de $(Format-WinForgeWattHours -MilliwattHours $reading.DesignMwh) de fábrica"
+            $capacity += (Get-WinForgeText '{0} de {1} de fábrica' "$(Format-WinForgeWattHours -MilliwattHours $reading.FullMwh)" "$(Format-WinForgeWattHours -MilliwattHours $reading.DesignMwh)")
         }
-        if ($null -ne $reading.Cycles) { $capacity += (Format-WinForgeCount -Count ([int]$reading.Cycles) -One "ciclo" -Many "ciclos") }
+        if ($null -ne $reading.Cycles) { $capacity += (Format-WinForgeCount -Count ([int]$reading.Cycles) -One (Get-WinForgeText 'ciclo') -Many (Get-WinForgeText 'ciclos')) }
 
         $parts = @($assessment.Text) + @($capacity)
         $items += @{ Label = $label; Value = ($parts -join " | ") }
     }
 
     if (@($info.Readings).Count -eq 0) {
-        $items += @{ Label = "Capacidade"; Value = "O Windows não informou a capacidade da bateria" }
+        $items += @{ Label = (Get-WinForgeText 'Capacidade'); Value = (Get-WinForgeText 'O Windows não informou a capacidade da bateria') }
     }
 
     return $items
@@ -198,18 +243,18 @@ function Get-WinForgeReportSecurityItems {
 
     # As mesmas linhas da tela Estado da proteção (sem a última verificação completa); "Situação" vira "Antivírus".
     foreach ($row in @(Get-WinForgeAntivirusRows -Antivirus $antivirus -Threats $status.Threats -Brief)) {
-        $items += @{ Label = $(if ($row.Label -eq "Situação") { "Antivírus" } else { $row.Label }); Value = $row.Value }
+        $items += @{ Label = $(if ($row.Label -eq (Get-WinForgeText 'Situação')) { (Get-WinForgeText 'Antivírus') } else { $row.Label }); Value = $row.Value }
     }
 
     if ($null -eq $status.Firewall) {
-        $items += @{ Label = "Firewall"; Value = "Não foi possível ler" }
+        $items += @{ Label = (Get-WinForgeText 'Firewall'); Value = (Get-WinForgeText 'Não foi possível ler') }
     }
     else {
-        $items += @{ Label = "Firewall"; Value = ((@($status.Firewall) | ForEach-Object { $product = [string](Get-WinForgeJsonValue -Object $_ -Name "Product" -Default ""); "$(Get-WinForgeFirewallProfileName -Name $_.Name): $(if ($product) { "protegido por $product" } elseif ($_.Enabled) { 'ligado' } elseif (-not [bool](Get-WinForgeJsonValue -Object $_ -Name 'Applies' -Default $true)) { 'desligado (não vale para este PC, que não está num domínio)' } else { 'desligado' })" }) -join "; ") }
+        $items += @{ Label = (Get-WinForgeText 'Firewall'); Value = ((@($status.Firewall) | ForEach-Object { $product = [string](Get-WinForgeJsonValue -Object $_ -Name "Product" -Default ""); "$(Get-WinForgeFirewallProfileName -Name $_.Name): $(if ($product) { (Get-WinForgeText 'protegido por {0}' "$product") } elseif ($_.Enabled) { (Get-WinForgeText 'ligado') } elseif (-not [bool](Get-WinForgeJsonValue -Object $_ -Name 'Applies' -Default $true)) { (Get-WinForgeText 'desligado (não vale para este PC, que não está num domínio)') } else { (Get-WinForgeText 'desligado') })" }) -join "; ") }
     }
 
     foreach ($finding in @($status.Findings | Where-Object { $_.Level -eq "Warning" })) {
-        $items += @{ Label = "Atenção"; Value = $finding.Text }
+        $items += @{ Label = (Get-WinForgeText 'Atenção'); Value = $finding.Text }
     }
 
     return $items
@@ -242,7 +287,7 @@ function Get-WinForgeReportMaintenanceItems {
         $span = $after.At - $Maintenance.StartedAt
 
         if ($span.Ticks -gt 0) {
-            $items += @{ Label = "Duração"; Value = "$(Format-WinForgeDuration -Span $span) (das $(Format-WinForgeDateTime -When $Maintenance.StartedAt -Pattern 'HH:mm') às $(Format-WinForgeDateTime -When $after.At -Pattern 'HH:mm'))" }
+            $items += @{ Label = (Get-WinForgeText 'Duração'); Value = (Get-WinForgeText '{0} (das {1} às {2})' "$(Format-WinForgeDuration -Span $span)" "$(Format-WinForgeDateTime -When $Maintenance.StartedAt -Pattern 'HH:mm')" "$(Format-WinForgeDateTime -When $after.At -Pattern 'HH:mm')") }
         }
     }
 
@@ -264,7 +309,7 @@ function New-WinForgeReportSection {
         $items = @(& $Build)
     }
     catch {
-        $items = @(@{ Label = "Não foi possível ler esta seção"; Value = $_.Exception.Message })
+        $items = @(@{ Label = (Get-WinForgeText 'Não foi possível ler esta seção'); Value = $_.Exception.Message })
     }
 
     return @{ Title = $Title; Items = $items }
@@ -279,30 +324,30 @@ function Get-WinForgeReportAttentionItems {
     $items = @()
 
     if (Test-WinForgeHealthKnown -Health $health) {
-        $items += @{ Label = "Saúde do PC"; Value = "$($health.Score) de 100 ($($health.Label))" }
+        $items += @{ Label = (Get-WinForgeText 'Saúde do PC'); Value = (Get-WinForgeText '{0} de 100 ({1})' "$($health.Score)" "$($health.Label)") }
     }
     else {
-        $items += @{ Label = "Saúde do PC"; Value = "Não foi possível avaliar" }
+        $items += @{ Label = (Get-WinForgeText 'Saúde do PC'); Value = (Get-WinForgeText 'Não foi possível avaliar') }
     }
 
     $issues = @($health.Issues | Where-Object { $null -ne $_ })
 
     foreach ($issue in $issues) {
-        $items += @{ Label = $(if ($issue.Severe) { "Grave" } else { "Atenção" }); Value = [string]$issue.Text }
+        $items += @{ Label = $(if ($issue.Severe) { (Get-WinForgeText 'Grave') } else { (Get-WinForgeText 'Atenção') }); Value = [string]$issue.Text }
     }
 
     if ($issues.Count -eq 0) {
-        $items += @{ Label = "Pontos de atenção"; Value = "Nenhum" }
+        $items += @{ Label = (Get-WinForgeText 'Pontos de atenção'); Value = (Get-WinForgeText 'Nenhum') }
     }
 
     $unread = @(Get-WinForgeJsonValue -Object $health -Name "Unread" -Default @())
 
     if ($unread.Count -gt 0) {
-        $items += @{ Label = "Não foi possível ler"; Value = ($unread -join ", ") }
+        $items += @{ Label = (Get-WinForgeText 'Não foi possível ler'); Value = ($unread -join ", ") }
     }
 
     foreach ($notice in @($status.Notices | Where-Object { $null -ne $_ })) {
-        $items += @{ Label = "Aviso"; Value = [string]$notice.Text }
+        $items += @{ Label = (Get-WinForgeText 'Aviso'); Value = [string]$notice.Text }
     }
 
     return $items
@@ -312,23 +357,24 @@ function Get-WinForgeReportAttentionItems {
 function Get-WinForgeReportSections {
     $sections = @()
 
-    $sections += New-WinForgeReportSection -Title "Pontos de atenção" -Build { Get-WinForgeReportAttentionItems }
-    $sections += New-WinForgeReportSection -Title "Sistema" -Build { Get-WinForgeReportSystemItems }
-    $sections += New-WinForgeReportSection -Title "Hardware" -Build { Get-WinForgeReportHardwareItems }
-    $sections += New-WinForgeReportSection -Title "Discos" -Build { Get-WinForgeReportDiskItems }
-    $sections += New-WinForgeReportSection -Title "Ajustes do Windows e Personalização" -Build { Get-WinForgeReportTweakItems }
-    $sections += New-WinForgeReportSection -Title "Eventos críticos (7 dias)" -Build { Get-WinForgeReportEventItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Pontos de atenção') -Build { Get-WinForgeReportAttentionItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Sistema') -Build { Get-WinForgeReportSystemItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Hardware') -Build { Get-WinForgeReportHardwareItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Discos') -Build { Get-WinForgeReportDiskItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Ajustes do Windows e Personalização') -Build { Get-WinForgeReportTweakItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Eventos críticos (7 dias)') -Build { Get-WinForgeReportEventItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Telas azuis e memória') -Build { Get-WinForgeReportStabilityItems }
 
-    $sections += New-WinForgeReportSection -Title "Segurança" -Build { Get-WinForgeReportSecurityItems }
+    $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Segurança') -Build { Get-WinForgeReportSecurityItems }
 
     if (Test-WinForgeLaptop) {
-        $sections += New-WinForgeReportSection -Title "Bateria" -Build { Get-WinForgeReportBatteryItems }
+        $sections += New-WinForgeReportSection -Title (Get-WinForgeText 'Bateria') -Build { Get-WinForgeReportBatteryItems }
     }
 
     $maintenance = Get-WinForgeLastMaintenance
 
     if ($null -ne $maintenance) {
-        $title = "Última manutenção"
+        $title = (Get-WinForgeText 'Última manutenção')
 
         try { $title += " ($(Format-WinForgeDateTime -When $maintenance.StartedAt))" } catch { }
 
@@ -352,8 +398,8 @@ function ConvertTo-WinForgeTextReport {
     )
 
     $builder = New-Object System.Text.StringBuilder
-    [void]$builder.AppendLine("WinForge - Relatório (build $Build)")
-    [void]$builder.AppendLine("Gerado em $(Format-WinForgeDateTime -When (Get-Date))")
+    [void]$builder.AppendLine((Get-WinForgeText 'WinForge - Relatório (versão {0})' "$Build"))
+    [void]$builder.AppendLine((Get-WinForgeText 'Gerado em {0}' "$(Format-WinForgeDateTime -When (Get-Date))"))
 
     foreach ($section in $Sections) {
         [void]$builder.AppendLine("")
@@ -380,9 +426,11 @@ function ConvertTo-WinForgeHtmlReport {
     $encode = { param($text) [System.Net.WebUtility]::HtmlEncode([string]$text) }
     $builder = New-Object System.Text.StringBuilder
 
-    [void]$builder.AppendLine("<!doctype html><html lang=`"pt-BR`"><head><meta charset=`"utf-8`">")
+    # O idioma da página é o da interface (o leitor de tela e o tradutor do navegador usam o atributo lang).
+    $htmlLanguage = switch (Get-WinForgeLanguage) { "en" { "en" } "es" { "es" } default { "pt-BR" } }
+    [void]$builder.AppendLine("<!doctype html><html lang=`"$htmlLanguage`"><head><meta charset=`"utf-8`">")
     [void]$builder.AppendLine("<meta name=`"viewport`" content=`"width=device-width, initial-scale=1`">")
-    [void]$builder.AppendLine("<title>WinForge - Relatório</title><style>")
+    [void]$builder.AppendLine("<title>$(& $encode (Get-WinForgeText 'WinForge - Relatório'))</title><style>")
     [void]$builder.AppendLine(":root{--bg:#f6f8fa;--card:#fff;--text:#1f2328;--muted:#656d76;--line:#d8dee4;--accent:#0969da}")
     [void]$builder.AppendLine("@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--text:#e6edf3;--muted:#8b949e;--line:#30363d;--accent:#58a6ff}}")
     [void]$builder.AppendLine("body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Segoe UI,system-ui,sans-serif}")
@@ -391,7 +439,7 @@ function ConvertTo-WinForgeHtmlReport {
     [void]$builder.AppendLine("h2{margin:0 0 8px;font-size:16px;color:var(--accent)}dl{display:grid;grid-template-columns:minmax(140px,30%) 1fr;gap:4px 14px;margin:0}")
     [void]$builder.AppendLine("dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}@media (max-width:560px){dl{grid-template-columns:1fr}}")
     [void]$builder.AppendLine("</style></head><body><main>")
-    [void]$builder.AppendLine("<h1>WinForge</h1><div class=`"meta`">Relatório gerado em $(& $encode (Format-WinForgeDateTime -When (Get-Date))) &middot; build $(& $encode $Build)</div>")
+    [void]$builder.AppendLine("<h1>WinForge</h1><div class=`"meta`">$(& $encode (Get-WinForgeText 'Relatório gerado em {0} · versão {1}' "$(Format-WinForgeDateTime -When (Get-Date))" "$Build"))</div>")
 
     foreach ($section in $Sections) {
         [void]$builder.AppendLine("<section><h2>$(& $encode $section.Title)</h2><dl>")
@@ -428,7 +476,7 @@ function Export-WinForgeReport {
             [void](New-Item -Path $Directory -ItemType Directory -Force -ErrorAction Stop)
         }
         catch {
-            throw "não foi possível criar a pasta dos relatórios ($Directory): $($_.Exception.Message.TrimEnd('.'))"
+            throw (Get-WinForgeText 'não foi possível criar a pasta dos relatórios ({0}): {1}' "$Directory" "$($_.Exception.Message.TrimEnd('.'))")
         }
     }
 
@@ -453,7 +501,7 @@ function Export-WinForgeReport {
         Set-Content -LiteralPath $htmlPath -Value (ConvertTo-WinForgeHtmlReport -Sections $sections -Build $build) -Encoding UTF8 -ErrorAction Stop
     }
     catch {
-        throw "não foi possível gravar o relatório em ${Directory}: $($_.Exception.Message.TrimEnd('.'))"
+        throw (Get-WinForgeText 'não foi possível gravar o relatório em {0}: {1}' "${Directory}" "$($_.Exception.Message.TrimEnd('.'))")
     }
 
     # O HTML é o relatório; o texto é a cópia para colar num e-mail. Se só ele falhar, o HTML salvo continua valendo.
@@ -478,10 +526,10 @@ function Open-WinForgeSavedReport {
     #>
     param ([Parameter(Mandatory)][string]$Path)
 
-    $next = Read-WinForgeChoice -Message "O que deseja fazer com o relatório?" -DefaultKey "A" -ShowMenu -TextPrompt "Opção (ENTER = abrir)" -Options @(
-        @{ Key = "A"; Label = "Abrir o relatório"; Accent = $true },
-        @{ Key = "P"; Label = "Mostrar na pasta" },
-        @{ Key = "X"; Label = "Agora não"; Exit = $true }
+    $next = Read-WinForgeChoice -Message (Get-WinForgeText 'O que deseja fazer com o relatório?') -DefaultKey "A" -ShowMenu -TextPrompt (Get-WinForgeText 'Opção (ENTER = abrir)') -Options @(
+        @{ Key = "A"; Label = (Get-WinForgeText 'Abrir o relatório'); Accent = $true },
+        @{ Key = "P"; Label = (Get-WinForgeText 'Mostrar na pasta') },
+        @{ Key = "X"; Label = (Get-WinForgeText 'Agora não'); Exit = $true }
     )
 
     if ($next -notin @("A", "P")) { return "" }
@@ -493,8 +541,8 @@ function Open-WinForgeSavedReport {
         Start-Process -FilePath "explorer.exe" -ArgumentList $arguments -ErrorAction Stop
     }
     catch {
-        $what = $(if ($next -eq "P") { "mostrar a pasta" } else { "abrir o relatório" })
-        Write-WinForgeStatus -Type Warning -Message "Não foi possível ${what}: $($_.Exception.Message)"
+        $what = $(if ($next -eq "P") { (Get-WinForgeText 'mostrar a pasta') } else { (Get-WinForgeText 'abrir o relatório') })
+        Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Não foi possível {0}: {1}' "${what}" "$($_.Exception.Message)")
         return "${what}: $($_.Exception.Message)"
     }
 
@@ -503,14 +551,14 @@ function Open-WinForgeSavedReport {
 
 
 function Invoke-WinForgeReport {
-    $title = "Exportar relatório"
+    $title = (Get-WinForgeText 'Exportar relatório')
     Enter-WinForgeAction -Title $title
 
     $result = $null
 
     try {
         # O andamento vai na barra: uma linha "Coletando..." ficaria no resumo depois do fim.
-        Write-Progress -Activity $title -Status "coletando sistema, discos, eventos e segurança"
+        Write-Progress -Activity $title -Status (Get-WinForgeText 'coletando sistema, discos, eventos e segurança')
 
         try {
             $report = Export-WinForgeReport
@@ -524,30 +572,30 @@ function Invoke-WinForgeReport {
         Write-Host ""
 
         if ($textProblem) {
-            Write-WinForgeStatus -Type Warning -Message "Relatório HTML salvo; a cópia em texto não pôde ser gravada: ${textProblem}."
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'Relatório HTML salvo; a cópia em texto não pôde ser gravada: {0}.' "${textProblem}")
             Write-WinForgeKeyValue -Label "HTML" -Value $report.Html
-            $result = New-WinForgeResult -Kind Warning -Detail "relatório salvo em HTML; a cópia em texto não pôde ser gravada"
+            $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'relatório salvo em HTML; a cópia em texto não pôde ser gravada')
         }
         else {
-            Write-WinForgeStatus -Type Success -Message "Relatório salvo."
+            Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Relatório salvo.')
             Write-WinForgeKeyValue -Label "HTML" -Value $report.Html
-            Write-WinForgeKeyValue -Label "Texto" -Value $report.Text
-            $result = New-WinForgeResult -Kind Ok -Detail "relatório salvo em HTML e em texto"
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Texto') -Value $report.Text
+            $result = New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'relatório salvo em HTML e em texto')
         }
 
         Write-Host ""
-        Write-WinForgeStatus -Type Info -Message "O relatório traz o nome do PC e do usuário, o hardware e a segurança: confira antes de enviar a alguém."
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'O relatório traz o nome do PC e do usuário, o hardware e a segurança: confira antes de enviar a alguém.')
 
         $problem = Open-WinForgeSavedReport -Path $report.Html
 
         if ($problem) {
-            $result = New-WinForgeResult -Kind Warning -Detail "relatório salvo, mas não foi possível $problem"
+            $result = New-WinForgeResult -Kind Warning -Detail (Get-WinForgeText 'relatório salvo, mas não foi possível {0}' "$problem")
         }
     }
     catch {
         Write-Host ""
-        Write-WinForgeStatus -Type Error -Message "O relatório não foi salvo: $($_.Exception.Message.TrimEnd('.'))."
-        $result = New-WinForgeResult -Kind Failed -Detail "o relatório não foi salvo"
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'O relatório não foi salvo: {0}.' "$($_.Exception.Message.TrimEnd('.'))")
+        $result = New-WinForgeResult -Kind Failed -Detail (Get-WinForgeText 'o relatório não foi salvo')
     }
 
     Exit-WinForgeAction -Result $result
@@ -639,7 +687,7 @@ function Get-WinForgeCheckReport {
         $unread = @(Get-WinForgeJsonValue -Object $health -Name "Unread" -Default @())
 
         if ($unread.Count -gt 0) {
-            $notes += "A nota de saúde não inclui o que não pôde ser lido: $($unread -join ', ')."
+            $notes += (Get-WinForgeText 'A nota de saúde não inclui o que não pôde ser lido: {0}.' "$($unread -join ', ')")
         }
 
         $security = $null
@@ -669,14 +717,14 @@ function Get-WinForgeCheckReport {
                 Attention     = $attention
             }
 
-            $notes += "A consulta ao Windows Update foi pulada para a verificação ser rápida; rode Segurança > Auditoria de segurança para incluí-la."
+            $notes += (Get-WinForgeText 'A consulta ao Windows Update foi pulada para a verificação ser rápida; rode Segurança > Auditoria de segurança para incluí-la.')
         }
         catch {
-            $notes += "Não foi possível fazer a auditoria de segurança: $($_.Exception.Message)"
+            $notes += (Get-WinForgeText 'Não foi possível fazer a auditoria de segurança: {0}' "$($_.Exception.Message)")
         }
 
         if (-not (Test-WinForgeAdministrator)) {
-            $notes += "Sem Administrador: pontos como a criptografia do disco não são verificados."
+            $notes += (Get-WinForgeText 'Sem Administrador: pontos como a criptografia do disco não são verificados.')
         }
 
         $level = Get-WinForgeCheckLevel -Health $health -Attention $attention
@@ -686,7 +734,7 @@ function Get-WinForgeCheckReport {
         # resultado é "não foi possível avaliar".
         if ($level -eq "Ok" -and -not (Test-WinForgeHealthKnown -Health $health)) {
             $level = "Unknown"
-            $problem = "nenhuma leitura da nota de saúde respondeu ($($unread -join ', '))"
+            $problem = (Get-WinForgeText 'nenhuma leitura da nota de saúde respondeu ({0})' "$($unread -join ', ')")
         }
         elseif ($level -eq "Ok" -and $unread.Count -gt 0) {
             # Parte da nota sem leitura (a nota já diz qual): "em dia" (código 0) prometeria o que não foi conferido.
@@ -695,6 +743,20 @@ function Get-WinForgeCheckReport {
         elseif ($level -eq "Ok" -and $null -ne $security -and $security.NoGradeReason -eq "Antivirus") {
             # O antivírus não pôde ser verificado: a auditoria fica sem nota, e "em dia" também prometeria demais.
             $level = "Attention"
+        }
+
+        # As telas azuis dos últimos 30 dias (Diagnóstico > Telas azuis): informam, sem mudar o Status nem o ExitCode.
+        $stability = $null
+
+        try {
+            $screens = @(Get-WinForgeBlueScreens -Days 30)
+            $latest = $(if ($screens.Count -gt 0) {
+                    [PSCustomObject]@{ At = $screens[0].When.ToString("o"); Code = ("0x{0:X8}" -f [uint32]$screens[0].Code); Name = [string]$screens[0].Info.Name; Cause = [string]$screens[0].Info.Cause }
+                })
+            $stability = [PSCustomObject]@{ Days = 30; BlueScreens = $screens.Count; Latest = $latest }
+        }
+        catch {
+            Write-Verbose "Telas azuis: $($_.Exception.Message)"
         }
 
         return [PSCustomObject]@{
@@ -707,6 +769,7 @@ function Get-WinForgeCheckReport {
             ExitCode      = (Get-WinForgeCheckExitCode -Status $level)
             Health        = [PSCustomObject]@{ Score = [int]$health.Score; Label = $health.Label; Level = $health.Level; Issues = $issues; Unread = @($unread) }
             Security      = $security
+            Stability     = $stability
             Facts         = $facts
             Notes         = $notes
             Error         = $problem
@@ -723,6 +786,7 @@ function Get-WinForgeCheckReport {
             ExitCode      = (Get-WinForgeCheckExitCode -Status "Unknown")
             Health        = $null
             Security      = $null
+            Stability     = $null
             Facts         = @()
             Notes         = @()
             Error         = $_.Exception.Message
@@ -747,15 +811,15 @@ function Show-WinForgeCheckReport {
         $Report
     )
 
-    Write-WinForgeSection -Title "Verificação rápida do WinForge (Build $($Report.Build))"
+    Write-WinForgeSection -Title (Get-WinForgeText 'Verificação rápida do WinForge (versão {0})' "$($Report.Build)")
 
     if ($Report.Status -eq "Unknown") {
-        Write-WinForgeStatus -Type Error -Message "Não foi possível avaliar o PC: $($Report.Error)"
-        Write-WinForgeKeyValue -Label "Código de saída" -Value ([string]$Report.ExitCode)
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível avaliar o PC: {0}' "$($Report.Error)")
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Código de saída') -Value ([string]$Report.ExitCode)
         return
     }
 
-    Write-WinForgeKeyValue -Label "Saúde do PC" -Value "$($Report.Health.Score) de 100 ($($Report.Health.Label))"
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Saúde do PC') -Value (Get-WinForgeText '{0} de 100 ({1})' "$($Report.Health.Score)" "$($Report.Health.Label)")
 
     foreach ($issue in @($Report.Health.Issues)) {
         Write-WinForgeStatus -Type $(if ($issue.Weight -ge 25) { "Error" } else { "Warning" }) -Message $issue.Text
@@ -763,22 +827,22 @@ function Show-WinForgeCheckReport {
 
     if (@($Report.Health.Issues).Count -eq 0) {
         $unread = @(Get-WinForgeJsonValue -Object $Report.Health -Name "Unread" -Default @())
-        Write-WinForgeStatus -Type Success -Message $(if ($unread.Count -gt 0) { "Nenhum ponto de atenção no que foi lido." } else { "Nenhum ponto de atenção na saúde do PC." })
+        Write-WinForgeStatus -Type Success -Message $(if ($unread.Count -gt 0) { (Get-WinForgeText 'Nenhum ponto de atenção no que foi lido.') } else { (Get-WinForgeText 'Nenhum ponto de atenção na saúde do PC.') })
     }
 
     if ($null -ne $Report.Security) {
         if ($null -eq $Report.Security.Score) {
             $reason = [string](Get-WinForgeJsonValue -Object $Report.Security -Name "NoGradeReason" -Default "")
             $why = switch ($reason) {
-                "Antivirus" { "sem nota: o antivírus não pôde ser verificado" }
-                "Coverage" { "sem nota: menos da metade dos pontos pôde ser verificada" }
-                default { "sem nota: não foi possível calcular" }
+                "Antivirus" { (Get-WinForgeText 'sem nota: o antivírus não pôde ser verificado') }
+                "Coverage" { (Get-WinForgeText 'sem nota: menos da metade dos pontos pôde ser verificada') }
+                default { (Get-WinForgeText 'sem nota: não foi possível calcular') }
             }
 
-            Write-WinForgeKeyValue -Label "Segurança" -Value $why -Level Warn
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Segurança') -Value $why -Level Warn
         }
         else {
-            Write-WinForgeKeyValue -Label "Segurança" -Value "$($Report.Security.Score) de 100 · $($Report.Security.Grade)"
+            Write-WinForgeKeyValue -Label (Get-WinForgeText 'Segurança') -Value (Get-WinForgeText '{0} de 100 · {1}' "$($Report.Security.Score)" "$($Report.Security.Grade)")
         }
 
         foreach ($item in @($Report.Security.Attention)) {
@@ -791,12 +855,193 @@ function Show-WinForgeCheckReport {
     }
 
     $text = switch ($Report.Status) {
-        "Ok"        { "Tudo em dia" }
-        "Attention" { "Há pontos de atenção" }
-        default     { "Há algo crítico" }
+        "Ok"        { (Get-WinForgeText 'Tudo em dia') }
+        "Attention" { (Get-WinForgeText 'Há pontos de atenção') }
+        default     { (Get-WinForgeText 'Há algo crítico') }
     }
 
-    Write-WinForgeKeyValue -Label "Resultado" -Value "$text (código de saída $($Report.ExitCode))"
+    Write-WinForgeKeyValue -Label (Get-WinForgeText 'Resultado') -Value (Get-WinForgeText '{0} (código de saída {1})' "$text" "$($Report.ExitCode)")
+}
+
+
+# ---------------------------------------------------------------------------
+# Pacote de suporte (Sobre o WinForge > Pacote de suporte)
+# ---------------------------------------------------------------------------
+
+function Copy-WinForgeSharedFile {
+    # Copia um arquivo que outro processo pode estar gravando (o log da janela aberta): lê com o compartilhamento total.
+    param ([Parameter(Mandatory)][string]$From, [Parameter(Mandatory)][string]$To)
+
+    $folder = Split-Path -Parent $To
+    if (-not (Test-Path -LiteralPath $folder)) { [void](New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop) }
+
+    $source = New-Object System.IO.FileStream ($From, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+
+    try {
+        $target = [System.IO.File]::Create($To)
+        try { $source.CopyTo($target) } finally { $target.Dispose() }
+    }
+    finally {
+        $source.Dispose()
+    }
+}
+
+
+function Get-WinForgeSupportInfoText {
+    # As versões, em texto, para quem vai ajudar: WinForge, Windows, PowerShell, .NET, idioma e se abriu como Administrador.
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $lines = New-Object System.Collections.Generic.List[string]
+    $windows = ""
+    $netRelease = ""
+
+    try {
+        $current = Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -ErrorAction Stop
+        $windows = "$(Get-WinForgeWindowsName -Caption ([string](Get-WinForgeJsonValue -Object $current -Name 'ProductName' -Default '')) -Build (Get-WinForgeWindowsBuild)) $(Get-WinForgeWindowsDisplayVersion) (build $(Get-WinForgeWindowsBuild).$([string](Get-WinForgeJsonValue -Object $current -Name 'UBR' -Default '')))"
+    }
+    catch {
+        $windows = "?"
+    }
+
+    try { $netRelease = [string](Get-WinForgeRegistryValueOrNull -Path "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name "Release") } catch { $netRelease = "" }
+
+    $installed = $(try { if (Test-WinForgeInstalledHere) { "yes" } else { "no" } } catch { "?" })
+
+    # Em inglês e sem tradução: é para quem dá suporte, e o arquivo é o mesmo em qualquer idioma da tela.
+    $lines.Add("WinForge Build $(Get-WinForgeBuild)")
+    $lines.Add("Created: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss', $culture))")
+    $lines.Add("Folder: $(Get-WinForgeAppRoot)")
+    $lines.Add("Installed (Apps): $installed")
+    $lines.Add("Language: $(Get-WinForgeLanguage) (preference $(Get-WinForgeLanguagePreference); Windows $([System.Globalization.CultureInfo]::CurrentUICulture.Name))")
+    $lines.Add("Windows: $windows")
+    $lines.Add("64-bit Windows: $([Environment]::Is64BitOperatingSystem); 64-bit process: $([Environment]::Is64BitProcess)")
+    $lines.Add("PowerShell: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))")
+    $lines.Add(".NET Framework release: $netRelease")
+    $lines.Add("Administrator: $(Test-WinForgeAdministrator)")
+    $lines.Add("Window: $(Test-WinForgeGuiMode)")
+
+    return ($lines -join "`r`n")
+}
+
+
+function New-WinForgeSupportPackage {
+    <#
+    Junta num zip, na pasta Downloads, o que ajuda alguém a entender um problema do WinForge: as versões (info.txt), os
+    logs mais recentes e o tempo de abertura, a verificação rápida do PC (check.json), o último relatório, o histórico de
+    mudanças e de manutenção e as preferências. Não entram backups (que podem ter senhas de Wi-Fi), cópias de ajustes nem
+    arquivos pessoais. Devolve um WinForge.Result.
+    #>
+    $title = (Get-WinForgeText 'Pacote de suporte')
+
+    Enter-WinForgeAction -Title $title
+
+    $final = $null
+    $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("WinForge-support-{0}" -f [guid]::NewGuid().ToString("N"))
+
+    try {
+        Write-WinForgeStatus -Type Info -Message (Get-WinForgeText 'Junta num zip os logs, a verificação rápida do PC, o último relatório e as versões. Não leva backups, senhas nem arquivos pessoais.')
+        Write-Host ""
+
+        # Elevado com a conta de outro Administrador, a pasta Downloads seria a dessa conta.
+        $folder = $(if (Test-WinForgeUserContextMismatch) { Join-Path (Get-WinForgeDataPath) "support" } else { Get-WinForgeDownloadsPath })
+        if (-not (Test-Path -LiteralPath $folder)) { [void](New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop) }
+
+        [void](New-Item -ItemType Directory -Path $staging -Force -ErrorAction Stop)
+        $data = Get-WinForgeDataPath
+        $included = @()
+
+        Write-WinForgeStatus -Type Running -Message (Get-WinForgeText 'Lendo as versões e conferindo o PC...')
+        [System.IO.File]::WriteAllText((Join-Path $staging "info.txt"), (Get-WinForgeSupportInfoText), (New-Object System.Text.UTF8Encoding $true))
+        $included += (Get-WinForgeText 'versões')
+
+        try {
+            [System.IO.File]::WriteAllText((Join-Path $staging "check.json"), (ConvertTo-WinForgeCheckJson -Report (Get-WinForgeCheckReport)), (New-Object System.Text.UTF8Encoding $false))
+            $included += (Get-WinForgeText 'verificação rápida do PC')
+        }
+        catch {
+            Write-WinForgeStatus -Type Warning -Message (Get-WinForgeText 'A verificação rápida do PC ficou de fora: {0}' "$(([string]$_.Exception.Message).TrimEnd('.'))")
+        }
+
+        # Os 10 logs mais recentes, o tempo de abertura e as partes da janela que não puderam ser mostradas.
+        $logs = Join-Path $data "logs"
+        $logFiles = @()
+
+        if (Test-Path -LiteralPath $logs -PathType Container) {
+            $logFiles = @(Get-ChildItem -LiteralPath $logs -Filter "winforge-*.log" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 10)
+            $logFiles += @(Get-ChildItem -LiteralPath $logs -Filter "abertura.log" -File -ErrorAction SilentlyContinue)
+            $logFiles += @(Get-ChildItem -LiteralPath $logs -Filter "janela.log" -File -ErrorAction SilentlyContinue)
+        }
+
+        # A linha "Leva" conta só o que foi copiado (um log em uso por outro programa fica de fora).
+        $copied = 0
+
+        foreach ($file in $logFiles) {
+            try { Copy-WinForgeSharedFile -From $file.FullName -To (Join-Path (Join-Path $staging "logs") $file.Name); $copied++ } catch { Write-Verbose "Log: $($_.Exception.Message)" }
+        }
+
+        if ($copied -gt 0) { $included += (Format-WinForgeCount -Count $copied -One (Get-WinForgeText 'log') -Many (Get-WinForgeText 'logs')) }
+
+        # O último relatório (HTML e texto), se houver.
+        $reports = Join-Path $data "reports"
+
+        if (Test-Path -LiteralPath $reports -PathType Container) {
+            $latest = @(Get-ChildItem -LiteralPath $reports -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @(".html", ".txt") } | Sort-Object LastWriteTime -Descending | Select-Object -First 2)
+
+            $copied = 0
+
+            foreach ($file in $latest) {
+                try { Copy-WinForgeSharedFile -From $file.FullName -To (Join-Path (Join-Path $staging "report") $file.Name); $copied++ } catch { Write-Verbose "Relatório: $($_.Exception.Message)" }
+            }
+
+            if ($copied -gt 0) { $included += (Get-WinForgeText 'último relatório') }
+        }
+
+        # Os históricos (mudanças e manutenções) e as preferências (as da janela e as do monitor), quando existem.
+        $state = @{ History = $false; Settings = $false }
+
+        foreach ($entry in @(
+                @{ Path = (Get-WinForgeChangeJournalPath); Kind = "History" },
+                @{ Path = (Get-WinForgeMaintenanceHistoryPath); Kind = "History" },
+                @{ Path = (Get-WinForgeSettingsPath); Kind = "Settings" },
+                @{ Path = (Join-Path $data "agent.json"); Kind = "Settings" }
+            )) {
+            if (Test-Path -LiteralPath $entry.Path -PathType Leaf) {
+                try { Copy-WinForgeSharedFile -From $entry.Path -To (Join-Path (Join-Path $staging "state") (Split-Path -Leaf $entry.Path)); $state[$entry.Kind] = $true } catch { Write-Verbose "Estado: $($_.Exception.Message)" }
+            }
+        }
+
+        if ($state.History) { $included += (Get-WinForgeText 'históricos') }
+        if ($state.Settings) { $included += (Get-WinForgeText 'preferências') }
+
+        $stamp = (Get-Date).ToString("yyyyMMdd-HHmm", [System.Globalization.CultureInfo]::InvariantCulture)
+        $path = Join-Path $folder (Get-WinForgeText 'WinForge-suporte-{0}.zip' "$stamp")
+
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($staging, $path)
+
+        Write-Host ""
+        Write-WinForgeStatus -Type Success -Message (Get-WinForgeText 'Pacote de suporte salvo: {0}' "$path")
+        Write-WinForgeKeyValue -Label (Get-WinForgeText 'Leva') -Value (Join-WinForgeList -Items $included)
+        Write-WinForgeStatus -Type Info -Notice -Message (Get-WinForgeText 'Os logs mostram o nome do PC e caminhos de pastas; confira o zip antes de mandar.')
+
+        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Ok -Detail (Get-WinForgeText 'pacote salvo em {0}' "$path") -Title $title) `
+            -Headline (Get-WinForgeText 'Pacote de suporte salvo') -Note (Get-WinForgeText '{0} está em {1}. Mande esse arquivo a quem vai ajudar.' "$(Split-Path -Leaf $path)" "$folder")
+
+        if (Confirm-WinForgeAction -Message (Get-WinForgeText 'Mostrar o arquivo na pasta?') -DefaultKey S -YesLabel (Get-WinForgeText 'Mostrar') -NoLabel (Get-WinForgeText 'Agora não')) {
+            try { Start-Process -FilePath "explorer.exe" -ArgumentList "/select,`"$path`"" -ErrorAction Stop } catch { Write-Verbose "Explorador: $($_.Exception.Message)" }
+        }
+    }
+    catch {
+        Write-WinForgeStatus -Type Error -Message (Get-WinForgeText 'Não foi possível criar o pacote de suporte: {0}' "$(([string]$_.Exception.Message).TrimEnd('.'))")
+        $final = Set-WinForgeResultView -Result (New-WinForgeResult -Kind Failed -Detail ([string]$_.Exception.Message).TrimEnd('.') -Title $title) `
+            -Headline (Get-WinForgeText 'O pacote de suporte não foi criado') -Note (Format-WinForgeReasonNote -Text $_.Exception.Message)
+    }
+    finally {
+        Remove-WinForgeFolder -Path $staging -Quiet
+    }
+
+    Exit-WinForgeAction -Result $final
 }
 
 
