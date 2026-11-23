@@ -968,7 +968,7 @@ O GitHub mostra o `README.md` da raiz na página do repositório, e o da pasta `
 
 ## 23. Riscos e limitações conhecidas
 
-- **A Build 4.0 foi conferida fora do Windows**, com o Windows simulado onde precisava. Antes de divulgar uma versão, ela precisa rodar num PC com Windows 10 e num com Windows 11: instalar, Verificar o PC, Otimizar, atualizar com um clique e desinstalar.
+- **A Build 4.0 foi conferida num PC com Windows** em novembro de 2026. Antes de divulgar uma versão nova, repita a conferência num Windows 10 e num Windows 11: instalar, Verificar o PC, Otimizar, atualizar com um clique e desinstalar.
 - **Não há testes automatizados no repositório.** As conferências de cada revisão rodaram fora dele. Uma mudança no código pede a conferência de quem a fez e, antes de publicar, a conferência num PC com Windows.
 - **Os scripts não são assinados.** O Windows pode avisar ao abrir. O `tools/Sign-WinForge.ps1` está pronto para quando houver um certificado.
 - **A atualização com um clique depende do contrato do Setup** ([seção 13.3](#133-atualizar-com-um-clique)) e do nome `WinForge.zip`. Mudar qualquer um dos dois quebra a atualização das versões já instaladas.
