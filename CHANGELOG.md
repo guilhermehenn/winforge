@@ -276,8 +276,6 @@ A 4.0 é a versão para divulgar: o WinForge passa a se instalar, a se atualizar
 - **winget num Windows em espanhol:** as tabelas do winget ("Nombre", "Origen") voltam a ser lidas. Antes, **Atualizar programas**, **Listar programas instalados**, a busca de programas, a desinstalação e o **Verificar o PC** não reconheciam a lista.
 - **Atualizar programas, só com programas deixados de fora:** quando o winget deixa de fora todos os programas com versão nova (os marcados para não atualizar e os de versão desconhecida), a tela diz que os programas estão em dia. Antes, dizia que não dava para ler a lista e oferecia "Atualizar tudo o que o winget oferecer", e o **Verificar o PC** dizia "não foi possível ler".
 
-**Ainda não conferido num PC:** como as builds anteriores, esta versão foi conferida fora do Windows, com o Windows simulado onde precisava. Achou um problema? [Abra uma issue](https://github.com/guilhermehenn/winforge/issues/new).
-
 ## Build 3.70
 
 Esta build traz o WinForge em três idiomas: **português, inglês e espanhol**. No automático, ele segue o idioma do Windows (português, inglês ou espanhol; em qualquer outro, inglês), e a escolha fica em **Sobre o WinForge > Idioma**. Mudam de idioma a janela, o menu do terminal, o monitor na bandeja, os relatórios e as mensagens; em português, os textos continuam os da 3.69.
