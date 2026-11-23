@@ -1,0 +1,62 @@
+name: Problema / Bug
+description: Algo não funcionou como devia. / Something didn't work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por relatar! Antes de anexar logs ou o Pacote de suporte, confira o conteúdo e remova informações pessoais.
+        Thanks for reporting! Before attaching logs or the Support package, review them and remove personal information.
+  - type: input
+    id: versao-winforge
+    attributes:
+      label: Versão do WinForge / WinForge version
+      description: Em Sobre o WinForge. / In About WinForge.
+      placeholder: "4.0"
+    validations:
+      required: true
+  - type: input
+    id: versao-windows
+    attributes:
+      label: Versão e build do Windows / Windows version and build
+      description: Tecle Win+R, digite winver e Enter. / Press Win+R, type winver and press Enter.
+      placeholder: "Windows 11 24H2 (26100.xxxx)"
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Interface
+      options:
+        - Janela / Window
+        - Terminal
+    validations:
+      required: true
+  - type: input
+    id: funcao
+    attributes:
+      label: Função usada / Feature used
+      placeholder: "Otimizar, Limpeza > Limpeza rápida..."
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir / Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que era esperado e o que aconteceu / Expected vs. actual result
+    validations:
+      required: true
+  - type: textarea
+    id: erro
+    attributes:
+      label: Mensagem de erro ou captura de tela / Error message or screenshot
+      description: Cole a mensagem completa ou arraste uma imagem para cá. / Paste the full message or drag an image here.
