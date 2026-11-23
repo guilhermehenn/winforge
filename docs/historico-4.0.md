@@ -1,8 +1,12 @@
 # WinForge 4.0 — histórico de revisões
 
-Este arquivo registra cada alteração feita no ciclo da versão 4.0, da mais antiga para a mais nova. Cada alteração ganha uma entrada aqui até o pedido **"TERMINAR VERSÃO 4.0"**. O `CHANGELOG.md` diz o que mudou para quem usa. Aqui fica como cada mudança chegou lá: o pedido, o que mudou, onde mudou, como foi conferida e o que ainda falta ver num PC.
+Este documento registra as revisões realizadas durante o desenvolvimento do WinForge 4.0, da mais antiga para a mais recente. Cada entrada descreve o pedido, as mudanças realizadas e as conferências registradas na época.
 
-**Situação:** a Build 4.0 está em preparação e ainda não foi publicada. O trabalho fica na branch `b370`, só local: nada vai para o GitHub, e cada entrega vem pelo chat (o zip do WinForge e o código-fonte com o histórico do git). Nada deste ciclo rodou num Windows de verdade. A conferência foi feita na nuvem, com o Windows simulado onde precisava. O roteiro para conferir num PC fica no projeto WinForge do Claude, em `claude/roteiro-conferencia-4.0.md`.
+As referências a pendências e condições de desenvolvimento refletem o momento de cada revisão e podem não representar a situação atual. Os identificadores de commits pertencem ao histórico original de desenvolvimento; alguns não estão disponíveis no histórico público deste repositório.
+
+**Situação atual:** o WinForge 4.0 foi publicado na release [v4.0.0](https://github.com/guilhermehenn/winforge/releases/tag/v4.0.0). Para consultar as mudanças apresentadas aos usuários, veja o [CHANGELOG](../CHANGELOG.md).
+
+**Validações:** as revisões registram conferências feitas durante o desenvolvimento, incluindo simulações. As validações realizadas em computadores com Windows devem ser registradas separadamente. O roteiro `claude/roteiro-conferencia-4.0.md`, citado em algumas entradas, não está neste repositório.
 
 | Revisão | Data | O quê | Commits |
 |---|---|---|---|
@@ -3503,12 +3507,6 @@ Também saiu uma leitura repetida: a etapa da bateria perguntava de novo ao Wind
 
 ---
 
-## O que falta para terminar a 4.0
-- A conferência num PC, pelo roteiro `claude/roteiro-conferencia-4.0.md`, agora com a janela nova, as seis funções novas (§28), o desenho novo (§29), o Início e os destaques no Windows de verdade (§30), a segunda revisão do Início (§31), a da Manutenção (§32), a da Limpeza (§33), a do Desempenho (§34), a do Reparo (§35), a do Diagnóstico (§36), a da Rede (§37), a da Segurança (§38), a das Atualizações (§39), a aparência fora da revisão do Otimizar (§40) e a segunda revisão dos Programas (§41), a dos Ajustes do Windows (§42), a da Personalização (§43), a do Sobre o WinForge (§44), a da Busca (§45), a do Verificar o PC (§46) e a do Otimizar (§47), a página do projeto no GitHub (§48), o site do WinForge (§49) e a cor de destaque e o que sobrou na inicialização (§50).
-- As decisões do dono: I1 (licença) e I2 (certificado).
-- O site no ar antes de publicar, com as páginas `/en/` e `/es/`: o Site do WinForge e os READMEs em inglês e em espanhol levam a elas. E o campo Website do About do GitHub (seção 22.1 da documentação técnica).
-- As sugestões recomendadas da avaliação (R35) que o dono escolher para a 4.0: N1 a N4 (`docs/avaliacao-4.0.md`). N5 a N10 foram feitas na R36.
-- Publicar: assinar, se houver o certificado (`tools\Sign-WinForge.ps1`); montar o zip com `tools\New-WinForgePackage.ps1`; pôr o SHA-256 que ela mostra na página da versão.
-- F3 + F8, se a medição num PC confirmar.
-- Da revisão da interface, só o que ficou para depois: as capturas de tela, a Mica e a arquitetura de páginas.
-- Da revisão de UX/UI (R38), o que o dono escolher (`docs/revisao-ux-4.0.md`): a fase 1 cabe na 4.0. A UX11 (a faixa da Manutenção) entrou na R41; a UX21 (o verbo nos botões), nas perguntas da Limpeza (R42), do Desempenho (R43), do Reparo (R44), do Diagnóstico (R45), da Rede (R46), da Segurança (R47), das Atualizações (R48), dos Programas (R51) e dos Ajustes do Windows (R52); a UX28 (Gerenciar inicialização com uma frase só), na R43; a UX14 (o resumo no lugar do parágrafo), a UX16 (os esqueletos) e a UX19 (a chave na própria linha), em Ajustes e na Personalização, na R52; a UX19 para a cor de destaque, a UX13 (o texto das linhas de ação no mesmo lugar) e a UX15 (as frases de até 60 letras), nas duas páginas de ajustes, na R53; a UX18 (o subtítulo do Sobre o WinForge), a UX25 ("Avisos pausados" traduzido) e a UX21 nas perguntas do Sobre o WinForge, na R54; a UX26 (a ordem da busca, sem o desconto do Avançado, que não mudaria nada) e a UX27 (a linha de cima dos ajustes), na R55; a UX21 nas perguntas do próprio Otimizar, na R57.
+## Pendências registradas antes da publicação
+
+> Esta lista reflete o planejamento anterior à publicação da versão 4.0. Os itens podem ter sido concluídos, alterados ou deixados para versões futuras.
